@@ -19,11 +19,14 @@ An older document can still reveal intent. Do not silently overwrite a newer dec
 
 - [Product vision](product/vision.md)
 - [Domain invariants](product/invariants.md)
+- [Truth states and authority decision table](product/truth-state-authority.md)
 - [Architecture overview](architecture/overview.md)
 - [Domain model](architecture/domain-model.md)
+- [Campaign Core schema](architecture/campaign-core-schema.md)
 - [Workflows](architecture/workflows.md)
 - [Deployment](architecture/deployment.md)
 - [Current-system migration](migration/current-system.md)
+- [Incremental Markdown importer](migration/markdown-importer.md)
 - [Acceptance strategy](testing/acceptance-strategy.md)
 - [Development plan](plan.md)
 

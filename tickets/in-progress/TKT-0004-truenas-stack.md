@@ -1,7 +1,7 @@
 ---
 id: TKT-0004
 title: Scaffold private TrueNAS stack
-status: backlog
+status: in-progress
 priority: P1
 milestone: trustworthy-librarian
 depends_on: []

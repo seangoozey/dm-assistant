@@ -1,7 +1,7 @@
 ---
 id: TKT-0002
 title: Build interaction acceptance fixtures
-status: ready
+status: done
 priority: P0
 milestone: specification-foundation
 depends_on: []
@@ -41,7 +41,9 @@ Convert representative interactions from the partial legacy chat dump into struc
 
 ## Validation
 
-Manually compare each fixture with `E:\studio\starfall\DND Chat Dump.txt` without modifying that source.
+Manually compared the Starfall chat dump and the corresponding source records without modifying the source collection. `tests/fixtures/interaction_cases.yaml` contains all nine scoped cases. A structural check confirmed that each of the nine cases includes active workflow, input, prior evidence, expected output, forbidden output, mutation effect, and enforcement ownership.
+
+The audio-revision case is intentionally synthetic, as required, because no real long-form audio source is available.
 
 ## Follow-ups
 

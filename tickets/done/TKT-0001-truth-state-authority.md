@@ -1,7 +1,7 @@
 ---
 id: TKT-0001
 title: Specify truth states and authority
-status: ready
+status: done
 priority: P0
 milestone: specification-foundation
 depends_on: []
@@ -39,17 +39,17 @@ Read `docs/product/invariants.md` and `docs/architecture/domain-model.md`.
 
 ## Acceptance criteria
 
-- [ ] Every provisional state has entry, exit, and supersession rules.
-- [ ] Real play versus preparation resolves automatically.
-- [ ] Real play versus established history identifies a possible retcon.
-- [ ] NPC intention does not imply outcome.
-- [ ] PC campaign direction cannot become future PC action.
-- [ ] Expected dates remain provenance after observed dates replace them.
-- [ ] Decision-table examples can be translated directly into tests.
+- [x] Every provisional state has entry, exit, and supersession rules.
+- [x] Real play versus preparation resolves automatically.
+- [x] Real play versus established history identifies a possible retcon.
+- [x] NPC intention does not imply outcome.
+- [x] PC campaign direction cannot become future PC action.
+- [x] Expected dates remain provenance after observed dates replace them.
+- [x] Decision-table examples can be translated directly into tests.
 
 ## Validation
 
-Review against the audited Starfall examples and every fixture in TKT-0002.
+Reviewed against the audited Starfall chat dump and the relevant read-only snapshot records, including the promoted Infinite Twilight receipt, Ladir's campaign-sculpting notes, and the 2026-07-18 real-play note. `tests/fixtures/interaction_cases.yaml` parses successfully with nine cases; every case has the required workflow, evidence, expected/forbidden behavior, mutation effect, and enforcement fields. `git diff --check` passes.
 
 ## Follow-ups
 

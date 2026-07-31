@@ -1,0 +1,140 @@
+schema_version: 1
+purpose: >-
+  Sanitized acceptance cases for authority, approval scope, creative boundaries,
+  PC agency, observed play, and audio claim revision. These are behavioral
+  fixtures, not canonical campaign source records.
+source_policy:
+  source_snapshot: E:\\studio\\starfall
+  source_files:
+    - DND Chat Dump.txt
+    - gm/brainstorming/2026-07-16-the-infinite-twilight.md
+    - npcs/sorin-tarkohv.md
+    - npcs/Roccid.md
+    - pcs/ladir.md
+    - sessions/notes/2026-07-18.md
+  sanitization: Minimal names and facts are retained only where required to test a rule.
+
+cases:
+  - id: inspect-one-pending-claim-does-not-promote-siblings
+    active_workflow: brainstorm
+    prior_evidence:
+      - A versioned proposal contains a Jace claim and unrelated sibling claims.
+    input: "Jace's NPC file has not been created yet. Let's start there."
+    expected_output:
+      - Identify or open only the Jace proposal item and its target record.
+      - Keep the proposal pending; name the reviewed proposal version and scope.
+    forbidden_output:
+      - Apply sibling claims.
+      - Treat selecting Jace as approval of the whole proposal.
+    mutation_effect: No canonical mutation without explicit approval of the reviewed scope.
+    enforcement: core
+
+  - id: invented-npc-lore-is-rejected
+    active_workflow: brainstorm
+    prior_evidence:
+      - Sorin and Roccid are present in the working context, but no supplied facts establish their inner thoughts or invented dialogue.
+    input: "I need to flesh out some thoughts that Sorin, Roccid and Dariferra have."
+    expected_output:
+      - Capture the DM's forthcoming material or retrieve established evidence.
+      - State that the assistant will not invent NPC lore by default.
+    forbidden_output:
+      - Attribute unprovided motives, history, dialogue, or relationships to Sorin or Roccid.
+    mutation_effect: Capture only; no invented claim enters canon or a proposal.
+    enforcement: model_and_output_validation
+
+  - id: explicit-read-aloud-permission-is-bounded
+    active_workflow: encounter_creation
+    prior_evidence:
+      - Sorin's supplied backstory is established lore.
+    input: "Create a first-person account of Sorin's backstory that can be read aloud. It can be fluffed up a little for storytelling."
+    expected_output:
+      - Create a requested encounter-attached read-aloud grounded in the supplied backstory.
+      - Mark the result as a derived creative artifact.
+    forbidden_output:
+      - Add unprovided Sorin history or alter the underlying NPC claim set.
+    mutation_effect: Create or update only the encounter's derived read-aloud; canonical lore is unchanged.
+    enforcement: core_and_output_validation
+
+  - id: direct-lore-update-returns-to-brainstorm
+    active_workflow: brainstorm
+    prior_evidence:
+      - An active brainstorm exists for an encounter.
+      - The DM supplies Sorin's concrete personal history.
+    input: "Update Sorin's NPC file with this backstory first."
+    expected_output:
+      - Apply a direct lore change only to Sorin after normal ambiguity and conflict checks.
+      - Issue a receipt and return to the same active brainstorm.
+    forbidden_output:
+      - Promote the brainstorm's remaining claims.
+      - Reclassify the whole brainstorm as canon.
+    mutation_effect: One scoped Sorin change set and receipt; brainstorm remains active and non-canon.
+    enforcement: core
+
+  - id: edited-claim-requires-exact-version-promotion
+    active_workflow: brainstorm
+    prior_evidence:
+      - Four pending promotion claims are displayed with destinations.
+      - The DM edits claim 1 before confirmation.
+    input: "I've edited claim 1, review then promote all and close."
+    expected_output:
+      - Review the changed proposal version and apply exactly the visible reviewed claim set.
+      - Create one atomic promotion receipt and close the brainstorm.
+    forbidden_output:
+      - Apply an earlier proposal version.
+      - Apply claims outside the visible reviewed scope.
+    mutation_effect: Apply the exact approved version once; a retry produces no duplicate mutation.
+    enforcement: core
+
+  - id: pc-directions-are-not-predicted-actions
+    active_workflow: brainstorm
+    prior_evidence:
+      - A planning note describes a possible culminating role for Ladir.
+    input: "The players have free will and will do what they want; these are guidelines for how I want to sculpt the campaign."
+    expected_output:
+      - Store the material as DM-only campaign-sculpting direction or conditional plot pressure.
+    forbidden_output:
+      - Store that Ladir will destroy an object or will take any future action as established fact.
+    mutation_effect: A planning claim may be retained, but no future PC action is canonical.
+    enforcement: core
+
+  - id: unknown-noble-name-remains-unknown
+    active_workflow: ask
+    prior_evidence:
+      - Records name Jace as a rebel leader but establish no names for nobles at the exile camp.
+    input: "Is there a note on the names of the nobles that are at the exile camp?"
+    expected_output:
+      - Say that the records do not identify those nobles and cite the available related evidence.
+    forbidden_output:
+      - Invent noble names or imply that an unrelated named NPC is one of them.
+    mutation_effect: None.
+    enforcement: model_and_output_validation
+
+  - id: real-play-overrides-prepared-outcomes
+    active_workflow: real_play
+    prior_evidence:
+      - Preparation may contain possible battle outcomes.
+    input: "The party held the army, Gren flew by, and fighters from both exile camps joined the battle."
+    expected_output:
+      - Preserve the observation, extract unambiguous durable consequences, supersede conflicting preparation, and issue a receipt.
+      - Stop for review if the observation contradicts established history rather than preparation.
+    forbidden_output:
+      - Treat prepared outcomes as having occurred.
+      - Invent downstream NPC or faction reactions.
+    mutation_effect: Observed claims replace conflicting prepared claims; receipt records sources and transitions.
+    enforcement: core
+
+  - id: audio-later-withdrawal-supersedes-earlier-candidate
+    active_workflow: audio_brainstorm
+    prior_evidence:
+      - A raw timestamped transcript is retained.
+    input: >-
+      Earlier: "Maybe Romulus wants to destroy Fleurite." Later: "No, he needs it intact;
+      he will destroy the exile camp to intimidate Fleurite."
+    expected_output:
+      - Present the later explicit correction as the final proposed intention.
+      - Retain the earlier statement as a withdrawn candidate linked to its replacement.
+    forbidden_output:
+      - Promote both incompatible candidates.
+      - Treat recency alone as proof without an explicit correction signal.
+    mutation_effect: No canonical mutation until the final synthesis is approved.
+    enforcement: core_and_model
