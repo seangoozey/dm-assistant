@@ -1,0 +1,45 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+
+# Node
+node_modules/
+dist/
+.vite/
+coverage/
+
+# IDE and OS
+.idea/
+.DS_Store
+Thumbs.db
+*.code-workspace
+
+# Runtime data
+data/
+audio/
+transcripts/
+backups/
+artifacts/
+*.sqlite
+*.db
+*.log
+
+# Campaign source and fixtures pending sanitization
+starfall/
+source-snapshots/
+tests/fixtures/private/
+
+# Windmill local state and secrets
+windmill/.wmill/
+windmill/**/secrets.*
