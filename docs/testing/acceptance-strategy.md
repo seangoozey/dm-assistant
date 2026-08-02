@@ -31,6 +31,8 @@ The most important tests are scenario fixtures derived from Sean's real interact
 
 Maintain at least 30–50 questions covering direct facts, aliases, relationships, chronology, contradictions, non-canon leakage, unknown answers, recent updates, and character-specific knowledge.
 
+The sanitized corpus is maintained in `tests/fixtures/retrieval_cases.yaml`. The repository test command validates its structure and executes every case through the typed Campaign Core retrieval boundary. The isolated-store harness, assertion rules, and extension procedure are documented in [retrieval-harness.md](retrieval-harness.md).
+
 ## Test levels
 
 - Pure domain unit tests for state transitions and authority.
@@ -41,3 +43,17 @@ Maintain at least 30–50 questions covering direct facts, aliases, relationship
 - Full vertical-slice acceptance tests through the React interface where valuable.
 
 Model evaluations supplement deterministic tests; they never replace them.
+
+## Standard deterministic validation
+
+After installing `campaign-core/requirements-dev.txt` from the `campaign-core` directory and activating that environment, run this from the repository root:
+
+```bash
+python tests/validate_repository.py
+```
+
+This is the shared local and continuous-validation entry point. Interaction fixture ownership, schema rules, and extension steps are documented in [fixture-harness.md](fixture-harness.md).
+
+The synthetic Markdown import corpus, path-safety assertions, and reconciliation sequence are documented in [importer-fixtures.md](importer-fixtures.md).
+
+The grounded retrieval corpus, deterministic policy boundary, and non-brittle evidence assertions are documented in [retrieval-harness.md](retrieval-harness.md).

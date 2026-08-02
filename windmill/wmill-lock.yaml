@@ -1,0 +1,7 @@
+version: v2
+locks:
+  f/dm_assistant/apps/library.raw_app+__app_hash: 342f1febecaaf954f58fdccb7549476f21ae1d4716983d3e9063122766d5e1e1
+  f/dm_assistant/apps/library.raw_app+inspect_job.ts: 84e100898c2865849be8b29c415d9dfaf7e4bcba3de15339517c2914faf39af5
+  f/dm_assistant/apps/library.raw_app+query_campaign.ts: 1c3d9e14911a3014d69e554f411a5590b674c4cd72e70cd498db312c4e497cde
+  f/dm_assistant/apps/library.raw_app+start_health_check.ts: 7974f4df5c22da6c07450eb8dd3e0df8d3157c7af7b7c8853fdb714df9ba0a6c
+  f/dm_assistant/jobs/campaign_core_health: e45ff46d2d25202866d88c69cd3b123b7943ed5aff3ea6715e3e57658e39bc12

@@ -6,9 +6,9 @@ The application captures unstructured notes, retrieves supporting campaign infor
 
 ## Current status
 
-Planning and specification. No application code is authoritative yet.
+The specification foundation, Campaign Core transaction boundary, typed acceptance harnesses, incremental Markdown connector, deterministic grounded-retrieval boundary, reproducible Windmill workspace deployment, and first full-code React shell are in place. The service preserves source evidence, reconciles repeated scans, records review candidates and immutable receipts, keeps canonical promotion behind exact versioned approval, and enforces citation, visibility, conflict, and non-canon policies on retrieval.
 
-The immediate objective is to define the truth-state model and build acceptance fixtures from the existing Starfall campaign before implementing the Campaign Core.
+The verified Starfall scope has been ingested into the local development database as immutable, non-canonical evidence with an idempotent receipt and zero canonical mutations. Its review queues and exact, human-controlled candidate proposal, disposition, versioning, and approval commands are implemented. The React review slice is deployed and browser-verified with import totals, quarantine, exact evidence, explicit target resolution, immutable proposal scope, approval, application, and receipts. The next objective is the first deliberately scoped live canonical promotion.
 
 ## Start here
 
@@ -34,24 +34,39 @@ All platform choices remain revisable until a vertical slice proves them.
 
 ## Local paths
 
-- Intended repository: `E:\studio\dm-assistant`
-- Current legacy snapshot: `E:\studio\starfall`
-- The legacy campaign remains active and changes independently. Treat any copied snapshot as a fixture, not production truth.
+- Current repository checkout: `E:\dm-assistant`
+- Previously audited Starfall snapshot: `E:\studio\starfall`
+- Current live Starfall collection: `\\HOMESERVER\projects\projects\starfall`
+- Historical OpenClaw workspace: `\\HOMESERVER\openclaw\.openclaw\dnd-workspace`
+
+The live Starfall collection remains active and changes independently. It is the legacy source for live-data confirmation and eventual cutover, but it must remain strictly read-only. The audited snapshot and any Starfall copy inside the historical OpenClaw workspace are reference fixtures, not current production truth. The OpenClaw workspace may be consulted for historical workflows, scripts, and failure evidence; it does not establish campaign canon.
 
 Do not hard-code these paths into domain logic. Use configuration.
 
 ## Repository map
 
 ```text
-campaign-core/       Python domain and API code (future)
-windmill/            Scripts, flows, workers, and full-code app (future)
+campaign-core/       Python domain, PostgreSQL adapter, migrations, and FastAPI service
+windmill/            Scoped workspace source, controlled CLI deployment, and React app
 integrations/        Telegram, Cognee, transcription, Foundry (future)
 docs/                Product, architecture, migration, and test specifications
 tickets/             File-based development tickets
-tests/fixtures/      Sanitized acceptance fixtures (future)
-deploy/              TrueNAS Compose and deployment scripts (future)
+tests/fixtures/      Sanitized interaction and retrieval acceptance fixtures
+deploy/              Private Compose scaffold and TrueNAS dataset override
 ```
 
 ## Development rule
 
 No implementation is complete merely because an LLM produced plausible output. Domain behavior must be enforced by code and covered by acceptance tests derived from real campaign interactions.
+
+## Local UI test cycle
+
+After completing the one-time environment and Windmill workspace setup in [the deployment guide](deploy/README.md#complete-local-ui-test-lifecycle), run:
+
+```powershell
+.\deploy\test-stack.ps1 up
+.\deploy\test-stack.ps1 status
+.\deploy\test-stack.ps1 down
+```
+
+Routine shutdown preserves both database volumes.

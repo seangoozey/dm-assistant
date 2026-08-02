@@ -1,0 +1,9 @@
+{
+  "name": "dm-assistant-windmill-source",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Pinned CLI for controlled DM Assistant Windmill workspace synchronization.",
+  "devDependencies": {
+    "windmill-cli": "1.775.2"
+  }
+}

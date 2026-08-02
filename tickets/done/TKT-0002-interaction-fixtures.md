@@ -34,10 +34,10 @@ Convert representative interactions from the partial legacy chat dump into struc
 
 ## Acceptance criteria
 
-- [ ] Every case states active workflow, input, prior evidence, expected output, forbidden output, and mutation effect.
-- [ ] Fixtures contain only the minimum private campaign text needed for the behavior.
-- [ ] Cases distinguish model quality failures from violations Core can enforce.
-- [ ] Fixtures are usable by TKT-0001 and future automated tests.
+- [x] Every case states active workflow, input, prior evidence, expected output, forbidden output, and mutation effect.
+- [x] Fixtures contain only the minimum private campaign text needed for the behavior.
+- [x] Cases distinguish model quality failures from violations Core can enforce.
+- [x] Fixtures are usable by TKT-0001 and future automated tests.
 
 ## Validation
 

@@ -1,0 +1,31 @@
+services:
+  windmill-server:
+    ports:
+      - ${WINDMILL_BIND_ADDRESS:-0.0.0.0}:${WINDMILL_HTTP_PORT:-8000}:8000
+
+volumes:
+  windmill-db-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${WINDMILL_DB_DATASET:?set WINDMILL_DB_DATASET}
+  campaign-db-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${CAMPAIGN_DB_DATASET:?set CAMPAIGN_DB_DATASET}
+  windmill-worker-cache:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${WINDMILL_CACHE_DATASET:?set WINDMILL_CACHE_DATASET}
+  windmill-worker-logs:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${WINDMILL_LOG_DATASET:?set WINDMILL_LOG_DATASET}
+

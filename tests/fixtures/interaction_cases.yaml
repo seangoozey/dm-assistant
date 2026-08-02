@@ -1,4 +1,4 @@
-schema_version: 1
+schema_version: 2
 purpose: >-
   Sanitized acceptance cases for authority, approval scope, creative boundaries,
   PC agency, observed play, and audio claim revision. These are behavioral
@@ -28,6 +28,9 @@ cases:
       - Treat selecting Jace as approval of the whole proposal.
     mutation_effect: No canonical mutation without explicit approval of the reviewed scope.
     enforcement: core
+    deterministic_assertions:
+      - approval_scope_is_exact
+    deferred_evaluations: []
 
   - id: invented-npc-lore-is-rejected
     active_workflow: brainstorm
@@ -41,6 +44,10 @@ cases:
       - Attribute unprovided motives, history, dialogue, or relationships to Sorin or Roccid.
     mutation_effect: Capture only; no invented claim enters canon or a proposal.
     enforcement: model_and_output_validation
+    deterministic_assertions: []
+    deferred_evaluations:
+      - model_quality
+      - output_validation
 
   - id: explicit-read-aloud-permission-is-bounded
     active_workflow: encounter_creation
@@ -54,6 +61,10 @@ cases:
       - Add unprovided Sorin history or alter the underlying NPC claim set.
     mutation_effect: Create or update only the encounter's derived read-aloud; canonical lore is unchanged.
     enforcement: core_and_output_validation
+    deterministic_assertions:
+      - creative_artifact_cannot_mutate_lore
+    deferred_evaluations:
+      - output_validation
 
   - id: direct-lore-update-returns-to-brainstorm
     active_workflow: brainstorm
@@ -69,6 +80,9 @@ cases:
       - Reclassify the whole brainstorm as canon.
     mutation_effect: One scoped Sorin change set and receipt; brainstorm remains active and non-canon.
     enforcement: core
+    deterministic_assertions:
+      - direct_lore_preserves_parent
+    deferred_evaluations: []
 
   - id: edited-claim-requires-exact-version-promotion
     active_workflow: brainstorm
@@ -84,6 +98,9 @@ cases:
       - Apply claims outside the visible reviewed scope.
     mutation_effect: Apply the exact approved version once; a retry produces no duplicate mutation.
     enforcement: core
+    deterministic_assertions:
+      - approval_binds_to_current_version
+    deferred_evaluations: []
 
   - id: pc-directions-are-not-predicted-actions
     active_workflow: brainstorm
@@ -96,6 +113,9 @@ cases:
       - Store that Ladir will destroy an object or will take any future action as established fact.
     mutation_effect: A planning claim may be retained, but no future PC action is canonical.
     enforcement: core
+    deterministic_assertions:
+      - pc_direction_is_conditional
+    deferred_evaluations: []
 
   - id: unknown-noble-name-remains-unknown
     active_workflow: ask
@@ -108,6 +128,10 @@ cases:
       - Invent noble names or imply that an unrelated named NPC is one of them.
     mutation_effect: None.
     enforcement: model_and_output_validation
+    deterministic_assertions: []
+    deferred_evaluations:
+      - model_quality
+      - output_validation
 
   - id: real-play-overrides-prepared-outcomes
     active_workflow: real_play
@@ -122,6 +146,9 @@ cases:
       - Invent downstream NPC or faction reactions.
     mutation_effect: Observed claims replace conflicting prepared claims; receipt records sources and transitions.
     enforcement: core
+    deterministic_assertions:
+      - observed_supersedes_prepared
+    deferred_evaluations: []
 
   - id: audio-later-withdrawal-supersedes-earlier-candidate
     active_workflow: audio_brainstorm
@@ -138,3 +165,7 @@ cases:
       - Treat recency alone as proof without an explicit correction signal.
     mutation_effect: No canonical mutation until the final synthesis is approved.
     enforcement: core_and_model
+    deterministic_assertions:
+      - explicit_revision_supersedes_candidate
+    deferred_evaluations:
+      - model_quality

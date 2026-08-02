@@ -44,10 +44,12 @@ An active Brainstorm may temporarily invoke a Direct Lore Update targeting one r
 
 ## Promotion safety
 
+For imported evidence, the DM first selects exact candidate and revision IDs, supplies target entity decisions, reviews the server-rendered immutable version and hash, and approves explicit proposal item IDs. Reject and defer never enter this promotion path. Editing produces a new version and invalidates an older unapplied approval. Deterministic checks stop on identity ambiguity, conflicts or possible retcons, invalid future time, PC-agency violations, or evidence that is not eligible for promotion.
+
 The final mutation is one Campaign Core transaction:
 
 ```text
-apply_change_set(change_set_id, reviewed_version, approval_id)
+apply_change_set(change_set_id, reviewed_version, approval_id, reviewed_content_hash)
 ```
 
 The transaction validates approval, applies all changes or none, writes the receipt, and is safe to retry.

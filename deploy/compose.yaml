@@ -1,0 +1,174 @@
+name: dm-assistant
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-postgres-healthcheck: &postgres-healthcheck
+  test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+  interval: 10s
+  timeout: 5s
+  retries: 10
+  start_period: 10s
+
+services:
+  windmill-db:
+    image: postgres:16.14-alpine3.23
+    restart: unless-stopped
+    shm_size: 256mb
+    environment:
+      POSTGRES_USER: ${WINDMILL_DB_USER:?set WINDMILL_DB_USER}
+      POSTGRES_PASSWORD: ${WINDMILL_DB_PASSWORD:?set WINDMILL_DB_PASSWORD}
+      POSTGRES_DB: ${WINDMILL_DB_NAME:-windmill}
+    volumes:
+      - windmill-db-data:/var/lib/postgresql/data
+    networks:
+      - windmill-database
+    healthcheck: *postgres-healthcheck
+    logging: *default-logging
+
+  campaign-db:
+    image: postgres:16.14-alpine3.23
+    restart: unless-stopped
+    shm_size: 256mb
+    environment:
+      POSTGRES_USER: ${CAMPAIGN_DB_USER:?set CAMPAIGN_DB_USER}
+      POSTGRES_PASSWORD: ${CAMPAIGN_DB_PASSWORD:?set CAMPAIGN_DB_PASSWORD}
+      POSTGRES_DB: ${CAMPAIGN_DB_NAME:-campaign}
+    volumes:
+      - campaign-db-data:/var/lib/postgresql/data
+    networks:
+      - campaign-database
+    healthcheck: *postgres-healthcheck
+    logging: *default-logging
+
+  windmill-server:
+    image: ghcr.io/windmill-labs/windmill:1.775.2
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://${WINDMILL_DB_USER}:${WINDMILL_DB_PASSWORD}@windmill-db:5432/${WINDMILL_DB_NAME:-windmill}?sslmode=disable
+      MODE: server
+      SILENCE_HEALTH_LOGS: "true"
+    depends_on:
+      windmill-db:
+        condition: service_healthy
+    ports:
+      - ${WINDMILL_BIND_ADDRESS:-127.0.0.1}:${WINDMILL_HTTP_PORT:-8000}:8000
+    volumes:
+      - windmill-worker-logs:/tmp/windmill/logs
+    networks:
+      - windmill-database
+      - application
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://localhost:8000/api/health/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    logging: *default-logging
+
+  windmill-worker:
+    image: ghcr.io/windmill-labs/windmill:1.775.2
+    restart: unless-stopped
+    privileged: true
+    environment:
+      DATABASE_URL: postgres://${WINDMILL_DB_USER}:${WINDMILL_DB_PASSWORD}@windmill-db:5432/${WINDMILL_DB_NAME:-windmill}?sslmode=disable
+      MODE: worker
+      WORKER_GROUP: default
+      FAVOR_UNSHARE_PID: "true"
+      CAMPAIGN_CORE_URL: http://campaign-core:8000
+    depends_on:
+      windmill-db:
+        condition: service_healthy
+    volumes:
+      - windmill-worker-cache:/tmp/windmill/cache
+      - windmill-worker-logs:/tmp/windmill/logs
+    networks:
+      - windmill-database
+      - application
+    healthcheck:
+      test: ["CMD-SHELL", "ps | grep -q '[w]indmill'"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    logging: *default-logging
+
+  campaign-core:
+    image: dm-assistant-campaign-core:0.1.0
+    build:
+      context: ../campaign-core
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    read_only: true
+    environment:
+      CAMPAIGN_DATABASE_URL: postgres://${CAMPAIGN_DB_USER}:${CAMPAIGN_DB_PASSWORD}@campaign-db:5432/${CAMPAIGN_DB_NAME:-campaign}
+      CAMPAIGN_ENVIRONMENT: ${CAMPAIGN_ENVIRONMENT:-development}
+      CAMPAIGN_RUN_MIGRATIONS: "true"
+      CAMPAIGN_CORS_ORIGINS: ${CAMPAIGN_CORS_ORIGINS:-}
+    depends_on:
+      campaign-db:
+        condition: service_healthy
+    expose:
+      - "8000"
+    tmpfs:
+      - /tmp
+    networks:
+      - campaign-database
+      - application
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3).read()"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+
+  legacy-source-check:
+    image: python:3.13.14-alpine3.23
+    profiles: [source-check]
+    read_only: true
+    network_mode: none
+    command:
+      - python
+      - -c
+      - |
+        import pathlib
+        import time
+        source = pathlib.Path('/sources/starfall')
+        if not source.is_dir():
+            raise SystemExit('legacy source mount is not a readable directory')
+        print('legacy source mount is readable and declared read-only', flush=True)
+        time.sleep(3600)
+    volumes:
+      - type: bind
+        source: ${LEGACY_SOURCE_PATH:?set LEGACY_SOURCE_PATH}
+        target: /sources/starfall
+        read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "python", "-c", "import pathlib; raise SystemExit(0 if pathlib.Path('/sources/starfall').is_dir() else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging: *default-logging
+
+volumes:
+  windmill-db-data:
+  campaign-db-data:
+  windmill-worker-cache:
+  windmill-worker-logs:
+
+networks:
+  windmill-database:
+    internal: true
+  campaign-database:
+    internal: true
+  application:

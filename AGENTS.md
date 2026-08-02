@@ -50,7 +50,8 @@ If a task changes a durable architectural decision, read `docs/decisions/README.
 
 ## Source safety
 
-- Treat `E:\studio\starfall` and later legacy snapshots as read-only.
+- Treat the previously audited `E:\studio\starfall` snapshot, the live `\\HOMESERVER\projects\projects\starfall` collection, and later legacy snapshots as read-only.
+- Treat `\\HOMESERVER\openclaw\.openclaw\dnd-workspace` as historical-system evidence, not current campaign truth. Any nested Starfall copy is a snapshot unless independently verified.
 - Never clean up or rewrite the legacy collection as part of importer development.
 - Preserve original text, path, hashes, and provenance.
 - Templates must not import as live campaign records.

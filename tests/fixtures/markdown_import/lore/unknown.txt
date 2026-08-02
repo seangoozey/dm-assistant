@@ -1,0 +1,2 @@
+Synthetic admitted-path content with an unsupported format.
+

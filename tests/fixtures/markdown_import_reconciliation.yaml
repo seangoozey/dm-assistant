@@ -1,0 +1,52 @@
+schema_version: 1
+synthetic: true
+description: Synthetic sequence because no retained historical manifest is available.
+confirmation_threshold: 1
+scans:
+  - id: initial
+    files:
+      - path: locations/old-name.md
+        stable_id: synthetic-location-1
+        content: "The reading room has one brass lamp."
+    expected_outcomes: [new]
+    expected_source_documents: 1
+    expected_source_revisions: 1
+    expected_candidates: 1
+    expected_canonical_truth: 1
+  - id: unchanged
+    files:
+      - path: locations/old-name.md
+        stable_id: synthetic-location-1
+        content: "The reading room has one brass lamp."
+    expected_outcomes: [unchanged]
+    expected_source_documents: 1
+    expected_source_revisions: 1
+    expected_candidates: 1
+    expected_canonical_truth: 1
+  - id: changed
+    files:
+      - path: locations/old-name.md
+        stable_id: synthetic-location-1
+        content: "The reading room has one brass lamp and one oak desk."
+    expected_outcomes: [changed]
+    expected_source_documents: 1
+    expected_source_revisions: 2
+    expected_candidates: 2
+    expected_canonical_truth: 2
+  - id: moved
+    files:
+      - path: locations/new-name.md
+        stable_id: synthetic-location-1
+        content: "The reading room has one brass lamp and one oak desk."
+    expected_outcomes: [moved]
+    expected_source_documents: 1
+    expected_source_revisions: 2
+    expected_candidates: 2
+    expected_canonical_truth: 2
+  - id: missing
+    files: []
+    expected_outcomes: [missing_source]
+    expected_source_documents: 1
+    expected_source_revisions: 2
+    expected_candidates: 2
+    expected_canonical_truth: 2

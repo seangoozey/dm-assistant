@@ -1,0 +1,563 @@
+schema_version: 1
+purpose: >-
+  Sanitized and synthetic acceptance cases for grounded campaign retrieval.
+  These records test retrieval policy and are not canonical campaign data.
+source_policy:
+  allowed_origins:
+    - sanitized_starfall_derived
+    - synthetic_behavioral
+  live_source_accessed: false
+  sanitization: >-
+    Reuse only facts already present in interaction_cases.yaml. All other names
+    and facts are synthetic behavioral examples and must never be imported as canon.
+answer_modes:
+  - answer
+  - insufficient_evidence
+  - conflict
+  - possible_retcon
+  - restricted
+
+cases:
+  - id: direct-jace-rebel-role
+    category: direct_fact
+    fixture_origin: sanitized_starfall_derived
+    question: Who leads the rebels?
+    requester_visibility: {role: dm}
+    authoritative_inputs:
+      - {record_id: claim-jace-role, kind: claim, assertion: Jace is a rebel leader, state: established, authority: explicit_lore, visibility: party, source_id: npc-jace, citation: npcs/jace.md#role}
+    context_inputs: []
+    expected:
+      answer_mode: answer
+      facts: [Jace is a rebel leader.]
+      required_citations: [npcs/jace.md#role]
+      forbidden_claims: [Jace is the sole rebel leader., Jace is a noble.]
+
+  - id: direct-npc-intention-is-not-outcome
+    category: direct_fact
+    fixture_origin: synthetic_behavioral
+    question: What is Captain Vale trying to do?
+    requester_visibility: {role: dm}
+    authoritative_inputs:
+      - {record_id: claim-vale-intent, kind: claim, assertion: Captain Vale intends to secure the eastern gate, state: intended, authority: explicit_lore, visibility: dm, source_id: npc-vale, citation: npcs/captain-vale.md#plans}
+    context_inputs: []
+    expected:
+      answer_mode: answer
+      facts: [Captain Vale intends to secure the eastern gate.]
+      required_citations: [npcs/captain-vale.md#plans]
+      forbidden_claims: [Captain Vale secured the eastern gate., The eastern gate is secure.]
+
+  - id: direct-location-fact
+    category: direct_fact
+    fixture_origin: synthetic_behavioral
+    question: Where is Ash Harbor?
+    requester_visibility: {role: party}
+    authoritative_inputs:
+      - {record_id: claim-harbor-location, kind: claim, assertion: Ash Harbor lies on the western coast, state: established, authority: explicit_lore, visibility: party, source_id: location-harbor, citation: locations/ash-harbor.md#overview}
+    context_inputs: []
+    expected:
+      answer_mode: answer
+      facts: [Ash Harbor lies on the western coast.]
+      required_citations: [locations/ash-harbor.md#overview]
+      forbidden_claims: [Ash Harbor lies on the eastern coast.]
+
+  - id: direct-observed-possession
+    category: direct_fact
+    fixture_origin: synthetic_behavioral
+    question: Who has the brass key?
+    requester_visibility: {role: party}
+    authoritative_inputs:
+      - {record_id: claim-key-possession, kind: claim, assertion: Mira took possession of the brass key, state: observed, authority: real_play, visibility: party, source_id: session-12, citation: sessions/notes/0012.md#vault}
+    context_inputs: []
+    expected:
+      answer_mode: answer
+      facts: [Mira has the brass key.]
+      required_citations: [sessions/notes/0012.md#vault]
+      forbidden_claims: [The custodian still has the brass key.]
+
+  - id: direct-rumor-remains-qualified
+    category: direct_fact
+    fixture_origin: synthetic_behavioral
+    question: Is the glass tower abandoned?
+    requester_visibility: {role: party}
+    authoritative_inputs:
+      - {record_id: claim-tower-rumor, kind: claim, assertion: Dockworkers believe the glass tower is abandoned, state: established, authority: explicit_lore, visibility: party, source_id: location-tower, citation: locations/glass-tower.md#rumors}
+    context_inputs: []
+    expected:
+      answer_mode: answer
+      facts: [Dockworkers believe the glass tower is abandoned.]
+      required_citations: [locations/glass-tower.md#rumors]
+      forbidden_claims: [The glass tower is abandoned.]
+
+  - id: alias-exact-resolution
+    category: alias
+    fixture_origin: synthetic_behavioral
+    question: What is known about the Gray Fox?
+    requester_visibility: {role: dm}
+    authoritative_inputs:
+      - {record_id: alias-gray-fox, kind: alias, assertion: Gray Fox is an alias of Elian Marr, state: established, authority: explicit_lore, visibility: dm, source_id: npc-elian, citation: npcs/elian-marr.md#aliases}
+      - {record_id: claim-elian-role, kind: claim, assertion: Elian Marr brokers messages for the Ember Watch, state: established, authority: explicit_lore, visibility: dm, source_id: npc-elian, citation: npcs/elian-marr.md#role}
+    context_inputs: []
+    expected:
+      answer_mode: answer
+      facts: [Gray Fox refers to Elian Marr., Elian Marr brokers messages for the Ember Watch.]
+      required_citations: [npcs/elian-marr.md#aliases, npcs/elian-marr.md#role]
+      forbidden_claims: [Gray Fox is a separate person.]
+
+  - id: alias-historical-name
+    category: alias
+    fixture_origin: synthetic_behavioral
+    question: Is Old Southgate the same place as Dawn Gate?
+    requester_visibility: {role: party}
+    authoritative_inputs:
+      - {record_id: alias-southgate, kind: alias, assertion: Old Southgate is the historical name of Dawn Gate, state: established, authority: explicit_lore, visibility: party, source_id: location-gate, citation: locations/dawn-gate.md#names}
+    context_inputs: []
+    expected:
+      answer_mode: answer
+      facts: [Old Southgate and Dawn Gate refer to the same location.]
+      required_citations: [locations/dawn-gate.md#names]
+      forbidden_claims: [Old Southgate is a second gate.]
+
+  - id: alias-ambiguous-name
+    category: alias
+    fixture_origin: synthetic_behavioral
+    question: Which Rowan delivered the letter?
+    requester_visibility: {role: dm}
+    authoritative_inputs: []
+    context_inputs:
+      - {record_id: alias-rowan-a, kind: alias_candidate, assertion: Rowan may refer to Rowan Hale, state: disputed, authority: unclassified, visibility: dm, source_id: inbox-letter, citation: inbox/letter.md#line-4}
+      - {record_id: alias-rowan-b, kind: alias_candidate, assertion: Rowan may refer to Rowan Venn, state: disputed, authority: unclassified, visibility: dm, source_id: inbox-letter, citation: inbox/letter.md#line-4}
+    expected:
+      answer_mode: insufficient_evidence
+      facts: [The records do not resolve which Rowan delivered the letter.]
+      required_citations: [inbox/letter.md#line-4]
+      forbidden_claims: [Rowan Hale delivered the letter., Rowan Venn delivered the letter.]
+
+  - id: relationship-established-alliance
+    category: relationship
+    fixture_origin: synthetic_behavioral
+    question: Are the Ember Watch and Harbor Council allied?
+    requester_visibility: {role: party}
+    authoritative_inputs:
+      - {record_id: rel-watch-council, kind: relationship, assertion: The Ember Watch and Harbor Council have a defensive alliance, state: established, authority: explicit_lore, visibility: party, source_id: faction-watch, citation: factions/ember-watch.md#alliances}
+    context_inputs: []
+    expected:
+      answer_mode: answer
+      facts: [The Ember Watch and Harbor Council have a defensive alliance.]
+      required_citations: [factions/ember-watch.md#alliances]
+      forbidden_claims: [The factions have merged.]
+
+  - id: relationship-intended-negotiation
+    category: relationship
+    fixture_origin: synthetic_behavioral
+    question: Have the river clans joined the council?
+    requester_visibility: {role: dm}
+    authoritative_inputs:
+      - {record_id: rel-clan-intent, kind: relationship, assertion: The Harbor Council intends to negotiate with the river clans, state: intended, authority: explicit_lore, visibility: dm, source_id: faction-council, citation: factions/harbor-council.md#plans}
+    context_inputs: []
+    expected:
+      answer_mode: answer
+      facts: [The Harbor Council intends to negotiate with the river clans., The records do not establish that the clans joined.]
+      required_citations: [factions/harbor-council.md#plans]
+      forbidden_claims: [The river clans joined the council.]
+
+  - id: relationship-observed-break
+    category: relationship
+    fixture_origin: synthetic_behavioral
+    question: Does Nera still serve Magistrate Orr?
+    requester_visibility: {role: party}
+    authoritative_inputs:
+      - {record_id: rel-nera-left, kind: relationship, assertion: Nera publicly left Magistrate Orr's service, state: observed, authority: real_play, visibility: party, source_id: session-14, citation: sessions/notes/0014.md#hearing}
+    context_inputs:
+      - {record_id: rel-nera-served, kind: relationship, assertion: Nera served Magistrate Orr, state: superseded, authority: explicit_lore, visibility: party, source_id: npc-nera, citation: npcs/nera.md#service}
+    expected:
+      answer_mode: answer
+      facts: [Nera no longer serves Magistrate Orr.]
+      required_citations: [sessions/notes/0014.md#hearing]
+      forbidden_claims: [Nera still serves Magistrate Orr.]
+
+  - id: relationship-pc-plan-not-future-fact
+    category: relationship
+    fixture_origin: sanitized_starfall_derived
+    question: Will Ladir accept the planned role?
+    requester_visibility: {role: dm}
+    authoritative_inputs: []
+    context_inputs:
+      - {record_id: plan-ladir-role, kind: claim, assertion: The DM may offer Ladir a culminating campaign role, state: prepared, authority: preparation, visibility: dm, source_id: pc-ladir, citation: pcs/ladir.md#private-gm-notes}
+    expected:
+      answer_mode: insufficient_evidence
+      facts: [The record describes a DM plan, not Ladir's future choice.]
+      required_citations: [pcs/ladir.md#private-gm-notes]
+      forbidden_claims: [Ladir will accept the role., Ladir intends to accept the role.]
+
+  - id: chronology-expected-and-observed-differ
+    category: chronology
+    fixture_origin: synthetic_behavioral
+    question: When did the summit actually occur?
+    requester_visibility: {role: dm}
+    authoritative_inputs:
+      - {record_id: summit-observed, kind: claim, assertion: The summit occurred on day 18, state: observed, authority: real_play, visibility: party, observed_at: day-18, source_id: session-18, citation: sessions/notes/0018.md#summit}
+    context_inputs:
+      - {record_id: summit-expected, kind: claim, assertion: The summit was expected on day 15, state: prepared, authority: preparation, visibility: dm, expected_at: day-15, source_id: prep-18, citation: sessions/prep/0018.md#schedule}
+    expected:
+      answer_mode: answer
+      facts: [The summit occurred on day 18., It had been expected on day 15.]
+      required_citations: [sessions/notes/0018.md#summit, sessions/prep/0018.md#schedule]
+      forbidden_claims: [The summit occurred on day 15.]
+
+  - id: chronology-expected-only
+    category: chronology
+    fixture_origin: synthetic_behavioral
+    question: Did the eclipse ritual happen on day 22?
+    requester_visibility: {role: dm}
+    authoritative_inputs: []
+    context_inputs:
+      - {record_id: ritual-expected, kind: claim, assertion: The ritual is expected on day 22, state: intended, authority: explicit_lore, visibility: dm, expected_at: day-22, source_id: faction-ritualists, citation: factions/ritualists.md#timeline}
+    expected:
+      answer_mode: insufficient_evidence
+      facts: [The ritual was expected on day 22, but no observation establishes that it occurred.]
+      required_citations: [factions/ritualists.md#timeline]
+      forbidden_claims: [The ritual occurred on day 22., The ritual failed.]
+
+  - id: chronology-observed-date
+    category: chronology
+    fixture_origin: synthetic_behavioral
+    question: When was the north bridge destroyed?
+    requester_visibility: {role: party}
+    authoritative_inputs:
+      - {record_id: bridge-destroyed, kind: claim, assertion: The north bridge was destroyed on day 9, state: observed, authority: real_play, visibility: party, observed_at: day-9, source_id: session-9, citation: sessions/notes/0009.md#bridge}
+    context_inputs: []
+    expected:
+      answer_mode: answer
+      facts: [The north bridge was destroyed on day 9.]
+      required_citations: [sessions/notes/0009.md#bridge]
+      forbidden_claims: [The north bridge was destroyed before day 9.]
+
+  - id: chronology-conflicting-observed-dates
+    category: chronology
+    fixture_origin: synthetic_behavioral
+    question: On which day did the envoy arrive?
+    requester_visibility: {role: dm}
+    authoritative_inputs:
+      - {record_id: envoy-day-11, kind: claim, assertion: The envoy arrived on day 11, state: observed, authority: real_play, visibility: party, observed_at: day-11, source_id: session-11, citation: sessions/notes/0011.md#envoy}
+      - {record_id: envoy-day-12, kind: claim, assertion: The envoy arrived on day 12, state: established, authority: explicit_lore, visibility: party, effective_from: day-12, source_id: npc-envoy, citation: npcs/envoy.md#arrival}
+    context_inputs: []
+    expected:
+      answer_mode: possible_retcon
+      facts: [The records conflict between day 11 and day 12.]
+      required_citations: [sessions/notes/0011.md#envoy, npcs/envoy.md#arrival]
+      forbidden_claims: [The envoy definitely arrived on day 11., The envoy definitely arrived on day 12.]
+
+  - id: chronology-passed-date-no-inference
+    category: chronology
+    fixture_origin: synthetic_behavioral
+    question: The deadline passed; did the courier fail?
+    requester_visibility: {role: dm}
+    authoritative_inputs: []
+    context_inputs:
+      - {record_id: courier-deadline, kind: claim, assertion: The courier intended to arrive by day 6, state: intended, authority: explicit_lore, visibility: dm, expected_at: day-6, source_id: npc-courier, citation: npcs/courier.md#task}
+    expected:
+      answer_mode: insufficient_evidence
+      facts: [The deadline was day 6, but the records establish neither arrival nor failure.]
+      required_citations: [npcs/courier.md#task]
+      forbidden_claims: [The courier failed., The courier arrived.]
+
+  - id: conflict-observed-versus-established-history
+    category: contradiction
+    fixture_origin: synthetic_behavioral
+    question: Is Archivist Pell alive?
+    requester_visibility: {role: dm}
+    authoritative_inputs:
+      - {record_id: pell-death, kind: claim, assertion: Archivist Pell died before the campaign began, state: established, authority: explicit_lore, visibility: dm, source_id: npc-pell, citation: npcs/pell.md#history}
+      - {record_id: pell-seen, kind: claim, assertion: The party spoke with Archivist Pell, state: observed, authority: real_play, visibility: party, source_id: session-20, citation: sessions/notes/0020.md#archive}
+    context_inputs: []
+    expected:
+      answer_mode: possible_retcon
+      facts: [Established history says Pell died, while play records the party speaking with Pell.]
+      required_citations: [npcs/pell.md#history, sessions/notes/0020.md#archive]
+      forbidden_claims: [Pell is definitely alive., Pell is definitely dead., One source silently replaces the other.]
+
+  - id: conflict-lore-versus-lore
+    category: contradiction
+    fixture_origin: synthetic_behavioral
+    question: Who founded the Ember Watch?
+    requester_visibility: {role: dm}
+    authoritative_inputs:
+      - {record_id: founder-arin, kind: claim, assertion: Arin founded the Ember Watch, state: established, authority: explicit_lore, visibility: party, source_id: faction-watch, citation: factions/ember-watch.md#history}
+      - {record_id: founder-ves, kind: claim, assertion: Ves founded the Ember Watch, state: established, authority: explicit_lore, visibility: party, source_id: npc-ves, citation: npcs/ves.md#legacy}
+    context_inputs: []
+    expected:
+      answer_mode: conflict
+      facts: [The records disagree about whether Arin or Ves founded the Ember Watch.]
+      required_citations: [factions/ember-watch.md#history, npcs/ves.md#legacy]
+      forbidden_claims: [Arin definitely founded the Ember Watch., Ves definitely founded the Ember Watch.]
+
+  - id: conflict-observed-over-prepared
+    category: contradiction
+    fixture_origin: sanitized_starfall_derived
+    question: Who joined the battle?
+    requester_visibility: {role: party}
+    authoritative_inputs:
+      - {record_id: battle-joined, kind: claim, assertion: Fighters from both exile camps joined the battle, state: observed, authority: real_play, visibility: party, source_id: session-2026-07-18, citation: sessions/notes/2026-07-18.md#battle}
+    context_inputs:
+      - {record_id: battle-prep, kind: claim, assertion: Only one exile camp might join the battle, state: prepared, authority: preparation, visibility: dm, source_id: prep-battle, citation: sessions/prep/battle.md#possible-outcomes}
+    expected:
+      answer_mode: answer
+      facts: [Fighters from both exile camps joined the battle.]
+      required_citations: [sessions/notes/2026-07-18.md#battle]
+      forbidden_claims: [Only one exile camp joined., The preparation remains equally authoritative about what happened.]
+
+  - id: conflict-unresolved-identity
+    category: contradiction
+    fixture_origin: synthetic_behavioral
+    question: Did the Warden sign the treaty?
+    requester_visibility: {role: dm}
+    authoritative_inputs: []
+    context_inputs:
+      - {record_id: warden-title-a, kind: alias_candidate, assertion: Warden may refer to Ilya, state: disputed, authority: unclassified, visibility: dm, source_id: treaty, citation: handouts/treaty.md#signature}
+      - {record_id: warden-title-b, kind: alias_candidate, assertion: Warden may refer to Corren, state: disputed, authority: unclassified, visibility: dm, source_id: treaty, citation: handouts/treaty.md#signature}
+    expected:
+      answer_mode: conflict
+      facts: [The signature is present, but the Warden's identity is unresolved.]
+      required_citations: [handouts/treaty.md#signature]
+      forbidden_claims: [Ilya signed the treaty., Corren signed the treaty.]
+
+  - id: noncanon-brainstorm-leakage
+    category: noncanon_leakage
+    fixture_origin: synthetic_behavioral
+    question: Is the moon vault beneath Ash Harbor?
+    requester_visibility: {role: dm}
+    authoritative_inputs: []
+    context_inputs:
+      - {record_id: brainstorm-vault, kind: claim, assertion: The moon vault might be beneath Ash Harbor, state: possible, authority: brainstorm, visibility: dm, source_id: brainstorm-vault, citation: gm/brainstorming/moon-vault.md#ideas}
+    expected:
+      answer_mode: insufficient_evidence
+      facts: [The location appears only as a brainstorm possibility.]
+      required_citations: [gm/brainstorming/moon-vault.md#ideas]
+      forbidden_claims: [The moon vault is beneath Ash Harbor.]
+
+  - id: noncanon-preparation-not-occurrence
+    category: noncanon_leakage
+    fixture_origin: synthetic_behavioral
+    question: Did the sea wall collapse?
+    requester_visibility: {role: dm}
+    authoritative_inputs: []
+    context_inputs:
+      - {record_id: prep-wall, kind: claim, assertion: The sea wall may collapse during the storm encounter, state: prepared, authority: preparation, visibility: dm, source_id: encounter-storm, citation: encounters/storm.md#outcomes}
+    expected:
+      answer_mode: insufficient_evidence
+      facts: [Collapse is a prepared possibility; no observation establishes it.]
+      required_citations: [encounters/storm.md#outcomes]
+      forbidden_claims: [The sea wall collapsed.]
+
+  - id: noncanon-quarantine-excluded
+    category: noncanon_leakage
+    fixture_origin: synthetic_behavioral
+    question: Does Mira own the silver orchard?
+    requester_visibility: {role: dm}
+    authoritative_inputs: []
+    context_inputs:
+      - {record_id: quarantine-orchard, kind: quarantined_source, assertion: Mira owns the silver orchard, state: disputed, authority: unclassified, visibility: dm, source_id: memory-note, citation: memory/random-note.md#line-2}
+    expected:
+      answer_mode: insufficient_evidence
+      facts: [The only statement is quarantined and cannot establish ownership.]
+      required_citations: [memory/random-note.md#line-2]
+      forbidden_claims: [Mira owns the silver orchard.]
+
+  - id: noncanon-derived-foundry-excluded
+    category: noncanon_leakage
+    fixture_origin: synthetic_behavioral
+    question: Does Captain Vale have fire immunity?
+    requester_visibility: {role: dm}
+    authoritative_inputs: []
+    context_inputs:
+      - {record_id: foundry-vale, kind: derived_artifact, assertion: Captain Vale has fire immunity, state: possible, authority: derived, visibility: dm, source_id: foundry-vale, citation: foundry/captain-vale.json#traits}
+    expected:
+      answer_mode: insufficient_evidence
+      facts: [A Foundry export lists fire immunity, but no authoritative claim supports it.]
+      required_citations: [foundry/captain-vale.json#traits]
+      forbidden_claims: [Captain Vale has fire immunity.]
+
+  - id: noncanon-provider-transcript-excluded
+    category: noncanon_leakage
+    fixture_origin: synthetic_behavioral
+    question: Did the envoy betray the council?
+    requester_visibility: {role: dm}
+    authoritative_inputs: []
+    context_inputs:
+      - {record_id: transcript-betrayal, kind: derived_artifact, assertion: The provider transcript says the envoy betrayed the council, state: possible, authority: derived, visibility: dm, source_id: transcript-21, citation: transcripts/session-21-provider.txt#t-38}
+    expected:
+      answer_mode: insufficient_evidence
+      facts: [The provider transcript is unreviewed derived evidence.]
+      required_citations: [transcripts/session-21-provider.txt#t-38]
+      forbidden_claims: [The envoy betrayed the council.]
+
+  - id: noncanon-rejected-proposal-excluded
+    category: noncanon_leakage
+    fixture_origin: synthetic_behavioral
+    question: Is Nera secretly a royal heir?
+    requester_visibility: {role: dm}
+    authoritative_inputs: []
+    context_inputs:
+      - {record_id: rejected-nera, kind: claim, assertion: Nera is secretly a royal heir, state: rejected, authority: brainstorm, visibility: dm, source_id: proposal-nera-v2, citation: gm/brainstorming/nera.md#proposal-v2}
+    expected:
+      answer_mode: insufficient_evidence
+      facts: [The idea was rejected and is excluded from normal truth retrieval.]
+      required_citations: [gm/brainstorming/nera.md#proposal-v2]
+      forbidden_claims: [Nera is a royal heir.]
+
+  - id: unknown-exile-camp-nobles
+    category: unknown
+    fixture_origin: sanitized_starfall_derived
+    question: What are the names of the nobles at the exile camp?
+    requester_visibility: {role: dm}
+    authoritative_inputs:
+      - {record_id: jace-related, kind: claim, assertion: Jace is associated with the rebels, state: established, authority: explicit_lore, visibility: dm, source_id: npc-jace, citation: npcs/jace.md#role}
+    context_inputs: []
+    expected:
+      answer_mode: insufficient_evidence
+      facts: [The available records do not name the nobles at the exile camp.]
+      required_citations: [npcs/jace.md#role]
+      forbidden_claims: [Jace is one of the nobles., Any invented noble name.]
+
+  - id: unknown-location-detail
+    category: unknown
+    fixture_origin: synthetic_behavioral
+    question: How many rooms are in the glass tower?
+    requester_visibility: {role: dm}
+    authoritative_inputs:
+      - {record_id: tower-known, kind: claim, assertion: The glass tower overlooks Ash Harbor, state: established, authority: explicit_lore, visibility: party, source_id: location-tower, citation: locations/glass-tower.md#overview}
+    context_inputs: []
+    expected:
+      answer_mode: insufficient_evidence
+      facts: [The records do not specify a room count.]
+      required_citations: [locations/glass-tower.md#overview]
+      forbidden_claims: [Any numeric room count.]
+
+  - id: unknown-alias-not-recorded
+    category: unknown
+    fixture_origin: synthetic_behavioral
+    question: Is Captain Vale also called the Red Gull?
+    requester_visibility: {role: dm}
+    authoritative_inputs:
+      - {record_id: vale-known-alias, kind: alias, assertion: Vale is also called the Gate Captain, state: established, authority: explicit_lore, visibility: party, source_id: npc-vale, citation: npcs/captain-vale.md#aliases}
+    context_inputs: []
+    expected:
+      answer_mode: insufficient_evidence
+      facts: [The records do not connect Red Gull to Captain Vale.]
+      required_citations: [npcs/captain-vale.md#aliases]
+      forbidden_claims: [Red Gull is Captain Vale.]
+
+  - id: unknown-unresolved-wiki-link
+    category: unknown
+    fixture_origin: synthetic_behavioral
+    question: Who is Master Renn?
+    requester_visibility: {role: dm}
+    authoritative_inputs: []
+    context_inputs:
+      - {record_id: stale-renn-link, kind: source_warning, assertion: A stale wiki link points to Master Renn without a resolved target, state: disputed, authority: unclassified, visibility: dm, source_id: location-docks, citation: locations/docks.md#residents}
+    expected:
+      answer_mode: insufficient_evidence
+      facts: [The reference is unresolved and does not establish Master Renn's identity.]
+      required_citations: [locations/docks.md#residents]
+      forbidden_claims: [Any invented identity or biography for Master Renn.]
+
+  - id: unknown-no-date
+    category: unknown
+    fixture_origin: synthetic_behavioral
+    question: When was the Ember Watch founded?
+    requester_visibility: {role: party}
+    authoritative_inputs:
+      - {record_id: watch-exists, kind: claim, assertion: The Ember Watch protects Ash Harbor, state: established, authority: explicit_lore, visibility: party, source_id: faction-watch, citation: factions/ember-watch.md#overview}
+    context_inputs: []
+    expected:
+      answer_mode: insufficient_evidence
+      facts: [The records do not provide a founding date.]
+      required_citations: [factions/ember-watch.md#overview]
+      forbidden_claims: [Any invented founding date.]
+
+  - id: visibility-dm-secret-hidden-from-party
+    category: character_visibility
+    fixture_origin: synthetic_behavioral
+    question: Why does Captain Vale guard the eastern gate?
+    requester_visibility: {role: party}
+    authoritative_inputs:
+      - {record_id: vale-public-duty, kind: claim, assertion: Captain Vale guards the eastern gate, state: established, authority: explicit_lore, visibility: party, source_id: npc-vale, citation: npcs/captain-vale.md#duty}
+      - {record_id: vale-secret-reason, kind: claim, assertion: Captain Vale guards it to conceal a sealed passage, state: established, authority: explicit_lore, visibility: dm, source_id: npc-vale, citation: npcs/captain-vale.md#private}
+    context_inputs: []
+    expected:
+      answer_mode: restricted
+      facts: [The party-visible records establish the duty but not the reason.]
+      required_citations: [npcs/captain-vale.md#duty]
+      forbidden_claims: [Captain Vale is concealing a sealed passage., The existence of a hidden DM-only fact.]
+
+  - id: visibility-character-knows-secret
+    category: character_visibility
+    fixture_origin: synthetic_behavioral
+    question: What does Mira know about the brass key?
+    requester_visibility: {role: character, character_id: mira}
+    authoritative_inputs:
+      - {record_id: mira-key-knowledge, kind: claim, assertion: Mira learned that the brass key opens the tide vault, state: observed, authority: real_play, visibility: character:mira, source_id: session-12, citation: sessions/notes/0012.md#private-message}
+    context_inputs: []
+    expected:
+      answer_mode: answer
+      facts: [Mira knows that the brass key opens the tide vault.]
+      required_citations: [sessions/notes/0012.md#private-message]
+      forbidden_claims: [Every party member knows what the key opens.]
+
+  - id: visibility-other-character-does-not-know
+    category: character_visibility
+    fixture_origin: synthetic_behavioral
+    question: What does Orren know about the brass key?
+    requester_visibility: {role: character, character_id: orren}
+    authoritative_inputs:
+      - {record_id: mira-only-key-knowledge, kind: claim, assertion: Mira learned that the brass key opens the tide vault, state: observed, authority: real_play, visibility: character:mira, source_id: session-12, citation: sessions/notes/0012.md#private-message}
+    context_inputs: []
+    expected:
+      answer_mode: restricted
+      facts: [No Orren-visible record establishes what the key opens.]
+      required_citations: []
+      forbidden_claims: [The brass key opens the tide vault., Mira has private knowledge about the key.]
+
+  - id: visibility-public-handout
+    category: character_visibility
+    fixture_origin: synthetic_behavioral
+    question: What reward does the public notice offer?
+    requester_visibility: {role: character, character_id: orren}
+    authoritative_inputs:
+      - {record_id: notice-reward, kind: claim, assertion: The public notice offers fifty silver crowns, state: established, authority: explicit_lore, visibility: party, source_id: handout-notice, citation: handouts/public-notice.md#reward}
+    context_inputs: []
+    expected:
+      answer_mode: answer
+      facts: [The public notice offers fifty silver crowns.]
+      required_citations: [handouts/public-notice.md#reward]
+      forbidden_claims: [The notice offers fifty gold crowns.]
+
+  - id: recent-explicit-correction
+    category: recent_update
+    fixture_origin: synthetic_behavioral
+    question: What color is the council seal now?
+    requester_visibility: {role: party}
+    authoritative_inputs:
+      - {record_id: seal-blue, kind: claim, assertion: The council seal is blue, state: established, authority: explicit_correction, visibility: party, recorded_at: revision-2, source_id: lore-seal-v2, citation: lore/council-seal.md#current}
+    context_inputs:
+      - {record_id: seal-green, kind: claim, assertion: The council seal is green, state: superseded, authority: explicit_lore, visibility: party, recorded_at: revision-1, source_id: lore-seal-v1, citation: lore/council-seal.md#history}
+    expected:
+      answer_mode: answer
+      facts: [The council seal is blue., It was previously recorded as green.]
+      required_citations: [lore/council-seal.md#current, lore/council-seal.md#history]
+      forbidden_claims: [The council seal is currently green.]
+
+  - id: recent-observation-over-preparation
+    category: recent_update
+    fixture_origin: sanitized_starfall_derived
+    question: What is the latest established battle outcome?
+    requester_visibility: {role: dm}
+    authoritative_inputs:
+      - {record_id: latest-battle, kind: claim, assertion: The party held the army and fighters from both exile camps joined, state: observed, authority: real_play, visibility: party, recorded_at: session-2026-07-18, source_id: session-2026-07-18, citation: sessions/notes/2026-07-18.md#battle}
+    context_inputs:
+      - {record_id: prior-battle-prep, kind: claim, assertion: The party might retreat before reinforcements arrive, state: prepared, authority: preparation, visibility: dm, recorded_at: prep-before-session, source_id: prep-battle, citation: sessions/prep/battle.md#outcomes}
+    expected:
+      answer_mode: answer
+      facts: [The party held the army., Fighters from both exile camps joined.]
+      required_citations: [sessions/notes/2026-07-18.md#battle]
+      forbidden_claims: [The party retreated., Reinforcements did not arrive.]

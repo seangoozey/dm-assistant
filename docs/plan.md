@@ -2,17 +2,29 @@
 
 This plan is the maintained execution summary. The earlier, more narrative [DM Assistant App Planning Document](reference/DM%20Assistant%20App%20Planning%20Document.docx) is retained as a planning baseline and source of historical context. If they disagree, the current Markdown specifications, accepted ADRs, and completed tickets take precedence.
 
-## Current milestone: specification foundation
+## Current milestone: trustworthy librarian live-data onboarding
 
-The project is not ready for schema or UI implementation until its truth rules can be expressed as acceptance tests.
+The specification, persistence, importer, retrieval, Windmill, live evidence import, review read model, human-controlled candidate commands, narrow React review workflow, first scoped canonical promotion, and campaign-bible coverage audit are implemented and validated. The audit identified focused parser-remediation work without promoting planning material. Import remains non-canonical until explicit review and exact approval.
 
 ### Exit criteria
 
-- Truth states and authority precedence are specified.
-- PC-agency and temporal rules have executable examples.
-- The partial legacy chat dump has been converted into interaction fixtures.
-- Representative Starfall files have expected import results.
-- Proposal versioning, confirmation scope, and transactional promotion are specified.
+- One read-only live import has an immutable, idempotent receipt in the development database.
+- Import receipts, candidates, quarantine, and review items are inspectable through Campaign Core.
+- Exact candidate proposals, rejection/defer actions, versioned approval, and atomic application are available through typed commands.
+- The React app exposes a narrow evidence-review and scoped-promotion workflow.
+- A representative live fact set has been promoted with receipts and retrieved with exact citations.
+- `gm/campaign-bible.md` has section-level coverage and explicit planning dispositions without default canon promotion.
+
+### Ordered ticket tranche
+
+1. TKT-0020 ingests live evidence without canonical mutation.
+2. TKT-0021 exposes the import receipt and review read model.
+3. TKT-0022 adds exact proposal, disposition, and approval commands.
+4. TKT-0023 builds the narrow React review/promotion slice.
+5. TKT-0024 completed the first scoped live promotion and grounded retrieval proof; TKT-0026 completed the proposal-comparison field fix discovered during that exercise.
+6. TKT-0025 completed the campaign-bible planning coverage audit, and TKT-0027 completed nested parser-version-aware re-extraction without promoting planning material.
+7. TKT-0029 is ready to establish minimal non-overlapping entity types, explicit intent ownership, optional extensible tags, and the corresponding app controls and documentation.
+8. TKT-0030 follows with calendar-neutral campaign chronology, a strict audit-time/in-game-time separation, and anchored legacy negative-year normalization. TKT-0028 remains the separate path-aware wiki-link resolution follow-up.
 
 ## Milestone 1: trustworthy librarian
 

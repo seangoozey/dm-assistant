@@ -1,0 +1,4 @@
+services:
+  campaign-core:
+    ports:
+      - "127.0.0.1:${CAMPAIGN_CORE_TEST_PORT:-8001}:8000"

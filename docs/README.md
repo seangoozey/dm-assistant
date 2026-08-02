@@ -28,6 +28,10 @@ An older document can still reveal intent. Do not silently overwrite a newer dec
 - [Current-system migration](migration/current-system.md)
 - [Incremental Markdown importer](migration/markdown-importer.md)
 - [Acceptance strategy](testing/acceptance-strategy.md)
+- [Interaction fixture harness](testing/fixture-harness.md)
+- [Markdown importer fixtures](testing/importer-fixtures.md)
+- [Grounded retrieval harness](testing/retrieval-harness.md)
+- [React shell validation](testing/react-shell.md)
 - [Development plan](plan.md)
 
 ## Historical baseline

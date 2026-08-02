@@ -30,6 +30,8 @@ data/
 audio/
 transcripts/
 backups/
+!tests/fixtures/markdown_import/backups/
+!tests/fixtures/markdown_import/backups/archive.gz
 artifacts/
 *.sqlite
 *.db

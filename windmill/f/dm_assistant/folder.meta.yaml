@@ -1,0 +1,6 @@
+summary: DM Assistant infrastructure jobs
+display_name: DM Assistant
+owners:
+  - u/admin
+extra_perms:
+  u/admin: true

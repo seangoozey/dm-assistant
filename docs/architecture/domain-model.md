@@ -5,6 +5,7 @@ The model is intentionally provisional until acceptance fixtures validate it.
 ## Core records
 
 - **Source document:** immutable evidence with path, hash, source time, raw content, and importer version.
+- **Import candidate:** a non-canonical, section-aware interpretation linked to immutable source evidence and retained until reviewed or marked source-removed.
 - **Entity:** NPC, PC, location, faction, item, cosmological concept, encounter, session, or other stable subject.
 - **Alias:** alternate, historical, misspelled, or source-specific name resolving to an entity.
 - **Claim:** a meaningful assertion linked to sources, authority, state, visibility, time, and affected entities.

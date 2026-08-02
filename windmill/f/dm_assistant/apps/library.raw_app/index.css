@@ -1,0 +1,158 @@
+@import url("https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Libre+Caslon+Display&family=Manrope:wght@400;500;600;700&display=swap");
+
+:root {
+  color: #292821;
+  background: #f2f0e8;
+  font-family: "Manrope", sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; min-width: 320px; min-height: 100vh; background: #f2f0e8; }
+button, textarea { font: inherit; }
+button { cursor: pointer; }
+button:disabled { cursor: not-allowed; }
+
+.app-shell { min-height: 100vh; background: radial-gradient(circle at 20% 0%, #faf8ef 0, transparent 30%), #f2f0e8; }
+.topbar { height: 76px; padding: 0 clamp(24px, 5vw, 76px); display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; border-bottom: 1px solid #d4d0c2; background: rgba(246,244,235,.92); position: sticky; top: 0; z-index: 10; backdrop-filter: blur(12px); }
+.brand { display: flex; align-items: center; gap: 11px; color: inherit; text-decoration: none; width: max-content; }
+.archive-mark { width: 38px; height: 38px; fill: none; stroke: #82533a; stroke-width: 1.4; }
+.brand span { display: grid; }
+.brand strong { font-family: "Libre Caslon Display", serif; font-size: 20px; font-weight: 400; line-height: 1.05; }
+.brand small { color: #817b6c; font-size: 10px; letter-spacing: .14em; text-transform: uppercase; }
+nav { display: flex; align-items: stretch; height: 76px; gap: 32px; }
+nav a, nav > span { display: flex; align-items: center; position: relative; color: #6f6b60; text-decoration: none; font-size: 13px; font-weight: 600; }
+nav a.active { color: #292821; }
+nav a.active::after { content: ""; height: 2px; background: #82533a; position: absolute; left: 0; right: 0; bottom: 0; }
+nav em { margin-left: 6px; padding: 3px 5px; border-radius: 4px; background: #dfdccf; color: #898376; font: 500 8px "DM Mono", monospace; text-transform: uppercase; }
+.identity { justify-self: end; display: flex; align-items: center; gap: 9px; color: #6f6b60; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
+.identity span { display: grid; place-items: center; width: 31px; height: 31px; background: #2e302b; color: #fff; border-radius: 50%; font-size: 10px; }
+
+main { width: min(1080px, calc(100% - 40px)); margin: 0 auto; }
+.hero { padding: 84px 0 42px; text-align: center; }
+.kicker { margin: 0 0 13px; color: #82533a; font: 500 11px "DM Mono", monospace; letter-spacing: .19em; text-transform: uppercase; }
+.hero h1 { margin: 0; font: 400 clamp(44px, 6vw, 76px)/.98 "Libre Caslon Display", serif; letter-spacing: -.035em; }
+.hero h1 i { color: #82533a; font-weight: 400; }
+.intro { max-width: 585px; margin: 22px auto 34px; color: #716d62; font-size: 15px; line-height: 1.65; }
+.ask-box { text-align: left; max-width: 880px; margin: 0 auto; padding: 14px 16px 12px; border: 1px solid #c8c2b2; border-radius: 9px; background: #fffefa; box-shadow: 0 18px 60px rgba(68,58,43,.08); }
+.ask-box > label { display: block; margin: 0 0 6px 38px; color: #8a8477; font: 500 9px "DM Mono", monospace; letter-spacing: .13em; text-transform: uppercase; }
+.ask-row { display: grid; grid-template-columns: 27px 1fr auto; gap: 11px; align-items: center; }
+.ask-row > svg { width: 22px; stroke: #807a6d; fill: none; stroke-width: 1.5; }
+.ask-row textarea { resize: none; border: 0; outline: 0; background: transparent; color: #2f2c27; font: 400 17px/1.45 "Libre Caslon Display", serif; }
+.ask-row textarea::placeholder { color: #aaa497; }
+.ask-row button, .secondary-button { border: 0; border-radius: 6px; background: #82533a; color: white; padding: 12px 17px; font-size: 11px; font-weight: 700; letter-spacing: .035em; transition: transform .16s, background .16s; }
+.ask-row button:hover:not(:disabled), .secondary-button:hover:not(:disabled) { background: #68412d; transform: translateY(-1px); }
+.ask-row button:disabled { opacity: .45; }
+.ask-meta { display: flex; align-items: center; gap: 8px; margin: 10px 0 0 38px; color: #8f897c; font: 500 9px "DM Mono", monospace; text-transform: uppercase; letter-spacing: .06em; }
+.ask-meta b { color: #4d4a42; font-weight: 500; }
+.ask-meta .dot { width: 3px; height: 3px; border-radius: 50%; background: #aaa396; margin-left: 5px; }
+
+.result-region { max-width: 880px; margin: 0 auto 86px; }
+.empty-state { min-height: 118px; display: flex; align-items: center; justify-content: center; gap: 18px; border-top: 1px solid #d8d3c6; border-bottom: 1px solid #d8d3c6; color: #7c776c; }
+.empty-state div:last-child { display: grid; gap: 4px; }
+.empty-state b { color: #49463f; font: 400 18px "Libre Caslon Display", serif; }
+.empty-state span { font-size: 12px; }
+.empty-glyph { width: 39px; height: 39px; display: grid; place-items: center; border: 1px solid #cbc5b8; border-radius: 50%; }
+.empty-glyph svg { width: 17px; fill: none; stroke: #82533a; stroke-width: 1.6; }
+.notice { display: flex; gap: 8px; padding: 16px 18px; border: 1px solid #d6b8aa; background: #f9ede7; color: #75442f; border-radius: 7px; font-size: 12px; }
+.notice b { font-weight: 700; }
+.answer-card { border: 1px solid #cfc9ba; background: #fffefa; border-radius: 8px; overflow: hidden; }
+.answer-card > header { padding: 22px 24px; display: flex; justify-content: space-between; align-items: end; border-bottom: 1px solid #ddd8cb; }
+.answer-card header p { margin: 0 0 5px; color: #82533a; font: 500 9px "DM Mono", monospace; text-transform: uppercase; letter-spacing: .13em; }
+.answer-card h2 { margin: 0; font: 400 25px "Libre Caslon Display", serif; }
+.answer-card header > span { color: #898376; font: 10px "DM Mono", monospace; }
+.evidence-list { padding: 4px 24px; }
+.evidence { display: grid; grid-template-columns: 82px 1fr auto; column-gap: 18px; align-items: start; padding: 20px 0; border-bottom: 1px solid #e1ddd2; }
+.evidence:last-child { border-bottom: 0; }
+.role { width: max-content; border: 1px solid #bcb5a7; border-radius: 3px; padding: 4px 6px; color: #696359; font: 500 8px "DM Mono", monospace; text-transform: uppercase; }
+.role-support { border-color: #889c75; color: #526640; background: #eef2e8; }
+.role-conflict { border-color: #bd8067; color: #81442c; background: #f8ebe5; }
+.evidence p { margin: 0 0 14px; color: #36332d; font: 400 17px/1.45 "Libre Caslon Display", serif; }
+.evidence dl { grid-column: 2; display: flex; gap: 22px; margin: 0; }
+.evidence dl div { display: flex; gap: 6px; }
+.evidence dt, .evidence dd { margin: 0; font: 9px "DM Mono", monospace; text-transform: uppercase; }
+.evidence dt { color: #a19a8c; }.evidence dd { color: #5f5a50; }
+.evidence cite { grid-column: 3; grid-row: 1 / span 2; max-width: 210px; color: #7c766b; font: 400 9px/1.45 "DM Mono", monospace; text-align: right; overflow-wrap: anywhere; }
+.answer-card > footer { padding: 10px 24px; background: #f5f2e9; color: #817b70; font: 9px "DM Mono", monospace; text-transform: uppercase; }
+.no-evidence { margin: 0; padding: 28px 24px; color: #706b60; font: 400 16px/1.6 "Libre Caslon Display", serif; }
+
+.review-workspace { padding: 76px 0 80px; border-top: 1px solid #d1ccbe; }
+.review-heading { margin-bottom: 20px; }
+.run-summary { display: grid; grid-template-columns: repeat(4, minmax(100px, 1fr)) 2fr; border: 1px solid #c9c3b5; background: #e8e4d9; border-radius: 8px 8px 0 0; overflow: hidden; }
+.run-summary > div { padding: 17px 18px; border-right: 1px solid #cec8ba; display: grid; gap: 3px; }
+.run-summary span, .run-summary > div span { color: #8b8478; font: 500 8px "DM Mono", monospace; text-transform: uppercase; letter-spacing: .08em; }
+.run-summary b { font: 400 23px "Libre Caslon Display", serif; }
+.run-summary > p { margin: 0; padding: 16px 18px; display: grid; justify-content: end; align-content: center; text-align: right; }
+.run-summary > p strong { font: 400 15px "Libre Caslon Display", serif; }.run-summary > p span { margin-top: 4px; }
+.review-filters { display: grid; grid-template-columns: 1.2fr 1fr 1fr 1.4fr auto; gap: 10px; padding: 13px; border: 1px solid #c9c3b5; border-top: 0; background: #f7f4eb; }
+.review-filters label, .resolution-form > label, .form-grid label, .confirmation-panel label { display: grid; gap: 5px; color: #817a6e; font: 500 8px "DM Mono", monospace; text-transform: uppercase; letter-spacing: .08em; }
+.review-filters select, .review-filters input, .resolution-form input, .candidate-actions input, .confirmation-panel input { width: 100%; min-height: 37px; border: 1px solid #c9c3b5; border-radius: 4px; background: #fffefa; color: #35322d; padding: 8px 10px; font: 11px "Manrope", sans-serif; }
+.review-filters .secondary-button { align-self: end; min-height: 37px; }
+.review-grid { min-height: 680px; display: grid; grid-template-columns: minmax(245px, .72fr) minmax(0, 2fr); border: 1px solid #c9c3b5; border-top: 0; background: #fffefa; }
+.candidate-queue { border-right: 1px solid #d6d0c3; background: #eeebe1; overflow: auto; max-height: 900px; }
+.candidate-queue > header { padding: 14px 15px; display: flex; justify-content: space-between; border-bottom: 1px solid #d3cdbf; color: #817a6e; font: 500 8px "DM Mono", monospace; text-transform: uppercase; }
+.candidate-queue > button { width: 100%; border: 0; border-bottom: 1px solid #d9d3c6; background: transparent; padding: 15px; text-align: left; display: grid; gap: 6px; color: #38352f; }
+.candidate-queue > button:hover:not(:disabled) { background: #f8f5ec; }.candidate-queue > button.selected { background: #fffefa; box-shadow: inset 3px 0 #82533a; }
+.candidate-queue > button:disabled:not(.selected) { opacity: .5; }
+.candidate-queue button span, .candidate-queue button small { color: #897f72; font: 500 8px "DM Mono", monospace; text-transform: uppercase; }
+.candidate-queue button b { font: 400 14px/1.35 "Libre Caslon Display", serif; }
+.candidate-queue button small { color: #82533a; }.queue-empty { padding: 22px 15px; color: #7d776c; font-size: 11px; }
+.source-review-queue { border-top: 4px solid #d1c8b8; background: #e5e0d4; }
+.source-review-queue > header { padding: 14px 15px; display: grid; gap: 4px; border-bottom: 1px solid #cbc2b3; }
+.source-review-queue > header span, .source-review-queue > header b { color: #6f675b; font: 500 8px "DM Mono", monospace; text-transform: uppercase; }
+.source-review-queue > header b { color: #82533a; }
+.source-review-queue article { padding: 12px 15px; border-bottom: 1px solid #d1c9bb; display: grid; gap: 5px; }
+.source-review-queue article span { color: #82533a; font: 500 8px "DM Mono", monospace; text-transform: uppercase; }
+.source-review-queue article b { overflow-wrap: anywhere; font: 600 10px/1.4 "DM Sans", sans-serif; }
+.source-review-queue article p, .queue-overflow { margin: 0; color: #777064; font-size: 10px; line-height: 1.45; }
+.queue-overflow { padding: 12px 15px; }
+.candidate-detail { min-width: 0; padding: 25px 28px 30px; }.detail-empty { min-height: 400px; display: grid; place-items: center; color: #827b70; font: 400 18px "Libre Caslon Display", serif; }
+.candidate-title { display: grid; grid-template-columns: 1fr auto; gap: 20px; padding-bottom: 20px; border-bottom: 1px solid #ded8cc; }
+.candidate-title h3 { max-width: 650px; margin: 9px 0 0; font: 400 27px/1.25 "Libre Caslon Display", serif; }.status-pill { border: 1px solid #a9a092; border-radius: 20px; padding: 4px 7px; color: #70685d; font: 500 8px "DM Mono", monospace; text-transform: uppercase; }
+.status-applied { color: #536942; border-color: #8ea27b; }.status-rejected, .status-failed { color: #8a432d; border-color: #bd8068; }
+.candidate-title dl { margin: 0; display: grid; grid-template-columns: repeat(3, auto); gap: 18px; align-content: start; }.candidate-title dl div, .source-evidence dl div, .proposal-review dl div, .review-outcome dl div { display: grid; gap: 3px; }
+.candidate-title dt, .candidate-title dd, .source-evidence dt, .source-evidence dd, .proposal-review dt, .proposal-review dd, .review-outcome dt, .review-outcome dd { margin: 0; font: 8px "DM Mono", monospace; text-transform: uppercase; }.candidate-title dt, .source-evidence dt, .proposal-review dt, .review-outcome dt { color: #9b9386; }.candidate-title dd, .source-evidence dd, .proposal-review dd, .review-outcome dd { color: #514d45; }
+.source-evidence { margin-top: 20px; border: 1px solid #d2ccbf; border-radius: 6px; background: #f6f3ea; overflow: hidden; }.source-evidence > div { padding: 12px 15px; display: flex; justify-content: space-between; gap: 16px; border-bottom: 1px solid #d8d2c6; }.source-evidence > div span { color: #82533a; font: 500 8px "DM Mono", monospace; text-transform: uppercase; }.source-evidence > div b { overflow-wrap: anywhere; color: #625c52; font: 9px "DM Mono", monospace; }
+.source-evidence blockquote { margin: 0; padding: 20px 22px; background: #fffefa; color: #35312b; font: 400 18px/1.55 "Libre Caslon Display", serif; white-space: pre-wrap; }.source-evidence dl { margin: 0; padding: 11px 15px; display: grid; grid-template-columns: 1.5fr 1fr .8fr 1fr; gap: 15px; border-top: 1px solid #ddd7ca; }
+.diagnostics { margin: 18px 0; padding: 16px 18px; border-left: 3px solid #aa8069; background: #f4eee8; }.diagnostics h4 { margin: 0 0 9px; font: 400 16px "Libre Caslon Display", serif; }.diagnostics > p { margin: 0; color: #7b7368; font-size: 11px; }.diagnostics > div { display: grid; grid-template-columns: 120px 1fr; gap: 10px; padding: 8px 0; border-top: 1px solid #ded1c7; }.diagnostics span { color: #84513b; font: 8px "DM Mono", monospace; text-transform: uppercase; }.diagnostics p { margin: 0; font-size: 11px; }
+.candidate-actions { display: grid; grid-template-columns: 1fr auto auto; align-items: end; gap: 9px; margin: 18px 0; }.candidate-actions label { display: block; margin-bottom: 5px; color: #817a6e; font: 500 8px "DM Mono", monospace; text-transform: uppercase; }.text-button, .danger-button { min-height: 37px; border-radius: 5px; padding: 0 14px; background: transparent; border: 1px solid #9a8d7f; color: #635b51; font-size: 10px; font-weight: 700; }.danger-button { border-color: #b87760; color: #8a432d; }.text-button:disabled, .danger-button:disabled { opacity: .45; }
+.resolution-form { margin-top: 20px; padding: 19px; border: 1px solid #c9c3b5; background: #eeebe1; display: grid; gap: 14px; }.resolution-form header span { color: #82533a; font: 500 9px "DM Mono", monospace; text-transform: uppercase; }.resolution-form header p { margin: 5px 0 0; color: #746d62; font-size: 11px; }.resolution-form fieldset { margin: 0; padding: 0; display: flex; gap: 18px; border: 0; }.resolution-form legend { margin-bottom: 6px; color: #817a6e; font: 500 8px "DM Mono", monospace; text-transform: uppercase; }.resolution-form fieldset label { display: flex; align-items: center; gap: 6px; font-size: 11px; }.resolution-form fieldset input { width: auto; min-height: auto; }.form-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 12px; }.resolution-form > button, .confirmation-panel > button, .apply-panel > button { justify-self: start; border: 0; border-radius: 5px; background: #82533a; color: white; padding: 11px 15px; font-size: 10px; font-weight: 700; }.resolution-form button:disabled, .confirmation-panel button:disabled, .apply-panel button:disabled { opacity: .45; }
+.proposal-review { margin-top: 20px; border: 1px solid #9f8f7f; background: #fffefa; }.proposal-review > header { padding: 15px 17px; display: flex; justify-content: space-between; gap: 15px; border-bottom: 1px solid #d5cec1; background: #e9e5da; }.proposal-review header span { color: #82533a; font: 8px "DM Mono", monospace; text-transform: uppercase; }.proposal-review h4 { margin: 4px 0 0; font: 400 19px "Libre Caslon Display", serif; }.proposal-review code { max-width: 55%; color: #766f64; font: 8px/1.45 "DM Mono", monospace; overflow-wrap: anywhere; text-align: right; }
+.proposal-items > label { padding: 17px; display: grid; grid-template-columns: auto 1fr; gap: 11px; border-bottom: 1px solid #ded8cc; }.proposal-items > label:last-child { border-bottom: 0; }.proposal-items input { margin-top: 3px; accent-color: #82533a; }.proposal-items label > div > span { color: #8b8275; font: 8px "DM Mono", monospace; text-transform: uppercase; }.proposal-items label b { display: block; margin-top: 5px; font: 400 16px "Libre Caslon Display", serif; }.proposal-items dl { margin: 10px 0 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }.proposal-review > footer { padding: 11px 17px; background: #f4f0e7; color: #756e63; font-size: 10px; }
+.confirmation-panel, .apply-panel { margin-top: 14px; padding: 17px; display: grid; grid-template-columns: 1fr minmax(150px, .6fr) auto; gap: 14px; align-items: end; border: 1px solid #a47760; background: #f4e9df; }.confirmation-panel > div, .apply-panel > div { display: grid; gap: 4px; }.confirmation-panel span, .apply-panel span { color: #82533a; font: 8px "DM Mono", monospace; text-transform: uppercase; }.confirmation-panel b, .apply-panel b { font: 400 15px "Libre Caslon Display", serif; }.confirmation-panel code, .apply-panel p { color: #756c62; font: 8px "DM Mono", monospace; overflow-wrap: anywhere; }.apply-panel { grid-template-columns: 1fr auto; border-color: #879875; background: #eaf0e4; }.apply-panel p { margin: 3px 0 0; }
+.review-outcome { margin-top: 14px; min-height: 42px; padding: 12px 14px; display: flex; align-items: center; gap: 10px; border: 1px solid #d2ccbf; background: #f5f2e9; }.review-outcome > b { font: 400 14px "Libre Caslon Display", serif; }.review-outcome > span { color: #7b7469; font-size: 10px; }.review-outcome dl { margin: 0 0 0 auto; display: flex; gap: 16px; }.outcome-applied { border-color: #91a381; background: #edf2e8; }.outcome-stale, .outcome-failed { border-color: #ba7c64; background: #f7ebe5; }
+
+.operations { padding: 62px 0 72px; border-top: 1px solid #d1ccbe; }
+.section-heading { display: flex; justify-content: space-between; align-items: end; margin-bottom: 22px; }
+.section-heading h2 { margin: 0; font: 400 34px "Libre Caslon Display", serif; }
+.section-heading > p { max-width: 330px; margin: 0; color: #7d776c; font-size: 12px; line-height: 1.55; text-align: right; }
+.operation-card { display: grid; grid-template-columns: auto 1fr auto; gap: 20px; align-items: start; padding: 24px; border: 1px solid #cbc5b7; border-radius: 8px; background: #e9e6dc; }
+.operation-icon { width: 44px; height: 44px; display: grid; place-items: center; background: #2e302b; border-radius: 7px; }
+.operation-icon svg { width: 23px; fill: none; stroke: #e8dfd1; stroke-width: 1.5; }
+.operation-copy > span { color: #82533a; font: 500 9px "DM Mono", monospace; text-transform: uppercase; letter-spacing: .12em; }
+.operation-copy h3 { margin: 5px 0 7px; font: 400 20px "Libre Caslon Display", serif; }
+.operation-copy > p { max-width: 600px; margin: 0; color: #767064; font-size: 12px; line-height: 1.55; }
+.secondary-button { align-self: center; background: transparent; border: 1px solid #9c7965; color: #754831; }
+.secondary-button:hover:not(:disabled) { color: white; }.secondary-button:disabled { opacity: .55; }
+.job-status { margin-top: 17px; max-width: 610px; padding: 13px 15px; background: rgba(255,255,255,.56); border-radius: 5px; }
+.job-status > div:first-child { display: flex; justify-content: space-between; font-size: 11px; }
+.job-status b { color: #4b493f; }.job-status span { color: #8c8578; font: 9px "DM Mono", monospace; }
+.progress-track { height: 3px; margin-top: 10px; background: #d4cfc1; overflow: hidden; }
+.progress-track span { display: block; height: 100%; background: #82533a; transition: width .35s; }
+.status-succeeded .progress-track span { background: #667b55; }
+.status-failed .progress-track span { background: #9a4933; }
+.job-status p, .inline-error { margin: 9px 0 0; color: #924a35; font-size: 10px; }
+.page-footer { display: flex; justify-content: space-between; padding: 20px clamp(24px, 5vw, 76px); border-top: 1px solid #d4d0c2; color: #908a7e; font: 9px "DM Mono", monospace; text-transform: uppercase; letter-spacing: .08em; }
+
+@media (max-width: 760px) {
+  .topbar { grid-template-columns: 1fr auto; padding: 0 20px; }.topbar nav { display: none; }.identity b { display: none; }
+  main { width: min(100% - 28px, 680px); }.hero { padding-top: 58px; }.intro { padding: 0 14px; }
+  .ask-row { grid-template-columns: 25px 1fr; }.ask-row button { grid-column: 1 / -1; }.ask-meta { margin-left: 0; flex-wrap: wrap; }
+  .evidence { grid-template-columns: 1fr; gap: 10px; }.evidence p, .evidence dl, .evidence cite { grid-column: 1; grid-row: auto; text-align: left; max-width: none; }
+  .section-heading { align-items: start; }.section-heading > p { display: none; }.operation-card { grid-template-columns: auto 1fr; }.operation-card .secondary-button { grid-column: 1 / -1; width: 100%; }
+  .run-summary { grid-template-columns: repeat(2, 1fr); }.run-summary > p { grid-column: 1 / -1; justify-content: start; text-align: left; }.review-filters { grid-template-columns: 1fr 1fr; }.review-filters .secondary-button { grid-column: 1 / -1; }.review-grid { grid-template-columns: 1fr; }.candidate-queue { max-height: 330px; border-right: 0; border-bottom: 1px solid #d6d0c3; }.candidate-detail { padding: 20px 16px; }.candidate-title { grid-template-columns: 1fr; }.source-evidence dl { grid-template-columns: 1fr 1fr; }.candidate-actions, .confirmation-panel, .apply-panel { grid-template-columns: 1fr; }.candidate-actions button, .confirmation-panel button, .apply-panel button { width: 100%; }.proposal-review code { max-width: 48%; }.review-outcome { align-items: start; flex-direction: column; }.review-outcome dl { margin: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; transition: none !important; } }

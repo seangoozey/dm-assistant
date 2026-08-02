@@ -1,0 +1,9 @@
+summary: Check Campaign Core health
+description: Calls Campaign Core through HTTP and returns its typed health response.
+lock: '!inline f/dm_assistant/jobs/campaign_core_health.script.lock'
+kind: script
+schema:
+  $schema: https://json-schema.org/draft/2020-12/schema
+  type: object
+  properties: {}
+  required: []

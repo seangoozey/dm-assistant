@@ -1,0 +1,132 @@
+schema_version: 1
+privacy: All records are minimal synthetic examples; no live campaign prose is included.
+expected_files:
+  - path: npcs/mixed-npc.md
+    classification: durable_evidence
+    outcome: new
+    candidate_states: [established, intended, possible]
+    claim_candidates: 3
+    entity_candidates: 1
+    warnings: []
+  - path: pcs/example-pc.md
+    classification: durable_evidence
+    outcome: new
+    candidate_states: [established, prepared]
+    claim_candidates: 2
+    entity_candidates: 1
+    warnings: []
+  - path: locations/example-location.md
+    classification: durable_evidence
+    outcome: new
+    candidate_states: [established]
+    claim_candidates: 1
+    entity_candidates: 1
+    warnings: [unresolved_link]
+  - path: sessions/notes/reviewed.md
+    classification: real_play_evidence
+    outcome: new
+    candidate_states: [observed]
+    claim_candidates: 1
+    entity_candidates: 0
+    warnings: []
+  - path: sessions/notes/unreviewed.md
+    classification: real_play_evidence
+    outcome: new
+    candidate_states: [observed]
+    claim_candidates: 1
+    entity_candidates: 0
+    warnings: [unresolved_canon_deltas]
+  - path: sessions/notes/applied.md
+    classification: real_play_evidence
+    outcome: new
+    candidate_states: [observed]
+    claim_candidates: 1
+    entity_candidates: 0
+    warnings: [applied_delta_no_reapply]
+  - path: sessions/notes/legacy.md
+    classification: real_play_evidence
+    outcome: new
+    candidate_states: [observed]
+    claim_candidates: 1
+    entity_candidates: 0
+    warnings: [legacy_session_metadata]
+  - path: sessions/archive/legacy-wrong-path.md
+    classification: quarantine
+    outcome: quarantined
+    candidate_states: []
+    claim_candidates: 0
+    entity_candidates: 0
+    warnings: [legacy_session_wrong_path]
+  - path: gm/brainstorming/promoted.md
+    classification: noncanon_evidence
+    outcome: new
+    candidate_states: []
+    claim_candidates: 0
+    entity_candidates: 0
+    warnings: [promotion_receipt_no_reapply]
+  - path: gm/campaign-bible.md
+    classification: planning_evidence
+    outcome: review_required
+    candidate_states: [possible, prepared, intended, possible, possible]
+    claim_candidates: 5
+    entity_candidates: 0
+    warnings: [missing_frontmatter]
+  - path: sessions/prep/next-session.md
+    classification: planned_preparation
+    outcome: new
+    candidate_states: [observed, prepared]
+    claim_candidates: 2
+    entity_candidates: 0
+    warnings: []
+  - path: encounters/example-encounter.md
+    classification: preparation
+    outcome: new
+    candidate_states: [prepared]
+    claim_candidates: 1
+    entity_candidates: 0
+    warnings: [read_aloud_is_derived]
+  - path: lore/unknown.txt
+    classification: quarantine
+    outcome: quarantined
+    candidate_states: []
+    claim_candidates: 0
+    entity_candidates: 0
+    warnings: [unknown_format]
+  - path: lore/invalid-frontmatter.md
+    classification: quarantine
+    outcome: quarantined
+    candidate_states: []
+    claim_candidates: 0
+    entity_candidates: 0
+    warnings: [invalid_frontmatter]
+  - path: lore/missing-frontmatter.md
+    classification: quarantine
+    outcome: quarantined
+    candidate_states: []
+    claim_candidates: 0
+    entity_candidates: 0
+    warnings: [missing_frontmatter]
+  - path: templates/npc-template.md
+    classification: template
+    outcome: template_excluded
+    candidate_states: []
+    claim_candidates: 0
+    entity_candidates: 0
+    warnings: [unresolved_link_diagnostic_only]
+  - path: locations/00_index.md
+    classification: navigation_index
+    outcome: navigation_excluded
+    candidate_states: []
+    claim_candidates: 0
+    entity_candidates: 0
+    warnings: [unresolved_link_diagnostic_only]
+excluded_paths:
+  - art/ignored.png
+  - backups/archive.gz
+  - foundry/export.json
+  - inbox/draft.md
+  - memory/unrelated.md
+  - other/unlisted.md
+  - root-note.md
+  - gm/location-evidence/ignored.md
+  - gm/location-migration-inventory.md
