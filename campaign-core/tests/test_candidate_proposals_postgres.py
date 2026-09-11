@@ -43,6 +43,30 @@ def app() -> Any:
     return create_app(Settings(database_url=TEST_DSN, environment="test", run_migrations=False))
 
 
+def test_brainstorm_exact_evidence_pins_persist_without_an_entity() -> None:
+    from dm_assistant_core.adapters.postgres.brainstorms import PostgresBrainstormRepository
+    from dm_assistant_core.adapters.postgres.database import PostgresDatabase
+    from dm_assistant_core.application.brainstorms import StartBrainstormCommand
+    from dm_assistant_core.domain import RetrievedEvidence
+
+    assert TEST_DSN is not None
+    repository = PostgresBrainstormRepository(PostgresDatabase(TEST_DSN))
+    session = repository.start(StartBrainstormCommand(title="Evidence", idempotency_key="pin-test"))
+    evidence = RetrievedEvidence(
+        record_id=str(uuid4()), assertion="The castle at Tsunadis opposes the cultists.",
+        citation="lore/cosmology.md#Titans", state="established",
+        authority="explicit_lore", role="support",
+    )
+    repository.pin_evidence(session.session_id, evidence)
+    repository.pin_evidence(session.session_id, evidence)
+    resumed = repository.get(session.session_id)
+    assert resumed is not None
+    assert len(resumed.evidence_pins) == 1
+    assert resumed.evidence_pins[0].assertion == evidence.assertion
+    assert resumed.evidence_pins[0].entity_id is None
+    assert repository.unpin_evidence(session.session_id, evidence.record_id).evidence_pins == ()
+
+
 def fixture_batch(scan_id: str) -> Any:
     return MarkdownScanner(
         MarkdownScannerConfig(
@@ -98,15 +122,20 @@ def candidate(
 
 
 def entity_item(
-    selected: dict[str, Any], target_id: UUID, name: str, entity_type: str = "npc"
+    selected: dict[str, Any],
+    target_id: UUID,
+    name: str,
+    entity_kind: str = "npc",
+    tags: list[str] | None = None,
 ) -> dict[str, Any]:
     return {
         "mutation_kind": "create_entity",
         "candidate_id": str(selected["id"]),
         "evidence_revision_id": str(selected["revision_id"]),
         "target_id": str(target_id),
-        "entity_type": entity_type,
+        "entity_kind": entity_kind,
         "canonical_name": name,
+        "tags": tags or [],
     }
 
 
@@ -118,9 +147,9 @@ def claim_item(
     *,
     state: str | None = None,
     authority: str | None = None,
-    observed_at: str | None = None,
-    effective_from: str | None = None,
-    expected_at: str | None = None,
+    observed_at: dict[str, Any] | None = None,
+    effective_from: dict[str, Any] | None = None,
+    expected_at: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return {
         "mutation_kind": "create_claim",
@@ -185,7 +214,12 @@ def test_exact_scopes_apply_candidate_evidence_and_status_transactionally() -> N
                 "/imports/proposals?requester_role=dm",
                 json={
                     "items": [
-                        entity_item(selected, entity_id, "Sanitized Archivist"),
+                        entity_item(
+                            selected,
+                            entity_id,
+                            "Sanitized Archivist",
+                            tags=["Deity"],
+                        ),
                         claim_item(selected, claim_id, entity_id, "documented_fact"),
                     ]
                 },
@@ -213,8 +247,16 @@ def test_exact_scopes_apply_candidate_evidence_and_status_transactionally() -> N
     proposal, entity_id, claim_id, assertion = asyncio.run(exercise())
     with psycopg.connect(TEST_DSN) as connection:
         entity = connection.execute(
-            "SELECT canonical_name FROM entities WHERE id = %s", (entity_id,)
+            "SELECT e.canonical_name, e.entity_type, kd.canonical_key "
+            "FROM entities e JOIN records r ON r.id = e.id "
+            "JOIN kind_definitions kd ON kd.id = r.record_type_kind_id "
+            "WHERE e.id = %s",
+            (entity_id,),
         ).fetchone()
+        tags = connection.execute(
+            "SELECT normalized_name FROM current_entity_tags WHERE entity_id = %s",
+            (entity_id,),
+        ).fetchall()
         claim = connection.execute(
             "SELECT assertion_text, state::text, authority::text FROM claims WHERE id = %s",
             (claim_id,),
@@ -231,7 +273,8 @@ def test_exact_scopes_apply_candidate_evidence_and_status_transactionally() -> N
             "WHERE p.id = %s LIMIT 1",
             (proposal["proposal_id"],),
         ).fetchone()
-    assert entity == ("Sanitized Archivist",)
+    assert entity == ("Sanitized Archivist", "npc", "entity")
+    assert tags == [("deity",)]
     assert claim == (assertion, "established", "explicit_lore")
     assert evidence == (1,)
     assert status == ("applied", "applied")
@@ -362,6 +405,48 @@ def test_dispositions_do_not_mutate_canon_and_safety_rules_fail_closed() -> None
     assert counts == (0, 0, 2)
 
 
+def test_unbound_source_removed_candidate_can_be_dispositioned_idempotently() -> None:
+    assert TEST_DSN is not None
+    application = app()
+
+    async def exercise() -> tuple[httpx.Response, httpx.Response, str]:
+        transport = httpx.ASGITransport(app=application)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            await import_fixture(client, "source-removed-disposition")
+            selected = candidate("explicit_lore", offset=0)
+            with psycopg.connect(TEST_DSN) as connection:
+                connection.execute(
+                    "UPDATE import_candidates SET status = 'source_removed' WHERE id = %s",
+                    (selected["id"],),
+                )
+            body = {
+                "disposition": "rejected",
+                "reason": "Superseded parser output",
+            }
+            first = await client.post(
+                f"/imports/candidates/{selected['id']}/disposition?requester_role=dm",
+                json=body,
+            )
+            replay = await client.post(
+                f"/imports/candidates/{selected['id']}/disposition?requester_role=dm",
+                json=body,
+            )
+            return first, replay, str(selected["id"])
+
+    first, replay, candidate_id = asyncio.run(exercise())
+    assert first.status_code == 200, first.text
+    assert replay.status_code == 200, replay.text
+    assert replay.json()["disposition_id"] == first.json()["disposition_id"]
+    with psycopg.connect(TEST_DSN) as connection:
+        row = connection.execute(
+            "SELECT review_status, "
+            "(SELECT count(*) FROM candidate_dispositions WHERE candidate_id = %s) "
+            "FROM import_candidates WHERE id = %s",
+            (candidate_id, candidate_id),
+        ).fetchone()
+    assert row == ("rejected", 1)
+
+
 def test_pc_agency_and_possible_retcon_conflicts_stop_before_proposal_creation() -> None:
     assert TEST_DSN is not None
     application = app()
@@ -410,31 +495,28 @@ def test_pc_agency_and_possible_retcon_conflicts_stop_before_proposal_creation()
                             uuid4(),
                             pc_id,
                             "future_fact",
-                            effective_from="2026-08-02T12:00:00Z",
+                            effective_from={"year": 2027, "month": 8, "day": 2},
                         )
                     ]
                 },
             )
             observation = candidate("real_play")
+            observed_status = claim_item(
+                observation,
+                uuid4(),
+                pc_id,
+                "campaign_status",
+                observed_at={"year": 2026, "month": 8, "day": 1},
+            )
+            observed_status["assertion_text"] = lore["assertion"]
             possible_retcon = await client.post(
                 "/imports/proposals?requester_role=dm",
-                json={
-                    "items": [
-                        claim_item(
-                            observation,
-                            uuid4(),
-                            pc_id,
-                            "campaign_status",
-                            observed_at="2026-08-01T11:00:00Z",
-                        )
-                    ]
-                },
+                json={"items": [observed_status]},
             )
             return pc_plan, future_fact, possible_retcon
 
     pc_plan, future_fact, possible_retcon = asyncio.run(exercise())
-    assert pc_plan.status_code == 409
-    assert "PC campaign direction" in pc_plan.text
+    assert pc_plan.status_code == 200
     assert future_fact.status_code == 409
     assert "future facts" in future_fact.text
     assert possible_retcon.status_code == 409
@@ -444,3 +526,98 @@ def test_pc_agency_and_possible_retcon_conflicts_stop_before_proposal_creation()
             "SELECT (SELECT count(*) FROM entities), (SELECT count(*) FROM claims)"
         ).fetchone()
     assert canonical_counts == (1, 1)
+
+
+def test_brainstorm_session_can_prepare_but_not_apply_a_strengthened_claim() -> None:
+    assert TEST_DSN is not None
+    application = app()
+
+    async def exercise() -> tuple[dict[str, Any], UUID]:
+        transport = httpx.ASGITransport(app=application)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            await import_fixture(client, "brainstorm-promotion")
+            lore = candidate("explicit_lore")
+            entity_id = uuid4()
+            created = await client.post(
+                "/imports/proposals?requester_role=dm",
+                json={"items": [entity_item(lore, entity_id, "Sanitized Brainstorm Subject")]},
+            )
+            assert created.status_code == 200, created.text
+            seeded = created.json()
+            await approve_and_apply(
+                client,
+                seeded,
+                [item["item_id"] for item in seeded["items"]],
+                "seed-brainstorm-subject",
+            )
+
+            started = await client.post(
+                "/brainstorms?requester_role=dm",
+                json={"title": "Sanitized possibility", "idempotency_key": "brainstorm:start"},
+            )
+            assert started.status_code == 200, started.text
+            session = started.json()
+            pinned = await client.put(
+                f"/brainstorms/{session['session_id']}/pins/{entity_id}?requester_role=dm"
+            )
+            assert pinned.status_code == 200, pinned.text
+            assert pinned.json()["pins"][0]["entity_id"] == str(entity_id)
+            thought_text = (
+                "Could @Sanitized Brainstorm Subject become the keeper of the northern archive?"
+            )
+            captured = await client.post(
+                f"/brainstorms/{session['session_id']}/thoughts?requester_role=dm",
+                json={
+                    "text": thought_text,
+                    "idempotency_key": "brainstorm:thought:1",
+                    "mentions": [
+                        {
+                            "entity_id": str(entity_id),
+                            "display_name": "Sanitized Brainstorm Subject",
+                            "start_offset": 6,
+                            "end_offset": 35,
+                        }
+                    ],
+                },
+            )
+            assert captured.status_code == 200, captured.text
+            thought = captured.json()["thoughts"][0]
+            assert thought["text"] == thought_text
+            assert thought["mentions"][0]["entity_id"] == str(entity_id)
+            resumed = await client.get("/brainstorms/open?requester_role=dm")
+            assert resumed.status_code == 200, resumed.text
+            assert resumed.json()["pins"][0]["entity_id"] == str(entity_id)
+            assert resumed.json()["thoughts"][0]["mentions"] == thought["mentions"]
+            promotion = await client.post(
+                "/imports/proposals?requester_role=dm",
+                json={
+                    "workflow_session_id": session["session_id"],
+                    "items": [
+                        {
+                            "mutation_kind": "create_claim",
+                            "candidate_id": thought["candidate_id"],
+                            "evidence_revision_id": thought["source_revision_id"],
+                            "target_id": str(uuid4()),
+                            "subject_entity_id": str(entity_id),
+                            "assertion_text": "The subject is keeper of the northern archive.",
+                            "state": "established",
+                            "authority": "explicit_lore",
+                            "visibility": "dm_only",
+                            "confidence": "1",
+                            "is_conditional": False,
+                            "predicts_subject_action": False,
+                            "recorded_at": "2026-08-30T12:00:00Z",
+                        }
+                    ],
+                },
+            )
+            assert promotion.status_code == 200, promotion.text
+            return promotion.json(), entity_id
+
+    proposal, entity_id = asyncio.run(exercise())
+    assert proposal["status"] == "pending"
+    with psycopg.connect(TEST_DSN) as connection:
+        claim_count = connection.execute(
+            "SELECT count(*) FROM claims WHERE subject_entity_id = %s", (entity_id,)
+        ).fetchone()
+    assert claim_count == (0,)

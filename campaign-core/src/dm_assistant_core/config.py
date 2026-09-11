@@ -4,7 +4,7 @@ from functools import lru_cache
 from typing import Literal
 from urllib.parse import urlsplit
 
-from pydantic import PostgresDsn, field_validator
+from pydantic import Field, PostgresDsn, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -25,6 +25,14 @@ class Settings(BaseSettings):
     log_level: Literal["critical", "error", "warning", "info", "debug", "trace"] = "info"
     run_migrations: bool = True
     cors_origins: str = ""
+    graph_pilot_bundle: str = ""
+
+    openrouter_api_key: str = ""
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    openrouter_model: str = "deepseek/deepseek-chat"
+    openrouter_max_tokens: int = Field(default=8192, ge=1)
+    openrouter_timeout_seconds: float = Field(default=45.0, gt=0)
+    openrouter_max_retries: int = Field(default=1, ge=0, le=5)
 
     @field_validator("cors_origins")
     @classmethod
@@ -48,9 +56,7 @@ class Settings(BaseSettings):
     @property
     def allowed_cors_origins(self) -> tuple[str, ...]:
         return tuple(
-            item.strip().rstrip("/")
-            for item in self.cors_origins.split(",")
-            if item.strip()
+            item.strip().rstrip("/") for item in self.cors_origins.split(",") if item.strip()
         )
 
 

@@ -33,8 +33,7 @@ def disposable_database() -> None:
     run_migrations(TEST_DSN)
     with psycopg.connect(TEST_DSN) as connection:
         connection.execute(
-            "TRUNCATE TABLE import_runs, source_documents, workflow_sessions, "
-            "change_sets CASCADE"
+            "TRUNCATE TABLE import_runs, source_documents, workflow_sessions, change_sets CASCADE"
         )
 
 
@@ -104,9 +103,7 @@ def test_import_review_reads_real_persisted_evidence_without_mutation() -> None:
                 "source": await client.get(
                     "/imports/candidates?requester_role=dm&source=npcs&limit=100"
                 ),
-                "party": await client.get(
-                    "/imports/candidates?requester_role=party&limit=100"
-                ),
+                "party": await client.get("/imports/candidates?requester_role=party&limit=100"),
                 "reviews": await client.get(
                     f"/imports/reviews?requester_role=dm&run_id={run_id}&limit=100"
                 ),
@@ -129,16 +126,16 @@ def test_import_review_reads_real_persisted_evidence_without_mutation() -> None:
         assert response.status_code == 200
     runs = responses["runs"].json()
     assert runs["total"] == 1
-    assert runs["items"][0]["admitted_file_count"] == 17
-    assert runs["items"][0]["candidate_count"] == 18
-    assert responses["run"].json()["receipt"]["observation"]["admitted_file_count"] == 17
+    assert runs["items"][0]["admitted_file_count"] == 20
+    assert runs["items"][0]["candidate_count"] == 20
+    assert responses["run"].json()["receipt"]["observation"]["admitted_file_count"] == 20
 
     first_ids = {item["candidate_id"] for item in responses["first"].json()["items"]}
     second_ids = {item["candidate_id"] for item in responses["second"].json()["items"]}
     assert len(first_ids) == 2
     assert len(second_ids) == 2
     assert first_ids.isdisjoint(second_ids)
-    assert responses["first"].json()["total"] == 18
+    assert responses["first"].json()["total"] == 20
 
     source_items = responses["source"].json()["items"]
     assert source_items
@@ -164,3 +161,48 @@ def test_import_review_reads_real_persisted_evidence_without_mutation() -> None:
     assert all(item["classification"] == "quarantine" for item in quarantine["items"])
 
     assert database_snapshot() == before_reads
+
+
+def test_source_review_disposition_is_audited_and_idempotent() -> None:
+    assert TEST_DSN is not None
+    app = create_app(Settings(database_url=TEST_DSN, environment="test", run_migrations=False))
+
+    async def exercise() -> tuple[dict[str, Any], dict[str, Any]]:
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            await client.post(
+                "/imports/markdown/scan", json=fixture_batch().model_dump(mode="json")
+            )
+            reviews = (
+                await client.get("/imports/reviews?requester_role=dm&status=open&limit=100")
+            ).json()
+            review_id = reviews["items"][0]["review_id"]
+            body = {
+                "review_id": review_id,
+                "decision": "acknowledged",
+                "reason": "Source condition was reviewed and does not omit campaign content.",
+            }
+            first = await client.post(
+                f"/imports/reviews/{review_id}/disposition?requester_role=dm", json=body
+            )
+            replay = await client.post(
+                f"/imports/reviews/{review_id}/disposition?requester_role=dm", json=body
+            )
+            assert first.status_code == 200
+            assert replay.status_code == 200
+            return first.json(), replay.json()
+
+    first, replay = asyncio.run(exercise())
+    assert replay == first
+    with psycopg.connect(TEST_DSN) as connection:
+        row = connection.execute(
+            "SELECT ri.status, srd.decision, srd.reason "
+            "FROM review_items ri JOIN source_review_dispositions srd ON srd.review_id=ri.id "
+            "WHERE ri.id=%s",
+            (first["review_id"],),
+        ).fetchone()
+    assert row == (
+        "resolved",
+        "acknowledged",
+        "Source condition was reviewed and does not omit campaign content.",
+    )

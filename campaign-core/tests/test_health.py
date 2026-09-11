@@ -13,6 +13,7 @@ def test_health_contract() -> None:
         database_url="postgresql://campaign:secret@localhost:5432/campaign",
         run_migrations=False,
     )
+
     async def request_health() -> httpx.Response:
         transport = httpx.ASGITransport(app=create_app(settings))
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:

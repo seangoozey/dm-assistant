@@ -43,8 +43,7 @@ def test_canonical_table_writes_exist_only_in_migrations() -> None:
 
 def test_production_importer_does_not_depend_on_test_harness_or_psycopg() -> None:
     importer_source = "\n".join(
-        path.read_text(encoding="utf-8")
-        for path in (SOURCE_ROOT / "importer").glob("*.py")
+        path.read_text(encoding="utf-8") for path in (SOURCE_ROOT / "importer").glob("*.py")
     )
 
     assert "tests.support" not in importer_source

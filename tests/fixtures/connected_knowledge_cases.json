@@ -1,0 +1,838 @@
+{
+  "schema_version": 1,
+  "origin": "Synthetic campaign analogues; not campaign canon. Command/island/ritual case mirrors the disclosed Tsunadis/Mythis Minor/Ragnok distinction with substituted names. No live source accessed.",
+  "records": [
+    {
+      "record_id": "command",
+      "kind": "claim",
+      "assertion": "The Regent commanded the Sky Titan to destroy the castle at Eastwatch on Minor Isle.",
+      "state": "established",
+      "authority": "explicit_lore",
+      "visibility": "party",
+      "source_id": "source-command",
+      "citation": "fixture/command.md#evidence",
+      "accepted": true,
+      "entity_id": "regent"
+    },
+    {
+      "record_id": "ritual",
+      "kind": "claim",
+      "assertion": "The Fire Titan summoning is on Ember Island; Eastwatch opposes the cultists.",
+      "state": "established",
+      "authority": "explicit_lore",
+      "visibility": "party",
+      "source_id": "source-ritual",
+      "citation": "fixture/ritual.md#evidence",
+      "accepted": true,
+      "entity_id": "fire-titan"
+    },
+    {
+      "record_id": "island",
+      "kind": "claim",
+      "assertion": "Eastwatch is located on Minor Isle.",
+      "state": "established",
+      "authority": "explicit_lore",
+      "visibility": "party",
+      "source_id": "source-island",
+      "citation": "fixture/island.md#evidence",
+      "accepted": true,
+      "entity_id": "eastwatch"
+    },
+    {
+      "record_id": "captain",
+      "kind": "claim",
+      "assertion": "Captain Vale commands the harbor guard.",
+      "state": "established",
+      "authority": "explicit_lore",
+      "visibility": "party",
+      "source_id": "source-captain",
+      "citation": "fixture/captain.md#evidence",
+      "accepted": true,
+      "entity_id": "vale"
+    },
+    {
+      "record_id": "escort",
+      "kind": "claim",
+      "assertion": "Captain Vale intends to escort the merchant convoy.",
+      "state": "intended",
+      "authority": "npc_intention",
+      "visibility": "party",
+      "source_id": "source-escort",
+      "citation": "fixture/escort.md#evidence",
+      "accepted": true,
+      "entity_id": "vale"
+    },
+    {
+      "record_id": "merchant",
+      "kind": "claim",
+      "assertion": "The merchant convoy carries medicine to Southbank.",
+      "state": "established",
+      "authority": "explicit_lore",
+      "visibility": "party",
+      "source_id": "source-merchant",
+      "citation": "fixture/merchant.md#evidence",
+      "accepted": true,
+      "entity_id": "convoy"
+    },
+    {
+      "record_id": "meeting",
+      "kind": "claim",
+      "assertion": "The planned camp meeting includes Captain Vale and Mira.",
+      "state": "prepared",
+      "authority": "preparation",
+      "visibility": "party",
+      "source_id": "source-meeting",
+      "citation": "fixture/meeting.md#evidence",
+      "accepted": false,
+      "entity_id": "meeting"
+    },
+    {
+      "record_id": "camp",
+      "kind": "claim",
+      "assertion": "The camp is located south of Ash Harbor.",
+      "state": "established",
+      "authority": "explicit_lore",
+      "visibility": "party",
+      "source_id": "source-camp",
+      "citation": "fixture/camp.md#evidence",
+      "accepted": true,
+      "entity_id": "camp"
+    },
+    {
+      "record_id": "harbor",
+      "kind": "claim",
+      "assertion": "Ash Harbor lies within the Western March.",
+      "state": "established",
+      "authority": "explicit_lore",
+      "visibility": "party",
+      "source_id": "source-harbor",
+      "citation": "fixture/harbor.md#evidence",
+      "accepted": true,
+      "entity_id": "harbor"
+    },
+    {
+      "record_id": "key",
+      "kind": "claim",
+      "assertion": "Mira took the brass key during the vault expedition.",
+      "state": "observed",
+      "authority": "real_play",
+      "visibility": "party",
+      "source_id": "source-key",
+      "citation": "fixture/key.md#evidence",
+      "accepted": true,
+      "entity_id": "mira"
+    },
+    {
+      "record_id": "pcplan",
+      "kind": "claim",
+      "assertion": "Mira told Vale she wanted to visit Southbank.",
+      "state": "observed",
+      "authority": "real_play",
+      "visibility": "party",
+      "source_id": "source-pcplan",
+      "citation": "fixture/pcplan.md#evidence",
+      "accepted": true,
+      "entity_id": "mira"
+    },
+    {
+      "record_id": "dmplan",
+      "kind": "claim",
+      "assertion": "The DM might offer Mira leadership of the coalition.",
+      "state": "possible",
+      "authority": "brainstorm",
+      "visibility": "party",
+      "source_id": "source-dmplan",
+      "citation": "fixture/dmplan.md#evidence",
+      "accepted": false,
+      "entity_id": "mira"
+    },
+    {
+      "record_id": "biography",
+      "kind": "claim",
+      "assertion": "Mira grew up in Ash Harbor.",
+      "state": "established",
+      "authority": "explicit_lore",
+      "visibility": "party",
+      "source_id": "source-biography",
+      "citation": "fixture/biography.md#evidence",
+      "accepted": true,
+      "entity_id": "mira"
+    },
+    {
+      "record_id": "hidden",
+      "kind": "claim",
+      "assertion": "The secret patron funds Captain Vale.",
+      "state": "established",
+      "authority": "explicit_lore",
+      "visibility": "dm",
+      "source_id": "source-hidden",
+      "citation": "fixture/hidden.md#evidence",
+      "accepted": true,
+      "entity_id": "patron"
+    },
+    {
+      "record_id": "visible-end",
+      "kind": "claim",
+      "assertion": "The patron owns the remote observatory.",
+      "state": "established",
+      "authority": "explicit_lore",
+      "visibility": "party",
+      "source_id": "source-visible-end",
+      "citation": "fixture/visible-end.md#evidence",
+      "accepted": true,
+      "entity_id": "patron"
+    },
+    {
+      "record_id": "old",
+      "kind": "claim",
+      "assertion": "The brass key is held by Vale.",
+      "state": "superseded",
+      "authority": "explicit_lore",
+      "visibility": "party",
+      "source_id": "source-old",
+      "citation": "fixture/old.md#evidence",
+      "accepted": true,
+      "entity_id": "vale"
+    },
+    {
+      "record_id": "new",
+      "kind": "claim",
+      "assertion": "Mira currently holds the brass key.",
+      "state": "observed",
+      "authority": "real_play",
+      "visibility": "party",
+      "source_id": "source-new",
+      "citation": "fixture/new.md#evidence",
+      "accepted": true,
+      "entity_id": "mira"
+    },
+    {
+      "record_id": "compatible",
+      "kind": "claim",
+      "assertion": "Captain Vale wears a blue cloak.",
+      "state": "established",
+      "authority": "explicit_lore",
+      "visibility": "party",
+      "source_id": "source-compatible",
+      "citation": "fixture/compatible.md#evidence",
+      "accepted": true,
+      "entity_id": "vale"
+    },
+    {
+      "record_id": "contradiction",
+      "kind": "claim",
+      "assertion": "Captain Vale never commanded the harbor guard.",
+      "state": "established",
+      "authority": "explicit_lore",
+      "visibility": "party",
+      "source_id": "source-contradiction",
+      "citation": "fixture/contradiction.md#evidence",
+      "accepted": true,
+      "entity_id": "vale"
+    },
+    {
+      "record_id": "alias-a",
+      "kind": "claim",
+      "assertion": "The Keeper is an alias of Captain Vale.",
+      "state": "established",
+      "authority": "explicit_lore",
+      "visibility": "party",
+      "source_id": "source-alias-a",
+      "citation": "fixture/alias-a.md#evidence",
+      "accepted": true,
+      "entity_id": "vale"
+    },
+    {
+      "record_id": "alias-b",
+      "kind": "claim",
+      "assertion": "The Keeper is an alias of Mira.",
+      "state": "established",
+      "authority": "explicit_lore",
+      "visibility": "party",
+      "source_id": "source-alias-b",
+      "citation": "fixture/alias-b.md#evidence",
+      "accepted": true,
+      "entity_id": "mira"
+    },
+    {
+      "record_id": "unlinked",
+      "kind": "claim",
+      "assertion": "The silver bridge opens only at dawn.",
+      "state": "established",
+      "authority": "explicit_lore",
+      "visibility": "party",
+      "source_id": "source-unlinked",
+      "citation": "fixture/unlinked.md#evidence",
+      "accepted": true,
+      "entity_id": null
+    },
+    {
+      "record_id": "condition",
+      "kind": "claim",
+      "assertion": "The council will open the gate when all five seals are presented.",
+      "state": "prepared",
+      "authority": "preparation",
+      "visibility": "party",
+      "source_id": "source-condition",
+      "citation": "fixture/condition.md#evidence",
+      "accepted": false,
+      "entity_id": "council"
+    },
+    {
+      "record_id": "noise",
+      "kind": "claim",
+      "assertion": "The Regent's kitchen serves breakfast daily.",
+      "state": "established",
+      "authority": "explicit_lore",
+      "visibility": "party",
+      "source_id": "source-noise",
+      "citation": "fixture/noise.md#evidence",
+      "accepted": true,
+      "entity_id": "regent"
+    }
+  ],
+  "cases": [
+    {
+      "id": "ask-command-destination",
+      "workflow": "ask",
+      "question": "Where was the Sky Titan sent?",
+      "required_ids": [
+        "command",
+        "island"
+      ],
+      "expected_mode": "answer",
+      "forbidden_ids": [],
+      "forbidden_support_ids": [
+        "dmplan",
+        "meeting",
+        "condition",
+        "old"
+      ],
+      "required_paths": [],
+      "forbidden_paths": [],
+      "requester_visibility": {
+        "role": "dm"
+      }
+    },
+    {
+      "id": "ask-ritual-separate-location",
+      "workflow": "ask",
+      "question": "Where is the Fire Titan summoning?",
+      "required_ids": [
+        "ritual"
+      ],
+      "expected_mode": "answer",
+      "forbidden_ids": [],
+      "forbidden_support_ids": [
+        "dmplan",
+        "meeting",
+        "condition",
+        "old"
+      ],
+      "required_paths": [],
+      "forbidden_paths": [],
+      "requester_visibility": {
+        "role": "dm"
+      }
+    },
+    {
+      "id": "ask-convoy-destination",
+      "workflow": "ask",
+      "question": "Where does Vale's convoy take medicine?",
+      "required_ids": [
+        "escort",
+        "merchant"
+      ],
+      "expected_mode": "answer",
+      "forbidden_ids": [],
+      "forbidden_support_ids": [
+        "dmplan",
+        "meeting",
+        "condition",
+        "old"
+      ],
+      "required_paths": [],
+      "forbidden_paths": [],
+      "requester_visibility": {
+        "role": "dm"
+      }
+    },
+    {
+      "id": "ask-ambiguous-keeper",
+      "workflow": "ask",
+      "question": "Who is the Keeper?",
+      "required_ids": [
+        "alias-a",
+        "alias-b"
+      ],
+      "expected_mode": "insufficient_evidence",
+      "forbidden_ids": [],
+      "forbidden_support_ids": [
+        "dmplan",
+        "meeting",
+        "condition",
+        "old"
+      ],
+      "required_paths": [],
+      "forbidden_paths": [],
+      "requester_visibility": {
+        "role": "dm"
+      },
+      "ambiguity_expected": true
+    },
+    {
+      "id": "encounter-participants",
+      "workflow": "encounter",
+      "question": "Who is involved in the camp meeting?",
+      "required_ids": [
+        "meeting",
+        "captain"
+      ],
+      "expected_mode": "answer",
+      "forbidden_ids": [],
+      "forbidden_support_ids": [
+        "dmplan",
+        "meeting",
+        "condition",
+        "old"
+      ],
+      "required_paths": [
+        [
+          "meeting",
+          "vale",
+          "captain"
+        ]
+      ],
+      "forbidden_paths": [],
+      "requester_visibility": {
+        "role": "dm"
+      }
+    },
+    {
+      "id": "encounter-location-hierarchy",
+      "workflow": "encounter",
+      "question": "Where in the Western March is the camp?",
+      "required_ids": [
+        "camp",
+        "harbor"
+      ],
+      "expected_mode": "answer",
+      "forbidden_ids": [],
+      "forbidden_support_ids": [
+        "dmplan",
+        "meeting",
+        "condition",
+        "old"
+      ],
+      "required_paths": [
+        [
+          "camp",
+          "harbor"
+        ]
+      ],
+      "forbidden_paths": [],
+      "requester_visibility": {
+        "role": "dm"
+      }
+    },
+    {
+      "id": "encounter-intention",
+      "workflow": "encounter",
+      "question": "What does Vale intend for the convoy?",
+      "required_ids": [
+        "escort",
+        "merchant"
+      ],
+      "expected_mode": "answer",
+      "forbidden_ids": [],
+      "forbidden_support_ids": [
+        "dmplan",
+        "meeting",
+        "condition",
+        "old"
+      ],
+      "required_paths": [],
+      "forbidden_paths": [],
+      "requester_visibility": {
+        "role": "dm"
+      }
+    },
+    {
+      "id": "encounter-prerequisite",
+      "workflow": "encounter",
+      "question": "What opens the council gate?",
+      "required_ids": [
+        "condition"
+      ],
+      "expected_mode": "insufficient_evidence",
+      "forbidden_ids": [],
+      "forbidden_support_ids": [
+        "dmplan",
+        "meeting",
+        "condition",
+        "old"
+      ],
+      "required_paths": [],
+      "forbidden_paths": [],
+      "requester_visibility": {
+        "role": "dm"
+      }
+    },
+    {
+      "id": "lore-compatible",
+      "workflow": "lore",
+      "question": "Captain Vale cloak and harbor guard",
+      "required_ids": [
+        "captain",
+        "compatible"
+      ],
+      "expected_mode": "answer",
+      "forbidden_ids": [],
+      "forbidden_support_ids": [
+        "dmplan",
+        "meeting",
+        "condition",
+        "old"
+      ],
+      "required_paths": [],
+      "forbidden_paths": [],
+      "requester_visibility": {
+        "role": "dm"
+      }
+    },
+    {
+      "id": "lore-conflict",
+      "excluded_ids": [],
+      "workflow": "lore",
+      "question": "Did Captain Vale command the harbor guard?",
+      "required_ids": [
+        "captain",
+        "contradiction"
+      ],
+      "expected_mode": "conflict",
+      "forbidden_ids": [],
+      "forbidden_support_ids": [
+        "dmplan",
+        "meeting",
+        "condition",
+        "old"
+      ],
+      "required_paths": [],
+      "forbidden_paths": [],
+      "requester_visibility": {
+        "role": "dm"
+      }
+    },
+    {
+      "id": "lore-background-observed",
+      "workflow": "lore",
+      "question": "Mira background and brass key",
+      "required_ids": [
+        "biography",
+        "key",
+        "new"
+      ],
+      "expected_mode": "answer",
+      "forbidden_ids": [],
+      "forbidden_support_ids": [
+        "dmplan",
+        "meeting",
+        "condition",
+        "old"
+      ],
+      "required_paths": [],
+      "forbidden_paths": [],
+      "requester_visibility": {
+        "role": "dm"
+      }
+    },
+    {
+      "id": "lore-subjectless",
+      "workflow": "lore",
+      "question": "When does the silver bridge open?",
+      "required_ids": [
+        "unlinked"
+      ],
+      "expected_mode": "answer",
+      "forbidden_ids": [],
+      "forbidden_support_ids": [
+        "dmplan",
+        "meeting",
+        "condition",
+        "old"
+      ],
+      "required_paths": [],
+      "forbidden_paths": [],
+      "requester_visibility": {
+        "role": "dm"
+      }
+    },
+    {
+      "id": "brainstorm-regent-context",
+      "workflow": "brainstorm",
+      "question": "Regent wants cultists to succeed",
+      "required_ids": [
+        "command",
+        "ritual"
+      ],
+      "expected_mode": "answer",
+      "forbidden_ids": [],
+      "forbidden_support_ids": [
+        "dmplan",
+        "meeting",
+        "condition",
+        "old"
+      ],
+      "required_paths": [
+        [
+          "command",
+          "eastwatch",
+          "ritual"
+        ]
+      ],
+      "forbidden_paths": [],
+      "requester_visibility": {
+        "role": "dm"
+      }
+    },
+    {
+      "id": "brainstorm-merchant",
+      "workflow": "brainstorm",
+      "question": "Southbank medicine convoy",
+      "required_ids": [
+        "merchant",
+        "escort"
+      ],
+      "expected_mode": "answer",
+      "forbidden_ids": [],
+      "forbidden_support_ids": [
+        "dmplan",
+        "meeting",
+        "condition",
+        "old"
+      ],
+      "required_paths": [],
+      "forbidden_paths": [],
+      "requester_visibility": {
+        "role": "dm"
+      }
+    },
+    {
+      "id": "brainstorm-pc-agency",
+      "workflow": "brainstorm",
+      "question": "What might Mira do for the coalition?",
+      "required_ids": [
+        "dmplan"
+      ],
+      "expected_mode": "insufficient_evidence",
+      "forbidden_ids": [],
+      "forbidden_support_ids": [
+        "dmplan",
+        "meeting",
+        "condition",
+        "old"
+      ],
+      "required_paths": [],
+      "forbidden_paths": [],
+      "requester_visibility": {
+        "role": "dm"
+      }
+    },
+    {
+      "id": "brainstorm-plan-condition",
+      "workflow": "brainstorm",
+      "question": "Could the council be persuaded before five seals?",
+      "required_ids": [
+        "condition"
+      ],
+      "expected_mode": "insufficient_evidence",
+      "forbidden_ids": [],
+      "forbidden_support_ids": [
+        "dmplan",
+        "meeting",
+        "condition",
+        "old"
+      ],
+      "required_paths": [],
+      "forbidden_paths": [],
+      "requester_visibility": {
+        "role": "dm"
+      }
+    },
+    {
+      "id": "security-hidden",
+      "workflow": "boundary",
+      "question": "Who funds Captain Vale?",
+      "required_ids": [],
+      "expected_mode": "insufficient_evidence",
+      "forbidden_ids": [
+        "hidden"
+      ],
+      "forbidden_support_ids": [
+        "dmplan",
+        "meeting",
+        "condition",
+        "old"
+      ],
+      "required_paths": [],
+      "forbidden_paths": [],
+      "requester_visibility": {
+        "role": "party"
+      }
+    },
+    {
+      "id": "security-hidden-path",
+      "workflow": "boundary",
+      "question": "Captain Vale secret patron observatory",
+      "required_ids": [],
+      "expected_mode": "insufficient_evidence",
+      "forbidden_ids": [
+        "hidden"
+      ],
+      "forbidden_support_ids": [
+        "dmplan",
+        "meeting",
+        "condition",
+        "old"
+      ],
+      "required_paths": [],
+      "forbidden_paths": [
+        [
+          "captain",
+          "hidden",
+          "visible-end"
+        ]
+      ],
+      "requester_visibility": {
+        "role": "party"
+      }
+    },
+    {
+      "id": "lifecycle-current-key",
+      "workflow": "boundary",
+      "question": "Who currently holds the brass key?",
+      "required_ids": [
+        "new"
+      ],
+      "expected_mode": "answer",
+      "forbidden_ids": [],
+      "forbidden_support_ids": [
+        "dmplan",
+        "meeting",
+        "condition",
+        "old"
+      ],
+      "required_paths": [],
+      "forbidden_paths": [],
+      "requester_visibility": {
+        "role": "dm"
+      }
+    },
+    {
+      "id": "lifecycle-plan-not-event",
+      "workflow": "boundary",
+      "question": "Has the convoy reached Southbank?",
+      "required_ids": [
+        "escort",
+        "merchant"
+      ],
+      "expected_mode": "insufficient_evidence",
+      "forbidden_ids": [],
+      "forbidden_support_ids": [
+        "dmplan",
+        "meeting",
+        "condition",
+        "old"
+      ],
+      "required_paths": [],
+      "forbidden_paths": [],
+      "requester_visibility": {
+        "role": "dm"
+      }
+    },
+    {
+      "id": "identity-unlinked",
+      "workflow": "boundary",
+      "question": "silver bridge dawn",
+      "required_ids": [
+        "unlinked"
+      ],
+      "expected_mode": "answer",
+      "forbidden_ids": [],
+      "forbidden_support_ids": [
+        "dmplan",
+        "meeting",
+        "condition",
+        "old"
+      ],
+      "required_paths": [],
+      "forbidden_paths": [],
+      "requester_visibility": {
+        "role": "dm"
+      }
+    },
+    {
+      "id": "identity-misspelling",
+      "workflow": "boundary",
+      "question": "Captn Vail convoy",
+      "required_ids": [
+        "escort"
+      ],
+      "expected_mode": "answer",
+      "forbidden_ids": [],
+      "forbidden_support_ids": [
+        "dmplan",
+        "meeting",
+        "condition",
+        "old"
+      ],
+      "required_paths": [],
+      "forbidden_paths": [],
+      "requester_visibility": {
+        "role": "dm"
+      }
+    },
+    {
+      "id": "ranking-distinct-site",
+      "workflow": "boundary",
+      "question": "Eastwatch Ember Island",
+      "required_ids": [
+        "command",
+        "ritual",
+        "island"
+      ],
+      "expected_mode": "answer",
+      "forbidden_ids": [],
+      "forbidden_support_ids": [
+        "dmplan",
+        "meeting",
+        "condition",
+        "old"
+      ],
+      "required_paths": [],
+      "forbidden_paths": [],
+      "requester_visibility": {
+        "role": "dm"
+      }
+    },
+    {
+      "id": "unknown-no-answer",
+      "workflow": "boundary",
+      "question": "Who forged the obsidian crown?",
+      "required_ids": [],
+      "expected_mode": "insufficient_evidence",
+      "forbidden_ids": [],
+      "forbidden_support_ids": [
+        "dmplan",
+        "meeting",
+        "condition",
+        "old"
+      ],
+      "required_paths": [],
+      "forbidden_paths": [],
+      "requester_visibility": {
+        "role": "dm"
+      }
+    }
+  ]
+}

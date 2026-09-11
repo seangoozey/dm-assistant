@@ -8,6 +8,8 @@ This directory defines the initial private Docker Compose stack for Windmill Com
 
 The `campaign-core` service builds the pinned local `dm-assistant-campaign-core:0.1.0` image from `campaign-core/Dockerfile`. It applies hash-verified, forward-only migrations and then starts the FastAPI service. Campaign Core remains internal and receives the only application credential capable of mutating campaign data.
 
+PostgreSQL integration tests run in a dedicated image with pytest baked in. With the local stack running, use `./deploy/test-campaign-core-postgres.ps1`. The runner only creates and drops the explicitly named `campaign_core_integration_test` database and refuses broader database names.
+
 The `legacy-source-check` service is profile-gated, has no network, receives no database credentials, and mounts only the configured Starfall root read-only. It is an infrastructure check, not an importer.
 
 ## Images

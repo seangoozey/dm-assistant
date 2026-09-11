@@ -1,4 +1,8 @@
 services:
   campaign-core:
+    environment:
+      CAMPAIGN_GRAPH_PILOT_BUNDLE: /graph-pilot/bundle.json
+    volumes:
+      - ../.local/cognee-evaluation/live-pilot-v3:/graph-pilot:ro
     ports:
       - "127.0.0.1:${CAMPAIGN_CORE_TEST_PORT:-8001}:8000"

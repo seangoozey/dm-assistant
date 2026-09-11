@@ -1,0 +1,72 @@
+"""Canonical, source-agnostic read model for campaign library entries."""
+
+from datetime import datetime
+from typing import Literal, Protocol
+from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict
+
+from dm_assistant_core.domain import EntityKind
+
+ClaimProjection = Literal["real_play", "player_plan", "npc_plan", "dm_plan", "lore_fact"]
+
+
+class LibraryEntrySummary(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    entry_id: UUID
+    canonical_name: str
+    entity_kind: EntityKind
+    aliases: tuple[str, ...] = ()
+    tags: tuple[str, ...] = ()
+    current_claim_count: int = 0
+    source_count: int = 0
+
+
+class LibraryEntrySource(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    document_id: UUID
+    path: str
+
+
+class LibraryEntryClaim(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    claim_id: UUID
+    assertion_text: str
+    state: str
+    authority: str
+    visibility: str
+    conditional: bool
+    condition_text: str | None = None
+    recorded_at: datetime
+    projection: ClaimProjection
+    sources: tuple[LibraryEntrySource, ...] = ()
+
+
+class LibraryEntryClaimHistory(LibraryEntryClaim):
+    superseded_by_claim_id: UUID
+    supersession_reason: str
+
+
+class LibraryEntry(LibraryEntrySummary):
+    claims: tuple[LibraryEntryClaim, ...] = ()
+    claim_history: tuple[LibraryEntryClaimHistory, ...] = ()
+    sources: tuple[LibraryEntrySource, ...] = ()
+
+
+class LibraryEntryRepository(Protocol):
+    def list(self) -> tuple[LibraryEntrySummary, ...]: ...
+    def get(self, entry_id: UUID) -> LibraryEntry | None: ...
+
+
+class LibraryEntryService:
+    def __init__(self, repository: LibraryEntryRepository) -> None:
+        self._repository = repository
+
+    def list(self) -> tuple[LibraryEntrySummary, ...]:
+        return self._repository.list()
+
+    def get(self, entry_id: UUID) -> LibraryEntry | None:
+        return self._repository.get(entry_id)

@@ -1,2 +1,1 @@
 """Campaign Core test package."""
-

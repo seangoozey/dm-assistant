@@ -24,8 +24,7 @@ def records_for_case(case: RetrievalCase) -> tuple[RetrievalRecord, ...]:
         for record in case.authoritative_inputs
     )
     context = tuple(
-        RetrievalRecord(**record.model_dump(), accepted=False)
-        for record in case.context_inputs
+        RetrievalRecord(**record.model_dump(), accepted=False) for record in case.context_inputs
     )
     return (*authoritative, *context)
 

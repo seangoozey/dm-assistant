@@ -14,9 +14,7 @@ from tests.support.importer_harness import (
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 FIXTURE_ROOT = REPOSITORY_ROOT / "tests" / "fixtures" / "markdown_import"
 MANIFEST_PATH = REPOSITORY_ROOT / "tests" / "fixtures" / "markdown_import_manifest.yaml"
-RECONCILIATION_PATH = (
-    REPOSITORY_ROOT / "tests" / "fixtures" / "markdown_import_reconciliation.yaml"
-)
+RECONCILIATION_PATH = REPOSITORY_ROOT / "tests" / "fixtures" / "markdown_import_reconciliation.yaml"
 
 
 def load_yaml(path: Path) -> object:
@@ -152,14 +150,8 @@ def test_legacy_session_mapping_and_frontmatter_warnings_are_narrow() -> None:
         records["sessions/archive/legacy-wrong-path.md"].classification
         is ImportClassification.QUARANTINE
     )
-    assert (
-        records["lore/invalid-frontmatter.md"].classification
-        is ImportClassification.QUARANTINE
-    )
-    assert (
-        records["lore/missing-frontmatter.md"].classification
-        is ImportClassification.QUARANTINE
-    )
+    assert records["lore/invalid-frontmatter.md"].classification is ImportClassification.QUARANTINE
+    assert records["lore/missing-frontmatter.md"].classification is ImportClassification.QUARANTINE
     assert not records["lore/invalid-frontmatter.md"].candidates
     assert not records["lore/missing-frontmatter.md"].candidates
 

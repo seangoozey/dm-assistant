@@ -65,9 +65,7 @@ def test_case_executes_through_isolated_campaign_core_boundary(case: Any) -> Non
         AnswerMode.POSSIBLE_RETCN,
     }:
         evidence_tokens = _tokens(
-            " ".join(
-                f"{item.assertion} {item.citation}" for item in result.evidence
-            )
+            " ".join(f"{item.assertion} {item.citation}" for item in result.evidence)
         )
         for fact in case.expected.facts:
             assert _tokens(fact) & evidence_tokens, (
@@ -82,9 +80,13 @@ def test_visibility_filter_never_returns_hidden_record_or_hidden_citation() -> N
         returned_citations = set(result.citations)
         requester = case.requester_visibility
         for record in (*case.authoritative_inputs, *case.context_inputs):
-            visible = requester.role.value == "dm" or record.visibility == "party" or (
-                requester.role.value == "character"
-                and record.visibility == f"character:{requester.character_id}"
+            visible = (
+                requester.role.value == "dm"
+                or record.visibility == "party"
+                or (
+                    requester.role.value == "character"
+                    and record.visibility == f"character:{requester.character_id}"
+                )
             )
             if not visible:
                 assert record.record_id not in returned_ids
@@ -95,11 +97,14 @@ def test_noncanonical_inputs_never_become_supported_truth() -> None:
     for case in FIXTURE.cases:
         context_ids = {record.record_id for record in case.context_inputs}
         result = execute_case(case)
-        assert not {
-            evidence.record_id
-            for evidence in result.evidence
-            if evidence.role is EvidenceRole.SUPPORT
-        } & context_ids
+        assert (
+            not {
+                evidence.record_id
+                for evidence in result.evidence
+                if evidence.role is EvidenceRole.SUPPORT
+            }
+            & context_ids
+        )
 
 
 def test_all_cases_are_order_independent() -> None:

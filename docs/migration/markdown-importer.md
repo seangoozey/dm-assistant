@@ -52,7 +52,7 @@ The parser builds a heading tree, block spans, links, frontmatter fields, tables
 - `Private GM Notes` in PC records become DM-only `prepared` or `possible` planning candidates; they must not assert future PC actions.
 - Session notes produce `observed` candidates only for statements of what happened; unresolved `Canon Deltas` are not imported as applied truth.
 - Brainstorm promotion receipts are evidence of prior promotion and audit history. Their summaries can be matched to already-imported owning records but cannot create a second claim.
-- Resolve wiki links to source documents when exact path/alias matching succeeds; retain unresolved or stale links as warnings rather than inventing targets.
+- Resolve wiki links as Obsidian-style file references. The bracket target names an admitted Markdown file by its relative path with the `.md` extension dropped: `[[lore/medallions]]` references `lore/medallions.md`. A display alias (`[[target|Label]]`) and a fragment (`[[target#Section]]`) bind to the same target and never change which file is referenced. The bracket path is authoritative: a path-qualified link resolves only to the exact admitted file it names, and is never rescued onto a same-named file in another directory. A bare link with no directory resolves to its basename when exactly one admitted record shares that stem. A shared basename across two or more records is ambiguous and reports an `ambiguous_link` warning rather than inventing a match. A path or basename with no admitted target stays `unresolved_link`. Relative targets (`./` or `../`) resolve against the linking document's directory; backslash separators and an explicit `.md` suffix are normalized. Templates and navigation indexes are scaffolds and index pages, not records, so they are excluded as link targets; links originating from them remain source diagnostics (`unresolved_link_diagnostic_only` / `ambiguous_link_diagnostic_only`). Link resolution never invents sources or entities and never approves canonical identity.
 - Broken placeholder links inside excluded templates or navigation indexes remain source diagnostics and do not create campaign review items.
 
 ## Reconciliation and deletion safety
@@ -77,7 +77,7 @@ Open import-warning, quarantine, and classification reviews are reused when a la
 
 ## Required importer fixtures
 
-Automated importer tests must use sanitized fixtures for: a mixed NPC document, a PC with campaign-sculpting notes, a location, unreviewed and applied session notes, a promoted brainstorm receipt, planning material modeled on the role of `gm/campaign-bible.md`, session prep and encounter read-alouds, an unknown file inside an admitted path, a stale link, path-scope exclusions, and a repeated/moved/missing source sequence.
+Automated importer tests must use sanitized fixtures for: a mixed NPC document, a PC with campaign-sculpting notes, a location, unreviewed and applied session notes, a promoted brainstorm receipt, planning material modeled on the role of `gm/campaign-bible.md`, session prep and encounter read-alouds, an unknown file inside an admitted path, a stale link, path-qualified and relative wiki links that resolve, an ambiguous shared basename across two records, a missing wiki target, path-scope exclusions, and a repeated/moved/missing source sequence.
 
 ## Implemented connector boundary
 

@@ -1,2 +1,1 @@
 """Reusable acceptance test support."""
-

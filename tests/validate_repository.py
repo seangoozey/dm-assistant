@@ -31,6 +31,7 @@ def main() -> None:
         "campaign-core/pyproject.toml",
         "windmill/deploy_workspace.py",
         "windmill/f/dm_assistant/jobs/campaign_core_health.py",
+        "windmill/f/dm_assistant/jobs/candidate_extraction.py",
     )
     run(
         "Campaign Core and interaction acceptance tests",

@@ -45,4 +45,3 @@ def resolve_observed_conflict(prior_state: ClaimState) -> AuthorityDecision:
             review_required=True,
         )
     raise ValueError(f"unsupported observed conflict with {prior_state.value}")
-

@@ -30,4 +30,3 @@ def resolve_explicit_candidate_revision(
         later_state=ClaimState.PROPOSED,
         canonical_mutation_allowed=False,
     )
-

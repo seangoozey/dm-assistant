@@ -23,4 +23,3 @@ class PostgresDatabase:
         with self.connection() as connection:
             value = connection.execute("SELECT 1").fetchone()
         return value == (1,)
-

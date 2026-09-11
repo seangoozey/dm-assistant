@@ -60,9 +60,7 @@ def create_batch(arguments: argparse.Namespace) -> MarkdownScanBatch:
 def summarize(batch: MarkdownScanBatch) -> dict[str, Any]:
     classifications = Counter(source.classification.value for source in batch.files)
     outcomes = Counter(source.proposed_outcome.value for source in batch.files)
-    warnings = Counter(
-        warning.value for source in batch.files for warning in source.warnings
-    )
+    warnings = Counter(warning.value for source in batch.files for warning in source.warnings)
     return {
         "root_identifier": batch.root_identifier,
         "admitted_file_count": len(batch.files),

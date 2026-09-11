@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime
 from difflib import SequenceMatcher
 from pathlib import PurePosixPath
 from typing import Any, cast
@@ -13,6 +14,7 @@ from psycopg.types.json import Jsonb
 
 from dm_assistant_core.adapters.postgres.database import PostgresDatabase
 from dm_assistant_core.importer import (
+    ImportClassification,
     ImportFileOutcome,
     ImportObservationReceipt,
     ImportOutcome,
@@ -25,6 +27,7 @@ from dm_assistant_core.importer.models import ImportRejectedError
 
 REVIEW_WARNINGS = {
     ImportWarning.UNRESOLVED_LINK,
+    ImportWarning.AMBIGUOUS_LINK,
     ImportWarning.INVALID_FRONTMATTER,
     ImportWarning.MISSING_FRONTMATTER,
     ImportWarning.INVALID_UTF8,
@@ -115,9 +118,7 @@ class PostgresMarkdownImportRepository:
                     if not self._open_review_exists(
                         connection, "import_warning", subject_id, details
                     ):
-                        pending_reviews.append(
-                            (uuid4(), "import_warning", subject_id, details)
-                        )
+                        pending_reviews.append((uuid4(), "import_warning", subject_id, details))
             if review_kind is not None:
                 subject_id = cast(UUID, outcome.source_document_id)
                 details = {
@@ -129,9 +130,7 @@ class PostgresMarkdownImportRepository:
                         else source.proposed_outcome.value
                     ),
                 }
-                if not self._open_review_exists(
-                    connection, review_kind, subject_id, details
-                ):
+                if not self._open_review_exists(connection, review_kind, subject_id, details):
                     pending_reviews.append((uuid4(), review_kind, subject_id, details))
 
         outcomes.extend(
@@ -202,6 +201,12 @@ class PostgresMarkdownImportRepository:
                     Jsonb([warning.value for warning in source.warnings]),
                 ),
             )
+            self._supersede_stale_reviews(
+                connection,
+                cast(UUID, outcome.source_document_id),
+                source,
+                batch.snapshot_at,
+            )
         for outcome in outcomes[len(batch.files) :]:
             connection.execute(
                 "INSERT INTO import_observations "
@@ -226,6 +231,52 @@ class PostgresMarkdownImportRepository:
                 ),
             )
         return receipt
+
+    @staticmethod
+    def _supersede_stale_reviews(
+        connection: Connection[Any],
+        subject_id: UUID,
+        source: ScannedSource,
+        observed_at: datetime,
+    ) -> None:
+        """Close review state contradicted by the newest complete-scan observation."""
+
+        connection.execute(
+            "UPDATE review_items SET status = 'superseded', updated_at = %s "
+            "WHERE subject_type = 'source_document' AND subject_id = %s "
+            "AND status = 'open' AND kind = 'missing_source'",
+            (observed_at, subject_id),
+        )
+        current_warnings = [warning.value for warning in source.warnings]
+        if current_warnings:
+            connection.execute(
+                "UPDATE review_items SET status = 'superseded', updated_at = %s "
+                "WHERE subject_type = 'source_document' AND subject_id = %s "
+                "AND status = 'open' AND kind = 'import_warning' "
+                "AND NOT ((details ->> 'warning') = ANY(%s))",
+                (observed_at, subject_id, current_warnings),
+            )
+        else:
+            connection.execute(
+                "UPDATE review_items SET status = 'superseded', updated_at = %s "
+                "WHERE subject_type = 'source_document' AND subject_id = %s "
+                "AND status = 'open' AND kind = 'import_warning'",
+                (observed_at, subject_id),
+            )
+        if source.classification is not ImportClassification.QUARANTINE:
+            connection.execute(
+                "UPDATE review_items SET status = 'superseded', updated_at = %s "
+                "WHERE subject_type = 'source_document' AND subject_id = %s "
+                "AND status = 'open' AND kind = 'import_quarantine'",
+                (observed_at, subject_id),
+            )
+        if source.proposed_outcome is not ImportOutcome.REVIEW_REQUIRED:
+            connection.execute(
+                "UPDATE review_items SET status = 'superseded', updated_at = %s "
+                "WHERE subject_type = 'source_document' AND subject_id = %s "
+                "AND status = 'open' AND kind = 'import_review'",
+                (observed_at, subject_id),
+            )
 
     @staticmethod
     def _open_review_exists(
@@ -576,7 +627,8 @@ class PostgresMarkdownImportRepository:
 def _path_is_admitted(path: PurePosixPath) -> bool:
     return bool(
         path.parts
-        and path.parts[0] in {
+        and path.parts[0]
+        in {
             "encounters",
             "gm",
             "handouts",

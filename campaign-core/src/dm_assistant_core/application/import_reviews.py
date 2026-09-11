@@ -2,18 +2,42 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Any, Protocol
+from datetime import date, datetime
+from decimal import Decimal
+from typing import Any, Literal, Protocol
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from dm_assistant_core.domain import ClaimState, RequesterRole, RequesterVisibility, Visibility
+from dm_assistant_core.domain.extraction import SubjectResolution
 from dm_assistant_core.importer import CandidateAuthority, ImportClassification, ImportReceipt
 
 
 class ImportReviewForbiddenError(PermissionError):
     """The requester cannot inspect the requested import-review material."""
+
+
+class SourceReviewDispositionError(ValueError):
+    """A source review cannot be dispositioned as requested."""
+
+
+class DispositionSourceReviewCommand(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    review_id: UUID
+    decision: Literal["acknowledged", "content_consumed", "excluded_by_scope"]
+    reason: str = Field(min_length=1)
+
+
+class SourceReviewDispositionResult(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    disposition_id: UUID
+    review_id: UUID
+    decision: str
+    reason: str
+    created_at: datetime
 
 
 class ImportRunListQuery(BaseModel):
@@ -87,6 +111,41 @@ class CandidateEvidence(BaseModel):
     start_offset: int = Field(ge=0)
     end_offset: int = Field(ge=0)
     excerpt: str
+    in_game_date: dict[str, Any] | None = None
+    mentions: tuple[dict[str, Any], ...] = ()
+
+
+class CandidateExtractionReview(BaseModel):
+    """An AI-extracted claim dimension surfaced for human review."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    extraction_id: UUID
+    subject: str = Field(min_length=1)
+    subject_resolution: SubjectResolution = SubjectResolution.NAMED_IDENTITY
+    predicate: str | None = Field(default=None, min_length=1)
+    object_entity: str | None = None
+    assertion_text: str = Field(min_length=1)
+    supporting_excerpt: str = Field(min_length=1)
+    state: ClaimState
+    authority: CandidateAuthority
+    visibility: Visibility
+    confidence: Decimal = Field(ge=0, le=1)
+    extractor_version: str = Field(min_length=1)
+    source_segment_ids: tuple[str, ...]
+
+
+class CandidateExtractionSegmentReview(BaseModel):
+    """One deterministic source segment and its extraction disposition."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    segment_id: str
+    text: str
+    start_offset: int
+    end_offset: int
+    disposition: str
+    claim_indexes: tuple[int, ...] = ()
 
 
 class ImportCandidateReview(BaseModel):
@@ -108,6 +167,8 @@ class ImportCandidateReview(BaseModel):
     created_at: datetime
     updated_at: datetime
     evidence: tuple[CandidateEvidence, ...]
+    extractions: tuple[CandidateExtractionReview, ...] = ()
+    extraction_segments: tuple[CandidateExtractionSegmentReview, ...] = ()
 
 
 class ImportCandidatePage(BaseModel):
@@ -160,6 +221,84 @@ class ImportReviewItemPage(BaseModel):
     offset: int = Field(ge=0)
 
 
+class SourceDocumentSummary(BaseModel):
+    """A source document with aggregated review/extraction state for the tree view."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    document_id: UUID
+    path: str = Field(min_length=1)
+    classification: ImportClassification
+    candidate_count: int = Field(ge=0)
+    extraction_count: int = Field(ge=0)
+    open_review_count: int = Field(ge=0)
+    missing_source: bool = False
+    document_type: str | None = None
+    title: str | None = None
+    session_date: str | None = None
+    capture_mode: str | None = None
+
+
+ClaimProjection = Literal["real_play", "player_plan", "npc_plan", "dm_plan", "lore_fact"]
+
+
+class SourceDocumentClaim(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    claim_id: UUID
+    assertion_text: str
+    state: str
+    authority: str
+    visibility: str
+    conditional: bool
+    condition_text: str | None = None
+    recorded_at: datetime
+    projection: ClaimProjection
+    source_excerpt: str | None = None
+
+
+class SourceDocumentClaimHistory(SourceDocumentClaim):
+    superseded_by_claim_id: UUID
+    supersession_reason: str
+
+
+class SourceDocumentContent(BaseModel):
+    """The raw text content of a source document for rendering its Markdown."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    document_id: UUID
+    path: str = Field(min_length=1)
+    source_revision_id: UUID
+    content: str
+    document_type: str | None = None
+    title: str | None = None
+    session_date: date | None = None
+    in_game_date: dict[str, Any] | None = None
+    capture_mode: str | None = None
+    capture_id: UUID | None = None
+    mentions: tuple[dict[str, Any], ...] = ()
+    canonical_claims: tuple[SourceDocumentClaim, ...] = ()
+    claim_history: tuple[SourceDocumentClaimHistory, ...] = ()
+
+
+class SourceDocumentPage(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    items: tuple[SourceDocumentSummary, ...]
+    total: int = Field(ge=0)
+    limit: int = Field(ge=1)
+    offset: int = Field(ge=0)
+
+
+class SourceDocumentListQuery(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    requester: RequesterVisibility
+    limit: int = Field(default=200, ge=1, le=500)
+    offset: int = Field(default=0, ge=0)
+
+
 class ImportReviewRepository(Protocol):
     def list_runs(self, query: ImportRunListQuery) -> ImportRunPage: ...
 
@@ -172,6 +311,14 @@ class ImportReviewRepository(Protocol):
     ) -> ImportCandidateReview | None: ...
 
     def list_reviews(self, query: ReviewItemListQuery) -> ImportReviewItemPage: ...
+
+    def list_source_documents(self, query: SourceDocumentListQuery) -> SourceDocumentPage: ...
+
+    def get_source_document_content(self, document_id: UUID) -> SourceDocumentContent | None: ...
+
+    def disposition_source_review(
+        self, command: DispositionSourceReviewCommand
+    ) -> SourceReviewDispositionResult: ...
 
 
 class ImportReviewService:
@@ -202,3 +349,19 @@ class ImportReviewService:
     def list_reviews(self, query: ReviewItemListQuery) -> ImportReviewItemPage:
         self.require_dm(query.requester)
         return self._repository.list_reviews(query)
+
+    def list_source_documents(self, query: SourceDocumentListQuery) -> SourceDocumentPage:
+        self.require_dm(query.requester)
+        return self._repository.list_source_documents(query)
+
+    def get_source_document_content(
+        self, document_id: UUID, requester: RequesterVisibility
+    ) -> SourceDocumentContent | None:
+        self.require_dm(requester)
+        return self._repository.get_source_document_content(document_id)
+
+    def disposition_source_review(
+        self, command: DispositionSourceReviewCommand, requester: RequesterVisibility
+    ) -> SourceReviewDispositionResult:
+        self.require_dm(requester)
+        return self._repository.disposition_source_review(command)

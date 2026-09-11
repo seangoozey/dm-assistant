@@ -20,4 +20,3 @@ def create_bounded_read_aloud(source_text: str) -> CreativeArtifactDecision:
         source_text=normalized,
         canonical_mutation_allowed=False,
     )
-

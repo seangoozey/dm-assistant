@@ -44,9 +44,7 @@ def test_every_assertion_type_has_a_registered_runner() -> None:
 
 def test_required_domain_scenarios_are_executable() -> None:
     executable = {
-        assertion
-        for case in FIXTURE.cases
-        for assertion in case.deterministic_assertions
+        assertion for case in FIXTURE.cases for assertion in case.deterministic_assertions
     }
     assert {
         DeterministicAssertion.APPROVAL_SCOPE_IS_EXACT,

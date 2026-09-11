@@ -1,0 +1,13 @@
+FROM dm-assistant-campaign-core:0.1.0
+
+USER root
+
+RUN pip install --no-cache-dir pytest==9.1.1
+
+COPY --chown=campaign-core:campaign-core src ./src
+COPY --chown=campaign-core:campaign-core tests ./tests
+
+USER campaign-core
+
+ENTRYPOINT ["python", "-m", "pytest", "-p", "no:cacheprovider"]
+CMD ["tests/test_claim_reconciliation_postgres.py"]

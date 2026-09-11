@@ -44,6 +44,8 @@ class ImportOutcome(StrEnum):
 class ImportWarning(StrEnum):
     UNRESOLVED_LINK = "unresolved_link"
     UNRESOLVED_LINK_DIAGNOSTIC_ONLY = "unresolved_link_diagnostic_only"
+    AMBIGUOUS_LINK = "ambiguous_link"
+    AMBIGUOUS_LINK_DIAGNOSTIC_ONLY = "ambiguous_link_diagnostic_only"
     UNRESOLVED_CANON_DELTAS = "unresolved_canon_deltas"
     APPLIED_DELTA_NO_REAPPLY = "applied_delta_no_reapply"
     LEGACY_SESSION_METADATA = "legacy_session_metadata"

@@ -5,3 +5,4 @@ locks:
   f/dm_assistant/apps/library.raw_app+query_campaign.ts: 1c3d9e14911a3014d69e554f411a5590b674c4cd72e70cd498db312c4e497cde
   f/dm_assistant/apps/library.raw_app+start_health_check.ts: 7974f4df5c22da6c07450eb8dd3e0df8d3157c7af7b7c8853fdb714df9ba0a6c
   f/dm_assistant/jobs/campaign_core_health: e45ff46d2d25202866d88c69cd3b123b7943ed5aff3ea6715e3e57658e39bc12
+  f/dm_assistant/jobs/candidate_extraction: 956c9db257a9ecdf88789bb2d1cf45a8a1d17626dc10b77b66161590d172f0c5

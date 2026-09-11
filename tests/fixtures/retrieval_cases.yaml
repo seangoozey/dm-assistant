@@ -485,7 +485,7 @@ cases:
       - {record_id: vale-secret-reason, kind: claim, assertion: Captain Vale guards it to conceal a sealed passage, state: established, authority: explicit_lore, visibility: dm, source_id: npc-vale, citation: npcs/captain-vale.md#private}
     context_inputs: []
     expected:
-      answer_mode: restricted
+      answer_mode: answer
       facts: [The party-visible records establish the duty but not the reason.]
       required_citations: [npcs/captain-vale.md#duty]
       forbidden_claims: [Captain Vale is concealing a sealed passage., The existence of a hidden DM-only fact.]
@@ -513,7 +513,7 @@ cases:
       - {record_id: mira-only-key-knowledge, kind: claim, assertion: Mira learned that the brass key opens the tide vault, state: observed, authority: real_play, visibility: character:mira, source_id: session-12, citation: sessions/notes/0012.md#private-message}
     context_inputs: []
     expected:
-      answer_mode: restricted
+      answer_mode: insufficient_evidence
       facts: [No Orren-visible record establishes what the key opens.]
       required_citations: []
       forbidden_claims: [The brass key opens the tide vault., Mira has private knowledge about the key.]

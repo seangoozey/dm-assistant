@@ -87,7 +87,7 @@ def test_import_api_preserves_the_exact_typed_batch() -> None:
     assert response.status_code == 200
     assert repository.batch == batch
     assert response.json()["import_run_id"] == str(RUN_ID)
-    assert response.json()["observation"]["admitted_file_count"] == 17
+    assert response.json()["observation"]["admitted_file_count"] == 20
 
 
 def test_import_api_maps_integrity_rejection_to_conflict() -> None:
@@ -100,9 +100,7 @@ def test_import_api_maps_integrity_rejection_to_conflict() -> None:
     async def request() -> httpx.Response:
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-            return await client.post(
-                "/imports/markdown/scan", json=batch.model_dump(mode="json")
-            )
+            return await client.post("/imports/markdown/scan", json=batch.model_dump(mode="json"))
 
     response = asyncio.run(request())
 

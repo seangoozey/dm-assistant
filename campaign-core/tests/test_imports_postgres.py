@@ -41,8 +41,7 @@ def disposable_database() -> None:
     run_migrations(TEST_DSN)
     with psycopg.connect(TEST_DSN) as connection:
         connection.execute(
-            "TRUNCATE TABLE import_runs, source_documents, workflow_sessions, "
-            "change_sets CASCADE"
+            "TRUNCATE TABLE import_runs, source_documents, workflow_sessions, change_sets CASCADE"
         )
 
 
@@ -106,9 +105,7 @@ def write_location(path: Path, *, stable_id: str | None, extra: str = "") -> Non
 def test_fixture_scan_is_atomic_idempotent_and_noncanonical_through_http() -> None:
     assert TEST_DSN is not None
     batch = scanner(FIXTURE_ROOT, "fixture-http", "sanitized-fixture").scan()
-    app = create_app(
-        Settings(database_url=TEST_DSN, environment="test", run_migrations=False)
-    )
+    app = create_app(Settings(database_url=TEST_DSN, environment="test", run_migrations=False))
 
     async def apply_twice() -> tuple[httpx.Response, httpx.Response]:
         transport = httpx.ASGITransport(app=app)
@@ -192,6 +189,60 @@ def test_reconciliation_handles_unchanged_changed_moved_and_missing(tmp_path: Pa
             "SELECT normalized_path FROM source_document_paths ORDER BY normalized_path"
         ).fetchall()
     assert paths == [("locations/new-name.md",), ("locations/old-name.md",)]
+
+
+def test_complete_rescan_supersedes_missing_source_review_when_file_returns(
+    tmp_path: Path,
+) -> None:
+    assert TEST_DSN is not None
+    root = tmp_path / "source"
+    location = root / "locations" / "returning.md"
+    location.parent.mkdir(parents=True)
+    write_location(location, stable_id="returning-location")
+    repository = PostgresMarkdownImportRepository(PostgresDatabase(TEST_DSN))
+
+    repository.ingest(scanner(root, "returning-present").scan())
+    location.unlink()
+    repository.ingest(scanner(root, "returning-missing").scan())
+    write_location(location, stable_id="returning-location")
+    repository.ingest(scanner(root, "returning-restored").scan())
+
+    with psycopg.connect(TEST_DSN) as connection:
+        statuses = connection.execute(
+            "SELECT status, count(*) FROM review_items "
+            "WHERE kind = 'missing_source' GROUP BY status ORDER BY status"
+        ).fetchall()
+    assert statuses == [("superseded", 1)]
+
+
+def test_complete_rescan_supersedes_removed_warning_but_keeps_current_warning(
+    tmp_path: Path,
+) -> None:
+    assert TEST_DSN is not None
+    root = tmp_path / "source"
+    location = root / "locations" / "warning.md"
+    location.parent.mkdir(parents=True)
+    write_location(location, stable_id="warning-location", extra="[[missing-one]]")
+    repository = PostgresMarkdownImportRepository(PostgresDatabase(TEST_DSN))
+
+    repository.ingest(scanner(root, "warning-first").scan())
+    write_location(location, stable_id="warning-location", extra="[[missing-two]]")
+    repository.ingest(scanner(root, "warning-still-current").scan())
+    with psycopg.connect(TEST_DSN) as connection:
+        still_open = connection.execute(
+            "SELECT count(*) FROM review_items "
+            "WHERE kind = 'import_warning' AND status = 'open'"
+        ).fetchone()
+    assert still_open == (1,)
+
+    write_location(location, stable_id="warning-location")
+    repository.ingest(scanner(root, "warning-cleared").scan())
+    with psycopg.connect(TEST_DSN) as connection:
+        statuses = connection.execute(
+            "SELECT status, count(*) FROM review_items "
+            "WHERE kind = 'import_warning' GROUP BY status ORDER BY status"
+        ).fetchall()
+    assert statuses == [("superseded", 1)]
 
 
 def test_parser_upgrade_reextracts_unchanged_bytes_without_reusing_changed_disposition(

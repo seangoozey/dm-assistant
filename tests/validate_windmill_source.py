@@ -17,6 +17,9 @@ DEPLOY = WINDMILL / "deploy_workspace.py"
 ALLOWED_FILES = {
     "f/dm_assistant/apps/library.raw_app/App.test.tsx",
     "f/dm_assistant/apps/library.raw_app/App.tsx",
+    "f/dm_assistant/apps/library.raw_app/backend/cancel_job.lock",
+    "f/dm_assistant/apps/library.raw_app/backend/cancel_job.ts",
+    "f/dm_assistant/apps/library.raw_app/backend/cancel_job.yaml",
     "f/dm_assistant/apps/library.raw_app/backend/inspect_job.lock",
     "f/dm_assistant/apps/library.raw_app/backend/inspect_job.ts",
     "f/dm_assistant/apps/library.raw_app/backend/inspect_job.yaml",
@@ -29,8 +32,13 @@ ALLOWED_FILES = {
     "f/dm_assistant/apps/library.raw_app/backend/start_health_check.lock",
     "f/dm_assistant/apps/library.raw_app/backend/start_health_check.ts",
     "f/dm_assistant/apps/library.raw_app/backend/start_health_check.yaml",
+    "f/dm_assistant/apps/library.raw_app/backend/start_candidate_extraction.lock",
+    "f/dm_assistant/apps/library.raw_app/backend/start_candidate_extraction.ts",
+    "f/dm_assistant/apps/library.raw_app/backend/start_candidate_extraction.yaml",
     "f/dm_assistant/apps/library.raw_app/campaignClient.test.ts",
     "f/dm_assistant/apps/library.raw_app/campaignClient.ts",
+    "f/dm_assistant/apps/library.raw_app/encounterNotes.test.ts",
+    "f/dm_assistant/apps/library.raw_app/encounterNotes.ts",
     "f/dm_assistant/apps/library.raw_app/index.css",
     "f/dm_assistant/apps/library.raw_app/index.tsx",
     "f/dm_assistant/apps/library.raw_app/jobPlatform.test.ts",
@@ -47,6 +55,9 @@ ALLOWED_FILES = {
     "f/dm_assistant/jobs/campaign_core_health.py",
     "f/dm_assistant/jobs/campaign_core_health.script.lock",
     "f/dm_assistant/jobs/campaign_core_health.script.yaml",
+    "f/dm_assistant/jobs/candidate_extraction.py",
+    "f/dm_assistant/jobs/candidate_extraction.script.lock",
+    "f/dm_assistant/jobs/candidate_extraction.script.yaml",
 }
 IGNORED_PARTS = {"node_modules", "dist", "coverage", ".vitest"}
 

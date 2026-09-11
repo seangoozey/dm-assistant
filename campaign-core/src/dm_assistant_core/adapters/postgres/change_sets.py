@@ -22,7 +22,7 @@ class PostgresChangeSetRepository:
         try:
             with self._database.connection() as connection:
                 row = connection.execute(
-                    "SELECT apply_change_set(%s, %s, %s, %s)",
+                    "SELECT apply_campaign_change_set(%s, %s, %s, %s)",
                     (
                         command.change_set_id,
                         command.reviewed_version,

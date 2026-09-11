@@ -1,0 +1,2 @@
+[console_scripts]
+dm-assistant-markdown-import = dm_assistant_core.importer.cli:main

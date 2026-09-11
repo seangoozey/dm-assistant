@@ -1,0 +1,211 @@
+{
+  "version": "relative-relevance-v2-explicit-bridges",
+  "arm": "lexical-token-overlap",
+  "limitations": "Small judged-pool diagnostic; not live retrieval or production acceptance.",
+  "cases": [
+    {
+      "id": "organization",
+      "split": "development",
+      "ranked": [
+        "command",
+        "goodman",
+        "power",
+        "titan"
+      ],
+      "coverage_missing": [],
+      "bridge_coverage_missing": [],
+      "path_covered": false,
+      "false_bridge_claims": [],
+      "pair_correct": false,
+      "recall_at_10": 0.3333333333333333,
+      "precision_at_10": 0.25
+    },
+    {
+      "id": "causality",
+      "split": "development",
+      "ranked": [
+        "power",
+        "command",
+        "goodman",
+        "titan"
+      ],
+      "coverage_missing": [],
+      "bridge_coverage_missing": [],
+      "path_covered": null,
+      "false_bridge_claims": [],
+      "pair_correct": true,
+      "recall_at_10": 1.0,
+      "precision_at_10": 0.25
+    },
+    {
+      "id": "indirect",
+      "split": "development",
+      "ranked": [
+        "command",
+        "goodman",
+        "power",
+        "titan"
+      ],
+      "coverage_missing": [],
+      "bridge_coverage_missing": [],
+      "path_covered": null,
+      "false_bridge_claims": [],
+      "pair_correct": true,
+      "recall_at_10": 1.0,
+      "precision_at_10": 0.25
+    },
+    {
+      "id": "layout-counterexample",
+      "split": "development",
+      "ranked": [
+        "rooms",
+        "floor"
+      ],
+      "coverage_missing": [],
+      "bridge_coverage_missing": [],
+      "path_covered": null,
+      "false_bridge_claims": [],
+      "pair_correct": true,
+      "recall_at_10": 1.0,
+      "precision_at_10": 0.5
+    },
+    {
+      "id": "absent-bridge-development",
+      "split": "development",
+      "ranked": [
+        "silver-helms"
+      ],
+      "coverage_missing": [],
+      "bridge_coverage_missing": [],
+      "path_covered": null,
+      "false_bridge_claims": [],
+      "pair_correct": true,
+      "recall_at_10": 1.0,
+      "precision_at_10": 1.0
+    },
+    {
+      "id": "organization-paraphrase",
+      "split": "held_out",
+      "ranked": [
+        "plan",
+        "company",
+        "floor",
+        "mural",
+        "ossler-company",
+        "regent",
+        "seal",
+        "aris",
+        "command",
+        "company-bridge",
+        "power",
+        "rooms",
+        "silver-helms",
+        "warden-bridge"
+      ],
+      "coverage_missing": [],
+      "bridge_coverage_missing": [],
+      "path_covered": false,
+      "false_bridge_claims": [],
+      "pair_correct": false,
+      "recall_at_10": 0.3333333333333333,
+      "precision_at_10": 0.1
+    },
+    {
+      "id": "cause-paraphrase",
+      "split": "held_out",
+      "ranked": [
+        "plan",
+        "regent",
+        "seal",
+        "aris",
+        "command",
+        "company",
+        "company-bridge",
+        "floor",
+        "mural",
+        "ossler-company",
+        "power",
+        "silver-helms",
+        "warden-bridge"
+      ],
+      "coverage_missing": [],
+      "bridge_coverage_missing": [],
+      "path_covered": null,
+      "false_bridge_claims": [],
+      "pair_correct": true,
+      "recall_at_10": 1.0,
+      "precision_at_10": 0.1
+    },
+    {
+      "id": "layout-held-out",
+      "split": "held_out",
+      "ranked": [
+        "floor",
+        "seal",
+        "aris",
+        "command",
+        "company",
+        "company-bridge",
+        "mural",
+        "ossler-company",
+        "plan",
+        "power",
+        "regent",
+        "rooms",
+        "silver-helms",
+        "warden-bridge"
+      ],
+      "coverage_missing": [],
+      "bridge_coverage_missing": [],
+      "path_covered": null,
+      "false_bridge_claims": [],
+      "pair_correct": true,
+      "recall_at_10": 1.0,
+      "precision_at_10": 0.1
+    },
+    {
+      "id": "planning-held-out",
+      "split": "held_out",
+      "ranked": [
+        "plan",
+        "regent",
+        "seal",
+        "aris",
+        "command",
+        "company",
+        "company-bridge",
+        "floor",
+        "mural",
+        "ossler-company",
+        "power",
+        "silver-helms",
+        "warden-bridge"
+      ],
+      "coverage_missing": [],
+      "bridge_coverage_missing": [],
+      "path_covered": null,
+      "false_bridge_claims": [],
+      "pair_correct": true,
+      "recall_at_10": 1.0,
+      "precision_at_10": 0.1
+    },
+    {
+      "id": "absent-bridge-held-out",
+      "split": "held_out",
+      "ranked": [
+        "company",
+        "command",
+        "company-bridge",
+        "ossler-company",
+        "silver-helms"
+      ],
+      "coverage_missing": [],
+      "bridge_coverage_missing": [],
+      "path_covered": null,
+      "false_bridge_claims": [],
+      "pair_correct": true,
+      "recall_at_10": 1.0,
+      "precision_at_10": 0.2
+    }
+  ]
+}

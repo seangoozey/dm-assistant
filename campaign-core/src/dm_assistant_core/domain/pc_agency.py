@@ -17,4 +17,3 @@ def represent_pc_campaign_direction(source_text: str) -> PlanningClaim:
         conditional=True,
         predicts_pc_action=False,
     )
-

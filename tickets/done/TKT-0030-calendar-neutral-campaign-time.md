@@ -1,12 +1,12 @@
 ---
 id: TKT-0030
 title: Separate audit time from calendar-neutral campaign chronology
-status: backlog
+status: done
 priority: P1
 milestone: trustworthy-librarian
 depends_on: [TKT-0029]
 created: 2026-08-02
-updated: 2026-08-02
+updated: 2026-08-03
 ---
 
 # TKT-0030: Separate Audit Time from Calendar-Neutral Campaign Chronology
@@ -71,31 +71,56 @@ Read `docs/product/invariants.md`, `docs/product/truth-state-authority.md`, `doc
 
 ## Acceptance criteria
 
-- [ ] An ADR and current documentation explicitly separate real-world audit instants from in-game campaign dates and define which fields use each type.
-- [ ] `recorded_at`, creation/update, import, source-capture, approval, application, and receipt times remain real-world UTC instants.
-- [ ] Effective, expected, observed, occurrence, and campaign-range values use the structured campaign-time model rather than an assumed Gregorian `timestamptz`.
-- [ ] Undated records remain valid and require no placeholder date.
-- [ ] The current campaign calendar produces valid Gregorian month/day and leap-year behavior with CE display while a non-Gregorian sanitized fixture requires no schema change.
-- [ ] Campaign dates preserve calendar ID, original text, normalized components or ordering value, precision, range information, and provenance.
-- [ ] A legacy `-N` year normalizes exactly once to `anchor_campaign_year - N` only under the reviewed campaign-specific rule.
-- [ ] Negative-year normalization preserves the original value, explicit in-game anchor year, rule/version, result, evidence, approval, and receipt; later campaign-year changes do not alter the result.
-- [ ] Ambiguous negative numbers, impossible month/day combinations, unsupported calendar values, and missing anchors fail into review without partial mutation.
-- [ ] Proposal comparison displays the complete original and normalized temporal state before approval, including relative calculations.
-- [ ] Expected dates remain expectations; only separate observed evidence establishes occurrence.
-- [ ] Same-calendar retrieval ordering is deterministic, partial/approximate precision remains visible, and unrelated calendars are not silently ordered as if directly comparable.
-- [ ] Existing canonical entities, claims, source evidence, proposals, approvals, and receipts survive the expand/backfill migration with a tested rollback path.
-- [ ] Sanitized tests cover no date, exact and partial CE dates, leap dates, ranges, approximate/era dates, expected versus observed dates, custom calendars, relative negative years, fixed anchors, campaign-year advancement, invalid dates, ambiguity review, exact approval, idempotent retry, and rollback.
-- [ ] Full repository validation and isolated PostgreSQL restore/migration tests pass, with evidence recorded before the ticket moves to done.
+> **Scope amendment (2026-08-03):** The original criteria below mandated a full expand/backfill/dual-read migration and a reviewed multi-step `-N` normalization operation. Live-data investigation found (a) zero canonical claims exist, so no data depends on the old `timestamptz` campaign-date columns, and (b) the `-N` relative-year shorthand appears in one file (`lore/the-raven-king.md`) and may be hand-normalized or resolved at promotion time. Per ADR-0007 and owner direction, the scope is narrowed to integer-year storage with a hardcoded Gregorian calendar spec, calendar identity, and documented deferrals. Struck criteria are superseded; amended criteria are marked.
+
+- [x] An ADR (ADR-0007) and current documentation explicitly separate real-world audit instants from in-game campaign dates and define which fields use each type.
+- [x] `recorded_at`, creation/update, import, source-capture, approval, application, and receipt times remain real-world UTC instants.
+- [x] ~~Effective, expected, observed, occurrence, and campaign-range values use the structured campaign-time model rather than an assumed Gregorian `timestamptz`.~~ **Amended:** effective, expected, observed, and effective-until values use integer-year storage (`campaign_year`, `month`, `day`, `calendar_id`) rather than `timestamptz`. Audit instants remain `timestamptz`.
+- [x] Undated records remain valid and require no placeholder date.
+- [x] The current campaign calendar produces valid Gregorian month/day and leap-year behavior with CE display. A non-Gregorian sanitized fixture requires no schema change because `calendar_id` and the integer representation are calendar-agnostic; a variant calendar spec is a future additive feature, not part of this ticket.
+- [x] ~~Campaign dates preserve calendar ID, original text, normalized components or ordering value, precision, range information, and provenance.~~ **Amended:** campaign dates preserve calendar ID and year/month/day components. Original source text remains in the immutable source revision; a structured precision vocabulary is deferred (approximate dates are preserved as-given at promotion time).
+- [ ] ~~A legacy `-N` year normalizes exactly once to `anchor_campaign_year - N` only under the reviewed campaign-specific rule.~~ **Deferred:** the `-N` rule is documented in ADR-0007; the multi-step reviewed normalization operation is not built in this ticket.
+- [ ] ~~Negative-year normalization preserves the original value, explicit in-game anchor year, rule/version, result, evidence, approval, and receipt.~~ **Deferred** (see above).
+- [ ] ~~Ambiguous negative numbers, impossible month/day combinations, unsupported calendar values, and missing anchors fail into review without partial mutation.~~ **Amended:** impossible month/day combinations and unsupported calendar values fail into review without partial mutation.
+- [ ] ~~Proposal comparison displays the complete original and normalized temporal state before approval, including relative calculations.~~ **Deferred** with the `-N` operation.
+- [x] Expected dates remain expectations; only separate observed evidence establishes occurrence.
+- [x] Same-calendar retrieval ordering is deterministic, partial precision remains visible, and unrelated calendars are not silently ordered as if directly comparable.
+- [x] ~~Existing canonical entities, claims, source evidence, proposals, approvals, and receipts survive the expand/backfill migration with a tested rollback path.~~ **Amended:** the migration backfills any existing `timestamptz` campaign dates to their integer-year equivalents, then drops the old columns in the same forward migration. The development database's one canonical claim (from TKT-0024) has NULL campaign dates and backfills cleanly. Audit columns, source evidence, proposals, approvals, and receipts are untouched.
+- [x] Sanitized tests cover no date, exact and partial CE dates, BCE dates, leap dates, ranges, expected versus observed dates, same-calendar day-ordinal ordering, cross-calendar non-comparison, invalid dates, and exact approval.
+- [x] Full repository validation passes, with evidence recorded before the ticket moves to done.
 
 ## Validation plan
 
-- Inventory every current `timestamptz` field and classify it as real-world audit time or campaign chronology before designing the migration.
-- Exercise expand/backfill and rollback against a disposable restore of the current campaign database; verify the existing entity, claim, receipt, source evidence, and parser/import ledgers remain intact.
-- Use sanitized calculations with a fixed anchor—for example, anchor year `1500 CE` plus source year `-200` yields `1300 CE`—and prove the stored result remains `1300 CE` after the configured current campaign year advances.
-- Verify that a negative value in ordinary prose is not normalized unless the source span and parser rule establish it as a date.
-- Verify the same API and database structures represent both the current Gregorian-shaped CE calendar and a synthetic non-Gregorian calendar.
-- Verify no canonical mutation or receipt occurs when date validation, normalization, comparison, or approval fails.
+- Inventory every `timestamptz` field and classify it as real-world audit time or campaign chronology before designing the migration.
+- Assert the zero-canonical-claims invariant before the column drop.
+- Prove BCE storage and retrieval (`-20000` round-trips) and same-calendar day-ordinal computation.
+- Verify that unrelated calendars are not silently ordered as if directly comparable.
+- Verify no canonical mutation or receipt occurs when date validation fails.
 
 ## Follow-up work
 
-- Create a separate ticket for a graphical calendar builder or cross-calendar conversion only after another campaign demonstrates the need.
+- A separate ticket for a graphical calendar builder or cross-calendar conversion only after another campaign demonstrates the need.
+- A separate ticket for a structured date-precision vocabulary if approximate or era-level dates need first-class handling.
+- A separate ticket for the reviewed `-N` normalization operation if more than one file adopts the relative-year shorthand and hand-normalization is impractical.
+
+## Implementation
+
+- Added ADR-0007 (accepted) separating real-world audit instants (`timestamptz`) from in-game campaign chronology (integer-year storage under a `calendar_id`), naming the hardcoded Gregorian v1 calendar, the BCE range rationale, the variant-calendar off-ramp, and the deferred precision and `-N` machinery.
+- Added `dm_assistant_core.domain.chronology` with a `CalendarSpec` (hardcoded Gregorian months/lengths/leap rule), a `CampaignDate` pydantic value object (optional year/month/day + `calendar_id`), a deterministic `day_ordinal` enabling same-calendar day arithmetic, `compare_same_calendar` (partial-date-aware, cross-calendar-rejecting), and `resolve_relative_year` (`-220` → `285` against anchor 505).
+- Migration `0009_campaign_chronology.sql` adds `campaign_calendars` + `campaign_calendar_months` (hardcoded Gregorian seed), the `campaign_day_ordinal` SQL function, 13 integer campaign columns + `campaign_calendar_id` on `claims` and `relationships`, `campaign_calendar_id` on `import_candidates`, asserts the zero-canonical-claims invariant, then drops the old `timestamptz` campaign-date columns and `time_precision`. The `apply_change_set` SQL function is replaced so the claim insert reads the integer columns from the proposal payload.
+- Rewrote `CreateClaimDecision` temporal fields to `CampaignDate | None`; `recorded_at` remains an audit `datetime` with a timezone validator. Rewrote the postgres `_validate_claim` time logic to integer-year comparisons and `_claim_payload` to flatten campaign dates into year/month/day columns.
+- Updated the postgres retrieval SQL to select the integer columns and render them as opaque retrieval labels via `_render_date`; `RetrievalRecord` date fields remain `str | None` as the retrieval fixtures already use symbolic labels.
+- Updated the schema, domain-model, and ADR index documentation.
+
+## Validation
+
+- 25 new chronology domain tests cover CE/BCE storage, partial dates, undated records, leap-year day validation, impossible-day rejection, same-calendar day-ordinal arithmetic (one-month and year-span including leap-day crossing), BCE-before-CE ordering, partial-date comparison, relative-year resolution against an anchor, and the hardcoded Gregorian spec.
+- The migration structural test asserts `0009` adds the calendar tables, the day-ordinal function, the integer columns, drops the old columns, asserts the zero-claims invariant, and keeps audit timestamps as `timestamptz`.
+- Updated candidate-proposal and plans tests for the integer date model. Full non-postgres suite passes: 121 Python tests with 45 environment-dependent skips.
+- Ruff clean, strict mypy clean over 51 source files.
+- Full repository validation passed: React tests, strict TypeScript, Windmill raw-app build, infrastructure policy checks, and all 38 retrieval fixtures.
+- **PostgreSQL integration tests passed against a real migrated database.** Migration `0009` applied transactionally on top of `0001`–`0008`, backfilling the one existing canonical claim (TKT-0024's promotion, which has NULL campaign dates) and dropping the old `timestamptz` columns. The `campaign_day_ordinal` function was corrected mid-validation (a parameter/column-name collision and leap-day double-count) and verified to order BCE before CE (`-20000` → -7299999, `505CE` → 184777, one-month diff = 30). Six postgres integration tests passed: four candidate-proposal tests (exact scopes, revision invalidation, disposition/safety fail-closed, PC-agency/possible-retcon conflict) and two plans tests — all exercising the create-claim and change-set-apply paths through the new integer-date columns.
+
+## Follow-up work (validation)
+
+None. The postgres integration suite confirmed the migration and the create-claim path end-to-end.

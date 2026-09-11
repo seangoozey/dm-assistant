@@ -17,6 +17,7 @@ An older document can still reveal intent. Do not silently overwrite a newer dec
 
 ## Current specifications
 
+- [Shared campaign relationship and retrieval design](architecture/shared-campaign-knowledge.md) — proposed implementation contract
 - [Product vision](product/vision.md)
 - [Domain invariants](product/invariants.md)
 - [Truth states and authority decision table](product/truth-state-authority.md)

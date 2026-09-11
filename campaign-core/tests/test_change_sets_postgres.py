@@ -58,8 +58,7 @@ def disposable_database() -> None:
     run_migrations(TEST_DSN)
     with psycopg.connect(TEST_DSN) as connection:
         connection.execute(
-            "TRUNCATE TABLE import_runs, source_documents, workflow_sessions, "
-            "change_sets CASCADE"
+            "TRUNCATE TABLE import_runs, source_documents, workflow_sessions, change_sets CASCADE"
         )
 
 
@@ -102,8 +101,12 @@ def seed_change_set(
         ):
             payload = {
                 "id": str(target_id),
+                "record_type": "entity",
+                "entity_kind": "npc",
+                "entity_kind_version": 1,
                 "entity_type": "npc",
                 "canonical_name": f"Sanitized NPC {index}",
+                "tags": [],
             }
             connection.execute(
                 "INSERT INTO proposal_items "
@@ -165,8 +168,7 @@ def seed_direct_lore_claim(subject_entity_id: UUID) -> tuple[SeededChangeSet, UU
     }
     with psycopg.connect(TEST_DSN) as connection:
         connection.execute(
-            "INSERT INTO workflow_sessions (id, kind, started_at) "
-            "VALUES (%s, 'brainstorm', now())",
+            "INSERT INTO workflow_sessions (id, kind, started_at) VALUES (%s, 'brainstorm', now())",
             (parent_workflow_id,),
         )
         connection.execute(
@@ -340,9 +342,7 @@ def test_direct_lore_fixture_applies_evidence_backed_claim_and_preserves_parent(
     entity_seed = seed_change_set()
     repository = PostgresChangeSetRepository(PostgresDatabase(TEST_DSN))
     repository.apply(entity_seed.command())
-    claim_seed, parent_workflow_id, span_id = seed_direct_lore_claim(
-        entity_seed.target_ids[0]
-    )
+    claim_seed, parent_workflow_id, span_id = seed_direct_lore_claim(entity_seed.target_ids[0])
 
     receipt = repository.apply(claim_seed.command())
 

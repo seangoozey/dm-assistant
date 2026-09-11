@@ -1,0 +1,19 @@
+summary: Extract campaign candidates in the background
+description: Runs bounded sequential Campaign Core AI extraction calls and
+  returns per-candidate results.
+lock: '!inline f/dm_assistant/jobs/candidate_extraction.script.lock'
+kind: script
+schema:
+  $schema: https://json-schema.org/draft/2020-12/schema
+  type: object
+  properties:
+    candidate_ids:
+      type: array
+      default: null
+      items:
+        type: string
+      maxItems: 50
+      minItems: 1
+      originalType: string[]
+  required:
+    - candidate_ids

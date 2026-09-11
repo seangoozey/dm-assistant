@@ -35,9 +35,9 @@ def test_cli_dry_run_reports_only_aggregate_source_information(
     main(arguments("--dry-run"))
 
     output = json.loads(capsys.readouterr().out)
-    assert output["admitted_file_count"] == 17
+    assert output["admitted_file_count"] == 20
     assert output["excluded_paths_encountered"] == 9
-    assert output["candidate_count"] == 18
+    assert output["candidate_count"] == 20
     assert "files" not in output
     assert "content" not in output
 
@@ -52,6 +52,6 @@ def test_cli_batch_uses_transport_safe_exact_content() -> None:
     )
     batch = create_batch(parsed)
 
-    assert summarize(batch)["admitted_file_count"] == 17
+    assert summarize(batch)["admitted_file_count"] == 20
     assert summarize(batch)["reextract_paths"] == ["gm/campaign-bible.md"]
     assert batch.model_validate_json(batch.model_dump_json()) == batch

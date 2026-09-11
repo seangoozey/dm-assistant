@@ -4,10 +4,15 @@ from __future__ import annotations
 
 import re
 from enum import StrEnum
+from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from dm_assistant_core.domain.models import ClaimState
+from dm_assistant_core.domain.taxonomy import EntityKind, normalize_tags
+
+if TYPE_CHECKING:
+    from dm_assistant_core.domain.evidence_comparison import ComparisonCoordinate
 
 
 class AnswerMode(StrEnum):
@@ -76,6 +81,12 @@ class RetrievalRecord(BaseModel):
     effective_from: str | None = None
     expected_at: str | None = None
     observed_at: str | None = None
+    entity_kind: EntityKind | None = None
+    tags: tuple[str, ...] = ()
+    entity_id: str | None = None
+
+    # Internal source-span/revision binding for derived-index revalidation.
+    evidence_binding: str | None = None
 
 
 class RetrievalQuery(BaseModel):
@@ -83,12 +94,29 @@ class RetrievalQuery(BaseModel):
 
     question: str = Field(min_length=1)
     requester_visibility: RequesterVisibility
+    entity_kinds: tuple[EntityKind, ...] = ()
+    tags: tuple[str, ...] = ()
+
+    @model_validator(mode="after")
+    def normalize_retrieval_tags(self) -> RetrievalQuery:
+        normalized = normalize_tags(self.tags)
+        if normalized == self.tags:
+            return self
+        return self.model_copy(update={"tags": normalized})
 
 
 class EvidenceRole(StrEnum):
     SUPPORT = "support"
     CONTEXT = "context"
     CONFLICT = "conflict"
+
+
+class GraphConnectionSource(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    record_id: str
+    assertion: str
+    citation: str
+    state: ClaimState
 
 
 class RetrievedEvidence(BaseModel):
@@ -100,6 +128,9 @@ class RetrievedEvidence(BaseModel):
     state: ClaimState
     authority: RetrievalAuthority
     role: EvidenceRole
+    entity_id: str | None = None
+    graph_trace: tuple[str, ...] = ()
+    graph_sources: tuple[GraphConnectionSource, ...] = ()
 
 
 class RetrievalReason(StrEnum):
@@ -111,6 +142,36 @@ class RetrievalReason(StrEnum):
     POSSIBLE_RETCN = "possible_retcon"
 
 
+class ConflictEvidence(BaseModel):
+    """Exact visible evidence snapshot for a future comparison/repair surface."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    record_id: str
+    source_id: str
+    citation: str
+    assertion: str
+    state: ClaimState
+    authority: RetrievalAuthority
+    entity_id: str | None = None
+    recorded_at: str | None = None
+    effective_from: str | None = None
+    observed_at: str | None = None
+
+
+class RetrievalConflict(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    issue_id: str
+    policy_version: str
+    classification: Literal["factual_conflict", "possible_retcon", "suspected_conflict"]
+    verification: Literal["verified_comparison", "unverified"]
+    reason: str
+    evidence: tuple[ConflictEvidence, ...] = Field(min_length=2)
+    subject_id: str | None = None
+    property_key: str | None = None
+    scope_key: str | None = None
+    requires_review: Literal[True] = True
+
+
 class RetrievalResult(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -118,6 +179,9 @@ class RetrievalResult(BaseModel):
     evidence: tuple[RetrievedEvidence, ...]
     citations: tuple[str, ...]
     reasons: tuple[RetrievalReason, ...] = Field(min_length=1)
+    conflicts: tuple[RetrievalConflict, ...] = ()
+    comparison_coverage: Literal["partial"] = "partial"
+    conflicts_truncated: bool = False
 
 
 class RetrievalPolicy:
@@ -127,41 +191,47 @@ class RetrievalPolicy:
         self,
         query: RetrievalQuery,
         records: tuple[RetrievalRecord, ...],
+        *,
+        comparison_coordinates: tuple[ComparisonCoordinate, ...] = (),
     ) -> RetrievalResult:
+        from dm_assistant_core.domain.evidence_comparison import retrieval_conflicts
+
         visible = tuple(record for record in records if _is_visible(record, query))
-        hidden_authoritative = tuple(
-            record
-            for record in records
-            if record not in visible and _is_authoritative(record)
-        )
         authoritative = tuple(record for record in visible if _is_authoritative(record))
         context = tuple(record for record in visible if not _is_authoritative(record))
+        conflicts, conflicts_truncated = retrieval_conflicts(
+            query, visible, comparison_coordinates
+        )
 
-        if hidden_authoritative:
-            mode = AnswerMode.RESTRICTED
-            reasons = (RetrievalReason.VISIBILITY_RESTRICTED,)
+        # Hidden records must be indistinguishable from absent records, including
+        # answer mode, reasons and conflict IDs, not merely omitted citations.
+        verified = {issue.classification for issue in conflicts
+                    if issue.verification == "verified_comparison"}
+        conflict_mode = (
+            AnswerMode.POSSIBLE_RETCN if "possible_retcon" in verified
+            else AnswerMode.CONFLICT if "factual_conflict" in verified
+            else _conflict_mode(query, authoritative, context)
+        )
+        if conflict_mode is not None:
+            mode = conflict_mode
+            reasons = (
+                RetrievalReason.POSSIBLE_RETCN
+                if mode is AnswerMode.POSSIBLE_RETCN
+                else RetrievalReason.CONFLICTING_AUTHORITY,
+            )
+        elif not authoritative:
+            mode = AnswerMode.INSUFFICIENT_EVIDENCE
+            reasons = (
+                RetrievalReason.NONCANON_ONLY
+                if context
+                else RetrievalReason.UNSUPPORTED_DETAIL,
+            )
+        elif not _authoritative_suffices(query, authoritative):
+            mode = AnswerMode.INSUFFICIENT_EVIDENCE
+            reasons = (RetrievalReason.UNSUPPORTED_DETAIL,)
         else:
-            conflict_mode = _conflict_mode(query, authoritative, context)
-            if conflict_mode is not None:
-                mode = conflict_mode
-                reasons = (
-                    RetrievalReason.POSSIBLE_RETCN
-                    if mode is AnswerMode.POSSIBLE_RETCN
-                    else RetrievalReason.CONFLICTING_AUTHORITY,
-                )
-            elif not authoritative:
-                mode = AnswerMode.INSUFFICIENT_EVIDENCE
-                reasons = (
-                    RetrievalReason.NONCANON_ONLY
-                    if context
-                    else RetrievalReason.UNSUPPORTED_DETAIL,
-                )
-            elif not _authoritative_suffices(query, authoritative):
-                mode = AnswerMode.INSUFFICIENT_EVIDENCE
-                reasons = (RetrievalReason.UNSUPPORTED_DETAIL,)
-            else:
-                mode = AnswerMode.ANSWER
-                reasons = (RetrievalReason.GROUNDED_ANSWER,)
+            mode = AnswerMode.ANSWER
+            reasons = (RetrievalReason.GROUNDED_ANSWER,)
 
         selected = _select_evidence(query, mode, authoritative, context)
         role = (
@@ -183,14 +253,23 @@ class RetrievalPolicy:
                     state=record.state,
                     authority=record.authority,
                     role=record_role,
+                    entity_id=record.entity_id,
                 )
             )
         citations = tuple(sorted({item.citation for item in evidence}))
+        # The legacy count heuristic is not proof. Expose its output as an
+        # unverified review candidate until it is replaced, never a verified issue.
+        if not conflicts and mode in {AnswerMode.CONFLICT, AnswerMode.POSSIBLE_RETCN}:
+            from dm_assistant_core.domain.evidence_comparison import legacy_review_issue
+
+            conflicts = legacy_review_issue(tuple(selected))
         return RetrievalResult(
             answer_mode=mode,
             evidence=tuple(evidence),
             citations=citations,
             reasons=reasons,
+            conflicts=conflicts,
+            conflicts_truncated=conflicts_truncated,
         )
 
 
@@ -292,10 +371,7 @@ def _select_evidence(
     if mode is AnswerMode.INSUFFICIENT_EVIDENCE:
         return (*authoritative, *context)
     selected_context: tuple[RetrievalRecord, ...] = ()
-    if any(
-        record.authority is RetrievalAuthority.EXPLICIT_CORRECTION
-        for record in authoritative
-    ):
+    if any(record.authority is RetrievalAuthority.EXPLICIT_CORRECTION for record in authoritative):
         selected_context = tuple(
             record for record in context if record.state is ClaimState.SUPERSEDED
         )

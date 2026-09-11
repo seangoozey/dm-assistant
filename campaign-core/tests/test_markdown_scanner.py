@@ -224,3 +224,125 @@ def test_live_shaped_canon_status_and_sections_are_classified_without_path_guess
         ("Goals & Motivations", "intended"),
     ]
     assert [warning.value for warning in source.warnings] == ["unresolved_link"]
+
+
+def test_pc_derived_summaries_do_not_duplicate_biography_or_session_evidence(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "source"
+    pc_root = root / "pcs"
+    pc_root.mkdir(parents=True)
+    (pc_root / "example.md").write_text(
+        "---\ntype: pc\ncanon_status: canon\nplayer: Ryan\nstatus: active\n---\n"
+        "# Example\n\n"
+        "## Canon Summary\nDerived biography summary.\n\n"
+        "## Character Details\n- **Player:** Ryan\n\n"
+        "## Background / History\nDerived background summary.\n\n"
+        "## Current Status\nDerived from session notes.\n\n"
+        "## Relationships\nDerived relationship summary.\n\n"
+        "## Private GM Notes\nConditional campaign direction.\n\n"
+        "## Original Biography Source\nThe intact player biography.\n",
+        encoding="utf-8",
+    )
+
+    source = MarkdownScanner(config(root)).scan().files[0]
+
+    assert [(item.section, item.state.value) for item in source.candidates] == [
+        ("Private GM Notes", "prepared"),
+    ]
+
+
+def test_path_qualified_wiki_links_resolve_to_their_exact_admitted_file(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "source"
+    (root / "npcs").mkdir(parents=True)
+    (root / "locations").mkdir(parents=True)
+    (root / "npcs" / "mixed-npc.md").write_text(
+        "---\ntype: npc\nstatus: canon\nfixture: synthetic\n---\n"
+        "# Mixed NPC\n\n## Established Facts\n\nA durable fact.\n",
+        encoding="utf-8",
+    )
+    (root / "locations" / "example-location.md").write_text(
+        "---\ntype: location\nstatus: canon\nfixture: synthetic\n---\n"
+        "# Example Location\n\n## Established Facts\n\n"
+        "Exact path [[npcs/mixed-npc]], explicit suffix [[npcs/mixed-npc.md]], "
+        "display alias [[mixed-npc|The Archivist]], "
+        "and relative form [[../npcs/mixed-npc]] all resolve. "
+        "A dead link stays unresolved: [[missing-annex]].\n",
+        encoding="utf-8",
+    )
+
+    files = {source.path: source for source in MarkdownScanner(config(root)).scan().files}
+    location = files["locations/example-location.md"]
+
+    assert [warning.value for warning in location.warnings] == ["unresolved_link"]
+
+
+def test_path_qualified_link_to_a_wrong_directory_stays_unresolved(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "source"
+    (root / "npcs").mkdir(parents=True)
+    (root / "locations").mkdir(parents=True)
+    (root / "npcs" / "mixed-npc.md").write_text(
+        "---\ntype: npc\nstatus: canon\nfixture: synthetic\n---\n"
+        "# Mixed NPC\n\n## Established Facts\n\nA durable fact.\n",
+        encoding="utf-8",
+    )
+    (root / "locations" / "example-location.md").write_text(
+        "---\ntype: location\nstatus: canon\nfixture: synthetic\n---\n"
+        "# Example Location\n\n## Established Facts\n\n"
+        "Wrong directory is not rescued: [[locations/mixed-npc]].\n",
+        encoding="utf-8",
+    )
+
+    files = {source.path: source for source in MarkdownScanner(config(root)).scan().files}
+
+    assert [warning.value for warning in files["locations/example-location.md"].warnings] == [
+        "unresolved_link"
+    ]
+
+
+def test_ambiguous_bare_basename_reports_ambiguous_link(tmp_path: Path) -> None:
+    root = tmp_path / "source"
+    (root / "npcs").mkdir(parents=True)
+    (root / "locations").mkdir(parents=True)
+    (root / "gm" / "brainstorming").mkdir(parents=True)
+    for directory, record_type in (("npcs", "npc"), ("locations", "location")):
+        (root / directory / "shared-vault.md").write_text(
+            f"---\ntype: {record_type}\nstatus: canon\nfixture: synthetic\n---\n"
+            f"# Shared Vault\n\n## Established Facts\n\nOne entrance.\n",
+            encoding="utf-8",
+        )
+    (root / "gm" / "brainstorming" / "notes.md").write_text(
+        "---\ntype: brainstorm\nfixture: synthetic\n---\n"
+        "# Notes\n\nA bare link hits two records: [[shared-vault]].\n",
+        encoding="utf-8",
+    )
+
+    files = {source.path: source for source in MarkdownScanner(config(root)).scan().files}
+
+    notes = files["gm/brainstorming/notes.md"]
+    assert "ambiguous_link" in {warning.value for warning in notes.warnings}
+
+
+def test_templates_are_not_resolvable_link_targets(tmp_path: Path) -> None:
+    root = tmp_path / "source"
+    (root / "templates").mkdir(parents=True)
+    (root / "gm" / "brainstorming").mkdir(parents=True)
+    (root / "templates" / "npc-template.md").write_text(
+        "---\ntype: npc\nstatus: canon\nfixture: synthetic\n---\n"
+        "# Template\n\n## Established Facts\n\n[Not yet established.]\n",
+        encoding="utf-8",
+    )
+    (root / "gm" / "brainstorming" / "notes.md").write_text(
+        "---\ntype: brainstorm\nfixture: synthetic\n---\n"
+        "# Notes\n\nA link to a template stays unresolved: [[npc-template]].\n",
+        encoding="utf-8",
+    )
+
+    files = {source.path: source for source in MarkdownScanner(config(root)).scan().files}
+
+    notes = files["gm/brainstorming/notes.md"]
+    assert "unresolved_link" in {warning.value for warning in notes.warnings}

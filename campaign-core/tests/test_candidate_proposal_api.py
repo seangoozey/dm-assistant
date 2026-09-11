@@ -3,6 +3,8 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 import httpx
+import pytest
+from pydantic import ValidationError
 
 from dm_assistant_core.api.app import create_app
 from dm_assistant_core.application import (
@@ -15,6 +17,7 @@ from dm_assistant_core.application import (
     CandidateProposalService,
     CandidateProposalVersion,
     CreateCandidateProposalCommand,
+    CreateClaimDecision,
     DispositionCandidateCommand,
     ProposalCandidateBinding,
     ReviseCandidateProposalCommand,
@@ -55,8 +58,12 @@ def version() -> CandidateProposalVersion:
                 target_id=TARGET_ID,
                 after={
                     "id": str(TARGET_ID),
+                    "record_type": "entity",
+                    "entity_kind": "npc",
+                    "entity_kind_version": 1,
                     "entity_type": "npc",
                     "canonical_name": "Sanitized Keeper",
+                    "tags": [],
                 },
                 evidence=ProposalCandidateBinding(
                     candidate_id=CANDIDATE_ID,
@@ -89,6 +96,9 @@ class RecordingRepository:
 
     def get(self, proposal_id: UUID) -> CandidateProposalVersion | None:
         return version() if proposal_id == PROPOSAL_ID else None
+
+    def get_for_candidate(self, candidate_id: UUID) -> CandidateProposalVersion | None:
+        return version() if candidate_id == CANDIDATE_ID else None
 
     def approve(self, command: ApproveCandidateProposalCommand) -> CandidateProposalApproval:
         self.approved = command
@@ -129,8 +139,9 @@ def item_body() -> dict[str, str]:
         "candidate_id": str(CANDIDATE_ID),
         "evidence_revision_id": str(REVISION_ID),
         "target_id": str(TARGET_ID),
-        "entity_type": "npc",
+        "entity_kind": "npc",
         "canonical_name": "Sanitized Keeper",
+        "tags": [],
     }
 
 
@@ -183,6 +194,84 @@ def test_candidate_commands_bind_exact_human_selection() -> None:
         disposition=CandidateDisposition.DEFERRED,
         reason="Needs identity review",
     )
+
+
+def test_reviewed_assertion_text_is_accepted_without_retrieval_indexes() -> None:
+    decision = CreateClaimDecision.model_validate(
+        {
+            "mutation_kind": "create_claim",
+            "candidate_id": str(CANDIDATE_ID),
+            "evidence_revision_id": str(REVISION_ID),
+            "target_id": str(TARGET_ID),
+            "subject_entity_id": str(PROPOSAL_ID),
+            "assertion_text": "Ruhrogue left Fleurite after Ruh died.",
+            "state": "established",
+            "authority": "explicit_lore",
+            "visibility": "dm_only",
+            "confidence": "1",
+            "is_conditional": False,
+            "predicts_subject_action": False,
+            "recorded_at": NOW.isoformat(),
+        }
+    )
+
+    assert decision.assertion_text == "Ruhrogue left Fleurite after Ruh died."
+    assert decision.predicate is None
+    assert decision.object_entity_id is None
+
+
+def test_provenance_first_assertion_is_accepted_without_spo_enrichment() -> None:
+    decision = CreateClaimDecision.model_validate(
+        {
+            "mutation_kind": "create_claim",
+            "candidate_id": str(CANDIDATE_ID),
+            "evidence_revision_id": str(REVISION_ID),
+            "target_id": str(TARGET_ID),
+            "assertion_text": "Ruhrogue left Fleurite after Ruh died.",
+            "state": "established",
+            "authority": "explicit_lore",
+            "visibility": "dm_only",
+            "confidence": "1",
+            "is_conditional": False,
+            "predicts_subject_action": False,
+            "recorded_at": NOW.isoformat(),
+        }
+    )
+
+    assert decision.subject_entity_id is None
+    assert decision.predicate is None
+    assert decision.object_entity_id is None
+    assert decision.assertion_text == "Ruhrogue left Fleurite after Ruh died."
+
+
+def test_conditions_require_a_committed_consequence_and_explicit_trigger() -> None:
+    base = {
+        "mutation_kind": "create_claim",
+        "candidate_id": str(CANDIDATE_ID),
+        "evidence_revision_id": str(REVISION_ID),
+        "target_id": str(TARGET_ID),
+        "assertion_text": "The consequence occurs when the five seals are gathered.",
+        "visibility": "dm_only",
+        "confidence": "1",
+        "predicts_subject_action": False,
+        "recorded_at": NOW.isoformat(),
+    }
+    with pytest.raises(ValidationError, match="possible claims cannot be conditional"):
+        CreateClaimDecision.model_validate({
+            **base, "state": "possible", "authority": "brainstorm",
+            "is_conditional": True, "condition_text": "The five seals are gathered.",
+        })
+    with pytest.raises(ValidationError, match="requires an explicit trigger"):
+        CreateClaimDecision.model_validate({
+            **base, "state": "prepared", "authority": "preparation",
+            "is_conditional": True,
+        })
+
+    decision = CreateClaimDecision.model_validate({
+        **base, "state": "prepared", "authority": "preparation",
+        "is_conditional": True, "condition_text": "The five seals are gathered.",
+    })
+    assert decision.condition_text == "The five seals are gathered."
 
 
 def test_candidate_commands_are_dm_only_and_fail_closed() -> None:

@@ -1,0 +1,614 @@
+{
+  "schema_version": 1,
+  "baseline": "offline lexical simulation + production policy",
+  "path_status": "unsupported; safety and path precision not measurable",
+  "cases": [
+    {
+      "id": "ask-command-destination",
+      "workflow": "ask",
+      "returned_ids": [
+        "command",
+        "ritual"
+      ],
+      "required_ids": [
+        "command",
+        "island"
+      ],
+      "mode": "conflict",
+      "expected_mode": "answer",
+      "mode_correct": false,
+      "recall_at_10": 0.5,
+      "precision_at_10": 0.5,
+      "forbidden_evidence": [],
+      "forbidden_support": [],
+      "required_paths": [],
+      "path_recall": null,
+      "unsupported_connections": null,
+      "ambiguity_supported": null
+    },
+    {
+      "id": "ask-ritual-separate-location",
+      "workflow": "ask",
+      "returned_ids": [
+        "command",
+        "ritual"
+      ],
+      "required_ids": [
+        "ritual"
+      ],
+      "mode": "conflict",
+      "expected_mode": "answer",
+      "mode_correct": false,
+      "recall_at_10": 1,
+      "precision_at_10": 0.5,
+      "forbidden_evidence": [],
+      "forbidden_support": [],
+      "required_paths": [],
+      "path_recall": null,
+      "unsupported_connections": null,
+      "ambiguity_supported": null
+    },
+    {
+      "id": "ask-convoy-destination",
+      "workflow": "ask",
+      "returned_ids": [
+        "alias-a",
+        "captain",
+        "compatible",
+        "escort",
+        "hidden",
+        "meeting",
+        "merchant",
+        "pcplan"
+      ],
+      "required_ids": [
+        "escort",
+        "merchant"
+      ],
+      "mode": "possible_retcon",
+      "expected_mode": "answer",
+      "mode_correct": false,
+      "recall_at_10": 1,
+      "precision_at_10": 0.25,
+      "forbidden_evidence": [],
+      "forbidden_support": [],
+      "required_paths": [],
+      "path_recall": null,
+      "unsupported_connections": null,
+      "ambiguity_supported": null
+    },
+    {
+      "id": "ask-ambiguous-keeper",
+      "workflow": "ask",
+      "returned_ids": [
+        "alias-a",
+        "alias-b"
+      ],
+      "required_ids": [
+        "alias-a",
+        "alias-b"
+      ],
+      "mode": "conflict",
+      "expected_mode": "insufficient_evidence",
+      "mode_correct": false,
+      "recall_at_10": 1,
+      "precision_at_10": 1,
+      "forbidden_evidence": [],
+      "forbidden_support": [],
+      "required_paths": [],
+      "path_recall": null,
+      "unsupported_connections": null,
+      "ambiguity_supported": false
+    },
+    {
+      "id": "encounter-participants",
+      "workflow": "encounter",
+      "returned_ids": [
+        "camp"
+      ],
+      "required_ids": [
+        "meeting",
+        "captain"
+      ],
+      "mode": "answer",
+      "expected_mode": "answer",
+      "mode_correct": true,
+      "recall_at_10": 0,
+      "precision_at_10": 0,
+      "forbidden_evidence": [],
+      "forbidden_support": [],
+      "required_paths": [
+        [
+          "meeting",
+          "vale",
+          "captain"
+        ]
+      ],
+      "path_recall": 0,
+      "unsupported_connections": null,
+      "ambiguity_supported": null
+    },
+    {
+      "id": "encounter-location-hierarchy",
+      "workflow": "encounter",
+      "returned_ids": [
+        "camp",
+        "harbor",
+        "meeting"
+      ],
+      "required_ids": [
+        "camp",
+        "harbor"
+      ],
+      "mode": "conflict",
+      "expected_mode": "answer",
+      "mode_correct": false,
+      "recall_at_10": 1,
+      "precision_at_10": 0.6666666666666666,
+      "forbidden_evidence": [],
+      "forbidden_support": [],
+      "required_paths": [
+        [
+          "camp",
+          "harbor"
+        ]
+      ],
+      "path_recall": 0,
+      "unsupported_connections": null,
+      "ambiguity_supported": null
+    },
+    {
+      "id": "encounter-intention",
+      "workflow": "encounter",
+      "returned_ids": [
+        "alias-a",
+        "captain",
+        "compatible",
+        "escort",
+        "hidden",
+        "meeting",
+        "merchant",
+        "pcplan"
+      ],
+      "required_ids": [
+        "escort",
+        "merchant"
+      ],
+      "mode": "possible_retcon",
+      "expected_mode": "answer",
+      "mode_correct": false,
+      "recall_at_10": 1,
+      "precision_at_10": 0.25,
+      "forbidden_evidence": [],
+      "forbidden_support": [],
+      "required_paths": [],
+      "path_recall": null,
+      "unsupported_connections": null,
+      "ambiguity_supported": null
+    },
+    {
+      "id": "encounter-prerequisite",
+      "workflow": "encounter",
+      "returned_ids": [
+        "unlinked"
+      ],
+      "required_ids": [
+        "condition"
+      ],
+      "mode": "answer",
+      "expected_mode": "insufficient_evidence",
+      "mode_correct": false,
+      "recall_at_10": 0,
+      "precision_at_10": 0,
+      "forbidden_evidence": [],
+      "forbidden_support": [],
+      "required_paths": [],
+      "path_recall": null,
+      "unsupported_connections": null,
+      "ambiguity_supported": null
+    },
+    {
+      "id": "lore-compatible",
+      "workflow": "lore",
+      "returned_ids": [
+        "alias-a",
+        "biography",
+        "camp",
+        "captain",
+        "compatible",
+        "escort",
+        "harbor",
+        "hidden",
+        "meeting",
+        "pcplan"
+      ],
+      "required_ids": [
+        "captain",
+        "compatible"
+      ],
+      "mode": "possible_retcon",
+      "expected_mode": "answer",
+      "mode_correct": false,
+      "recall_at_10": 1,
+      "precision_at_10": 0.2,
+      "forbidden_evidence": [],
+      "forbidden_support": [],
+      "required_paths": [],
+      "path_recall": null,
+      "unsupported_connections": null,
+      "ambiguity_supported": null
+    },
+    {
+      "id": "lore-conflict",
+      "workflow": "lore",
+      "returned_ids": [
+        "alias-a",
+        "biography",
+        "camp",
+        "captain",
+        "compatible",
+        "contradiction",
+        "escort",
+        "harbor",
+        "hidden",
+        "meeting"
+      ],
+      "required_ids": [
+        "captain",
+        "contradiction"
+      ],
+      "mode": "possible_retcon",
+      "expected_mode": "conflict",
+      "mode_correct": false,
+      "recall_at_10": 1,
+      "precision_at_10": 0.2,
+      "forbidden_evidence": [],
+      "forbidden_support": [],
+      "required_paths": [],
+      "path_recall": null,
+      "unsupported_connections": null,
+      "ambiguity_supported": null
+    },
+    {
+      "id": "lore-background-observed",
+      "workflow": "lore",
+      "returned_ids": [
+        "alias-b",
+        "biography",
+        "dmplan",
+        "key",
+        "meeting",
+        "new",
+        "pcplan"
+      ],
+      "required_ids": [
+        "biography",
+        "key",
+        "new"
+      ],
+      "mode": "possible_retcon",
+      "expected_mode": "answer",
+      "mode_correct": false,
+      "recall_at_10": 1,
+      "precision_at_10": 0.42857142857142855,
+      "forbidden_evidence": [],
+      "forbidden_support": [],
+      "required_paths": [],
+      "path_recall": null,
+      "unsupported_connections": null,
+      "ambiguity_supported": null
+    },
+    {
+      "id": "lore-subjectless",
+      "workflow": "lore",
+      "returned_ids": [
+        "condition",
+        "unlinked"
+      ],
+      "required_ids": [
+        "unlinked"
+      ],
+      "mode": "insufficient_evidence",
+      "expected_mode": "answer",
+      "mode_correct": false,
+      "recall_at_10": 1,
+      "precision_at_10": 0.5,
+      "forbidden_evidence": [],
+      "forbidden_support": [],
+      "required_paths": [],
+      "path_recall": null,
+      "unsupported_connections": null,
+      "ambiguity_supported": null
+    },
+    {
+      "id": "brainstorm-regent-context",
+      "workflow": "brainstorm",
+      "returned_ids": [
+        "command",
+        "noise",
+        "ritual"
+      ],
+      "required_ids": [
+        "command",
+        "ritual"
+      ],
+      "mode": "conflict",
+      "expected_mode": "answer",
+      "mode_correct": false,
+      "recall_at_10": 1,
+      "precision_at_10": 0.6666666666666666,
+      "forbidden_evidence": [],
+      "forbidden_support": [],
+      "required_paths": [
+        [
+          "command",
+          "eastwatch",
+          "ritual"
+        ]
+      ],
+      "path_recall": 0,
+      "unsupported_connections": null,
+      "ambiguity_supported": null
+    },
+    {
+      "id": "brainstorm-merchant",
+      "workflow": "brainstorm",
+      "returned_ids": [
+        "escort",
+        "merchant",
+        "pcplan"
+      ],
+      "required_ids": [
+        "merchant",
+        "escort"
+      ],
+      "mode": "possible_retcon",
+      "expected_mode": "answer",
+      "mode_correct": false,
+      "recall_at_10": 1,
+      "precision_at_10": 0.6666666666666666,
+      "forbidden_evidence": [],
+      "forbidden_support": [],
+      "required_paths": [],
+      "path_recall": null,
+      "unsupported_connections": null,
+      "ambiguity_supported": null
+    },
+    {
+      "id": "brainstorm-pc-agency",
+      "workflow": "brainstorm",
+      "returned_ids": [
+        "alias-b",
+        "biography",
+        "dmplan",
+        "key",
+        "meeting",
+        "new",
+        "pcplan"
+      ],
+      "required_ids": [
+        "dmplan"
+      ],
+      "mode": "possible_retcon",
+      "expected_mode": "insufficient_evidence",
+      "mode_correct": false,
+      "recall_at_10": 1,
+      "precision_at_10": 0.14285714285714285,
+      "forbidden_evidence": [],
+      "forbidden_support": [],
+      "required_paths": [],
+      "path_recall": null,
+      "unsupported_connections": null,
+      "ambiguity_supported": null
+    },
+    {
+      "id": "brainstorm-plan-condition",
+      "workflow": "brainstorm",
+      "returned_ids": [
+        "condition"
+      ],
+      "required_ids": [
+        "condition"
+      ],
+      "mode": "insufficient_evidence",
+      "expected_mode": "insufficient_evidence",
+      "mode_correct": true,
+      "recall_at_10": 1,
+      "precision_at_10": 1,
+      "forbidden_evidence": [],
+      "forbidden_support": [],
+      "required_paths": [],
+      "path_recall": null,
+      "unsupported_connections": null,
+      "ambiguity_supported": null
+    },
+    {
+      "id": "security-hidden",
+      "workflow": "boundary",
+      "returned_ids": [
+        "alias-a",
+        "captain",
+        "compatible",
+        "escort",
+        "pcplan"
+      ],
+      "required_ids": [],
+      "mode": "restricted",
+      "expected_mode": "restricted",
+      "mode_correct": true,
+      "recall_at_10": null,
+      "precision_at_10": 0,
+      "forbidden_evidence": [],
+      "forbidden_support": [],
+      "required_paths": [],
+      "path_recall": null,
+      "unsupported_connections": null,
+      "ambiguity_supported": null
+    },
+    {
+      "id": "security-hidden-path",
+      "workflow": "boundary",
+      "returned_ids": [
+        "alias-a",
+        "captain",
+        "compatible",
+        "escort",
+        "pcplan",
+        "visible-end"
+      ],
+      "required_ids": [],
+      "mode": "restricted",
+      "expected_mode": "restricted",
+      "mode_correct": true,
+      "recall_at_10": null,
+      "precision_at_10": 0,
+      "forbidden_evidence": [],
+      "forbidden_support": [],
+      "required_paths": [],
+      "path_recall": null,
+      "unsupported_connections": null,
+      "ambiguity_supported": null
+    },
+    {
+      "id": "lifecycle-current-key",
+      "workflow": "boundary",
+      "returned_ids": [
+        "key",
+        "new"
+      ],
+      "required_ids": [
+        "new"
+      ],
+      "mode": "answer",
+      "expected_mode": "answer",
+      "mode_correct": true,
+      "recall_at_10": 1,
+      "precision_at_10": 0.5,
+      "forbidden_evidence": [],
+      "forbidden_support": [],
+      "required_paths": [],
+      "path_recall": null,
+      "unsupported_connections": null,
+      "ambiguity_supported": null
+    },
+    {
+      "id": "lifecycle-plan-not-event",
+      "workflow": "boundary",
+      "returned_ids": [
+        "escort",
+        "merchant",
+        "pcplan"
+      ],
+      "required_ids": [
+        "escort",
+        "merchant"
+      ],
+      "mode": "possible_retcon",
+      "expected_mode": "insufficient_evidence",
+      "mode_correct": false,
+      "recall_at_10": 1,
+      "precision_at_10": 0.6666666666666666,
+      "forbidden_evidence": [],
+      "forbidden_support": [],
+      "required_paths": [],
+      "path_recall": null,
+      "unsupported_connections": null,
+      "ambiguity_supported": null
+    },
+    {
+      "id": "identity-unlinked",
+      "workflow": "boundary",
+      "returned_ids": [
+        "unlinked"
+      ],
+      "required_ids": [
+        "unlinked"
+      ],
+      "mode": "answer",
+      "expected_mode": "answer",
+      "mode_correct": true,
+      "recall_at_10": 1,
+      "precision_at_10": 1,
+      "forbidden_evidence": [],
+      "forbidden_support": [],
+      "required_paths": [],
+      "path_recall": null,
+      "unsupported_connections": null,
+      "ambiguity_supported": null
+    },
+    {
+      "id": "identity-misspelling",
+      "workflow": "boundary",
+      "returned_ids": [
+        "escort",
+        "merchant"
+      ],
+      "required_ids": [
+        "escort"
+      ],
+      "mode": "answer",
+      "expected_mode": "answer",
+      "mode_correct": true,
+      "recall_at_10": 1,
+      "precision_at_10": 0.5,
+      "forbidden_evidence": [],
+      "forbidden_support": [],
+      "required_paths": [],
+      "path_recall": null,
+      "unsupported_connections": null,
+      "ambiguity_supported": null
+    },
+    {
+      "id": "ranking-distinct-site",
+      "workflow": "boundary",
+      "returned_ids": [
+        "command",
+        "island",
+        "ritual"
+      ],
+      "required_ids": [
+        "command",
+        "ritual",
+        "island"
+      ],
+      "mode": "conflict",
+      "expected_mode": "answer",
+      "mode_correct": false,
+      "recall_at_10": 1,
+      "precision_at_10": 1,
+      "forbidden_evidence": [],
+      "forbidden_support": [],
+      "required_paths": [],
+      "path_recall": null,
+      "unsupported_connections": null,
+      "ambiguity_supported": null
+    },
+    {
+      "id": "unknown-no-answer",
+      "workflow": "boundary",
+      "returned_ids": [],
+      "required_ids": [],
+      "mode": "insufficient_evidence",
+      "expected_mode": "insufficient_evidence",
+      "mode_correct": true,
+      "recall_at_10": null,
+      "precision_at_10": null,
+      "forbidden_evidence": [],
+      "forbidden_support": [],
+      "required_paths": [],
+      "path_recall": null,
+      "unsupported_connections": null,
+      "ambiguity_supported": null
+    }
+  ],
+  "measurement": {
+    "latency_scope": "Policy only, milliseconds; one local run; excludes database, lexical filtering, network, UI and model",
+    "max_ms": 0.1267000006919261
+  },
+  "summary": {
+    "case_count": 24,
+    "macro_recall_at_10": 0.8809523809523809,
+    "macro_precision_at_10": 0.4625258799171843,
+    "mode_accuracy": 0.3333333333333333
+  }
+}

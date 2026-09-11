@@ -17,6 +17,11 @@ import yaml  # type: ignore[import-untyped]
 from pydantic import BaseModel, ConfigDict, Field
 
 from dm_assistant_core.domain import ClaimState, Visibility
+from dm_assistant_core.importer.links import (
+    LinkIndex,
+    LinkTargetStatus,
+    classify_target,
+)
 from dm_assistant_core.importer.models import (
     CandidateAuthority,
     ImportCandidate,
@@ -223,14 +228,16 @@ class MarkdownScanner:
         if self.config.root.is_symlink():
             raise SourceSafetyError("configured Markdown source root cannot be a symbolic link")
         admitted, exclusions = self._discover(root)
-        known_targets = {
-            PurePosixPath(path).stem.casefold()
-            for path, _source in admitted
-            if PurePosixPath(path).suffix.casefold() == ".md"
-        }
-        scanned = tuple(
-            self._read_and_parse(root, path, source, known_targets) for path, source in admitted
+        scanned = tuple(self._read_and_parse(root, path, source) for path, source in admitted)
+        link_index = LinkIndex.build(
+            {
+                source.path
+                for source in scanned
+                if source.classification
+                not in {ImportClassification.TEMPLATE, ImportClassification.NAVIGATION_INDEX}
+            }
         )
+        scanned = tuple(self._apply_link_warnings(source, link_index) for source in scanned)
         snapshot_at = datetime.now(UTC)
         digest_input = "\n".join(
             [
@@ -300,7 +307,6 @@ class MarkdownScanner:
         root: Path,
         relative_path: str,
         source: Path,
-        known_targets: set[str],
     ) -> ScannedSource:
         resolved = source.resolve(strict=True)
         if not resolved.is_relative_to(root):
@@ -337,9 +343,7 @@ class MarkdownScanner:
                 entity_candidates=0,
                 warnings=(ImportWarning.INVALID_UTF8,),
             )
-        return self._classify(
-            relative_path, content, content_hash, modified_at, text, known_targets
-        )
+        return self._classify(relative_path, content, content_hash, modified_at, text)
 
     def _classify(
         self,
@@ -348,7 +352,6 @@ class MarkdownScanner:
         content_hash: str,
         modified_at: datetime,
         text: str,
-        known_targets: set[str],
     ) -> ScannedSource:
         relative = PurePosixPath(path)
         parsed = _parse_frontmatter(text)
@@ -486,7 +489,7 @@ class MarkdownScanner:
                         authority=CandidateAuthority.PREPARATION,
                         parser_version=self.config.parser_version,
                     )
-                    )
+                )
             if not candidates:
                 for section in sections:
                     if section.content and not _read_aloud_heading(section.title):
@@ -498,10 +501,7 @@ class MarkdownScanner:
                                 parser_version=self.config.parser_version,
                             )
                         )
-            if any(
-                section.content and _read_aloud_heading(section.title)
-                for section in sections
-            ):
+            if any(section.content and _read_aloud_heading(section.title) for section in sections):
                 warnings.append(ImportWarning.READ_ALOUD_IS_DERIVED)
         elif relative.parts[0] == "handouts":
             classification = ImportClassification.CANONICAL_ARTIFACT
@@ -538,6 +538,18 @@ class MarkdownScanner:
                     )
             used_sections = {_candidate_key(candidate) for candidate in candidates}
             for section in sections:
+                # The four curated PC files contain convenience summaries derived from
+                # their intact player biography or from session notes. Those summaries
+                # are useful for display but are not independent evidence. Real-play
+                # facts must continue to enter through their session-note provenance.
+                if relative.parts[0] == "pcs" and section.title.casefold() in {
+                    "canon summary",
+                    "background / history",
+                    "current status",
+                    "relationships",
+                    "character details",
+                }:
+                    continue
                 if (
                     not section.content
                     or PLACEHOLDER in section.content
@@ -552,9 +564,7 @@ class MarkdownScanner:
                     conditional = relative.parts[0] == "pcs"
                 elif "goal" in lowered or "motivation" in lowered:
                     state = (
-                        ClaimState.PREPARED
-                        if relative.parts[0] == "pcs"
-                        else ClaimState.INTENDED
+                        ClaimState.PREPARED if relative.parts[0] == "pcs" else ClaimState.INTENDED
                     )
                     authority = (
                         CandidateAuthority.PREPARATION
@@ -583,18 +593,6 @@ class MarkdownScanner:
             classification = ImportClassification.QUARANTINE
             outcome = ImportOutcome.QUARANTINED
 
-        unresolved = [
-            target.strip().casefold()
-            for target in WIKI_LINK.findall(text)
-            if target.strip().casefold() not in known_targets
-        ]
-        if unresolved:
-            warnings.append(
-                ImportWarning.UNRESOLVED_LINK_DIAGNOSTIC_ONLY
-                if classification
-                in {ImportClassification.TEMPLATE, ImportClassification.NAVIGATION_INDEX}
-                else ImportWarning.UNRESOLVED_LINK
-            )
         return ScannedSource(
             path=path,
             content_hash=content_hash,
@@ -610,6 +608,34 @@ class MarkdownScanner:
             warnings=tuple(warnings),
         )
 
+    @staticmethod
+    def _apply_link_warnings(source: ScannedSource, link_index: LinkIndex) -> ScannedSource:
+        text = source.content.decode("utf-8", errors="replace")
+        diagnostic_only = source.classification in {
+            ImportClassification.TEMPLATE,
+            ImportClassification.NAVIGATION_INDEX,
+        }
+        link_warnings: list[ImportWarning] = []
+        for raw in WIKI_LINK.findall(text):
+            outcome = classify_target(raw, link_index, source_path=source.path)
+            if outcome.status is LinkTargetStatus.RESOLVED:
+                continue
+            warning = (
+                ImportWarning.AMBIGUOUS_LINK_DIAGNOSTIC_ONLY
+                if outcome.status is LinkTargetStatus.AMBIGUOUS and diagnostic_only
+                else ImportWarning.AMBIGUOUS_LINK
+                if outcome.status is LinkTargetStatus.AMBIGUOUS
+                else ImportWarning.UNRESOLVED_LINK_DIAGNOSTIC_ONLY
+                if diagnostic_only
+                else ImportWarning.UNRESOLVED_LINK
+            )
+            if warning not in link_warnings:
+                link_warnings.append(warning)
+        if not link_warnings:
+            return source
+        warnings = list(source.warnings) + link_warnings
+        return source.model_copy(update={"warnings": tuple(warnings)})
+
 
 def _classification_conflicts(
     path: PurePosixPath,
@@ -623,9 +649,7 @@ def _classification_conflicts(
         path_kind = "planning"
     elif path.parts[:2] == ("gm", "brainstorming"):
         path_kind = "brainstorm"
-    elif path.parts[:2] == ("sessions", "prep") or (
-        path.parts and path.parts[0] == "encounters"
-    ):
+    elif path.parts[:2] == ("sessions", "prep") or (path.parts and path.parts[0] == "encounters"):
         path_kind = "preparation"
     elif path.parts and path.parts[0] in {"npcs", "pcs", "locations", "lore"}:
         path_kind = "durable"
@@ -645,8 +669,7 @@ def _classification_conflicts(
 def _evidence_heading(name: str) -> bool:
     lowered = name.casefold()
     return any(
-        marker in lowered
-        for marker in ("source", "reference", "link", "original biography")
+        marker in lowered for marker in ("source", "reference", "link", "original biography")
     )
 
 

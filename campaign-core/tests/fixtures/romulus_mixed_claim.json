@@ -1,0 +1,26 @@
+{
+  "source_path": "gm/campaign-bible.md",
+  "section": "Romulus's Plan & Dariferra's Leaks",
+  "coarse_assertion": "Romulus is a mortal with aberrant power, is likely subjugating priests, reanimated Goodman, and has unresolved presentation questions for Dariferra's warning.",
+  "replacements": [
+    {
+      "assertion_text": "Romulus is a mortal wielding power from Malygos paired with latent psionics from childhood corruption.",
+      "state": "established",
+      "authority": "explicit_lore",
+      "visibility": "dm_only"
+    },
+    {
+      "assertion_text": "Romulus may be psionically subjugating the will of lower priests of Malygos.",
+      "state": "possible",
+      "authority": "brainstorm",
+      "visibility": "dm_only"
+    },
+    {
+      "assertion_text": "Romulus reanimated Goodman as a flesh golem.",
+      "state": "established",
+      "authority": "explicit_lore",
+      "visibility": "dm_only"
+    }
+  ],
+  "excluded_prompt": "How does Dariferra describe the sensation of Romulus overriding a priest's doubt?"
+}

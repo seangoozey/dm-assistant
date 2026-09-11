@@ -19,6 +19,11 @@ from dm_assistant_core.acceptance.importer_fixtures import (
     SyntheticScan,
 )
 from dm_assistant_core.domain import ClaimState, Visibility
+from dm_assistant_core.importer.links import (
+    LinkIndex,
+    LinkTargetStatus,
+    classify_target,
+)
 
 INCLUDED_ROOTS = {
     "encounters",
@@ -108,9 +113,7 @@ def parse_frontmatter(text: str) -> tuple[dict[str, Any] | None, str, ImportWarn
         return None, text, ImportWarning.MISSING_FRONTMATTER
     try:
         closing = next(
-            index
-            for index, line in enumerate(lines[1:], start=1)
-            if line.strip() == "---"
+            index for index, line in enumerate(lines[1:], start=1) if line.strip() == "---"
         )
     except StopIteration:
         return None, text, ImportWarning.INVALID_FRONTMATTER
@@ -172,7 +175,6 @@ def planning_candidates(body: str) -> tuple[Candidate, ...]:
 def classify_and_extract(
     path: str,
     text: str,
-    known_targets: set[str],
 ) -> tuple[
     ImportClassification,
     ImportOutcome,
@@ -306,48 +308,98 @@ def classify_and_extract(
         candidates = ()
         entity_candidates = 0
 
-    unresolved = [
-        target.strip().casefold()
-        for target in WIKI_LINK.findall(text)
-        if target.strip().casefold() not in known_targets
-    ]
-    if unresolved:
-        if classification in {
-            ImportClassification.TEMPLATE,
-            ImportClassification.NAVIGATION_INDEX,
-        }:
-            warnings.append(ImportWarning.UNRESOLVED_LINK_DIAGNOSTIC_ONLY)
-        else:
-            warnings.append(ImportWarning.UNRESOLVED_LINK)
-
     return classification, outcome, candidates, entity_candidates, tuple(warnings)
+
+
+def _link_warnings(
+    text: str,
+    classification: ImportClassification,
+    index: LinkIndex,
+    *,
+    source_path: str,
+) -> tuple[ImportWarning, ...]:
+    diagnostic_only = classification in {
+        ImportClassification.TEMPLATE,
+        ImportClassification.NAVIGATION_INDEX,
+    }
+    warnings: list[ImportWarning] = []
+    for raw in WIKI_LINK.findall(text):
+        outcome = classify_target(raw, index, source_path=source_path)
+        if outcome.status is LinkTargetStatus.RESOLVED:
+            continue
+        warning = (
+            ImportWarning.AMBIGUOUS_LINK_DIAGNOSTIC_ONLY
+            if outcome.status is LinkTargetStatus.AMBIGUOUS and diagnostic_only
+            else ImportWarning.AMBIGUOUS_LINK
+            if outcome.status is LinkTargetStatus.AMBIGUOUS
+            else ImportWarning.UNRESOLVED_LINK_DIAGNOSTIC_ONLY
+            if diagnostic_only
+            else ImportWarning.UNRESOLVED_LINK
+        )
+        if warning not in warnings:
+            warnings.append(warning)
+    return tuple(warnings)
+
+
+@dataclass(frozen=True)
+class _Classified:
+    path: str
+    content: bytes
+    text: str
+    classification: ImportClassification
+    outcome: ImportOutcome
+    candidates: tuple[Candidate, ...]
+    entity_candidates: int
+    warnings: tuple[ImportWarning, ...]
 
 
 def scan_fixture(root: Path, tracker: ReadTracker) -> ScanResult:
     admitted, exclusions = discover_paths(root)
-    known_targets = {
-        PurePosixPath(path).stem.casefold()
-        for path in admitted
-        if PurePosixPath(path).suffix.casefold() == ".md"
-    }
-    records: list[ScannedFile] = []
+    classified: list[_Classified] = []
     for path in admitted:
         content = tracker.read_bytes(root, path)
         text = content.decode("utf-8")
         classification, outcome, candidates, entity_candidates, warnings = classify_and_extract(
             path,
             text,
-            known_targets,
         )
-        records.append(
-            ScannedFile(
+        classified.append(
+            _Classified(
                 path=path,
-                content_hash=sha256(content).hexdigest(),
+                content=content,
+                text=text,
                 classification=classification,
                 outcome=outcome,
                 candidates=candidates,
                 entity_candidates=entity_candidates,
                 warnings=warnings,
+            )
+        )
+    link_index = LinkIndex.build(
+        {
+            record.path
+            for record in classified
+            if record.classification
+            not in {ImportClassification.TEMPLATE, ImportClassification.NAVIGATION_INDEX}
+        }
+    )
+    records: list[ScannedFile] = []
+    for record in classified:
+        link_warnings = _link_warnings(
+            record.text,
+            record.classification,
+            link_index,
+            source_path=record.path,
+        )
+        records.append(
+            ScannedFile(
+                path=record.path,
+                content_hash=sha256(record.content).hexdigest(),
+                classification=record.classification,
+                outcome=record.outcome,
+                candidates=record.candidates,
+                entity_candidates=record.entity_candidates,
+                warnings=record.warnings + link_warnings,
             )
         )
     return ScanResult(files=tuple(records), scope_exclusions=tuple(exclusions))

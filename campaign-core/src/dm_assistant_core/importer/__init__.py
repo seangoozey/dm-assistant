@@ -1,5 +1,10 @@
 """Read-only Markdown connector and typed import contracts."""
 
+from dm_assistant_core.importer.links import (
+    LinkIndex,
+    LinkTarget,
+    LinkTargetStatus,
+)
 from dm_assistant_core.importer.models import (
     CandidateAuthority,
     ImportCandidate,
@@ -27,6 +32,9 @@ __all__ = [
     "ImportOutcome",
     "ImportReceipt",
     "ImportWarning",
+    "LinkIndex",
+    "LinkTarget",
+    "LinkTargetStatus",
     "MarkdownScanBatch",
     "MarkdownScanner",
     "MarkdownScannerConfig",

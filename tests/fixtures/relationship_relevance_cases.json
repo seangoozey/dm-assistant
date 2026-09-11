@@ -1,0 +1,29 @@
+{
+  "version": "relative-relevance-v1",
+  "origin": "Synthetic evidence; campaign-name development cases reflect user-provided relative relevance judgments, not new canon. Held-out cases are excluded from extraction prompts and tuning.",
+  "records": [
+    {"id":"command","text":"Romulus is Grand Inquisitor and commands the Inquisition."},
+    {"id":"company","text":"Sorin served in the company led by Inquisitor Eustice."},
+    {"id":"power","text":"The death of Arkin's mortal body released leyline flow, increasing Romulus's power."},
+    {"id":"rooms","text":"Ishirala Floor 3 has triangular rooms and mirror portals. Its statue depicts Goodman."},
+    {"id":"goodman","text":"Romulus controls Goodman."},
+    {"id":"titan","text":"Romulus ordered Ishi'go'dan to destroy a distant castle."},
+    {"id":"aris","text":"Aris survived the earlier destruction of her city by Ishi'go'dan."},
+    {"id":"regent","text":"The Regent commands the Wardens."},
+    {"id":"warden","text":"Mira belonged to Captain Vale's Warden patrol."},
+    {"id":"mural","text":"The inn corridor has a mural of Captain Vale beside a window."},
+    {"id":"seal","text":"Breaking the temple seal freed magical energy that strengthened the Regent."},
+    {"id":"floor","text":"The temple floor is tiled blue and has three exits."},
+    {"id":"plan","text":"The Regent intends to close the harbor tomorrow; no closure has occurred."}
+  ],
+  "cases": [
+    {"id":"organization","split":"development","question":"Romulus's organization","preferred":"company","over":"rooms","required":["command","company"]},
+    {"id":"causality","split":"development","question":"Romulus's power","preferred":"power","over":"rooms","required":["power"]},
+    {"id":"indirect","split":"development","question":"Romulus's orders","preferred":"titan","over":"aris","required":["titan"]},
+    {"id":"layout-counterexample","split":"development","question":"Ishirala Floor 3 room layout","preferred":"rooms","over":"power","required":["rooms"]},
+    {"id":"organization-paraphrase","split":"held_out","question":"Who has served under the Regent's officers?","preferred":"warden","over":"mural","required":["regent","warden"]},
+    {"id":"cause-paraphrase","split":"held_out","question":"What made the Regent more powerful?","preferred":"seal","over":"floor","required":["seal"]},
+    {"id":"layout-held-out","split":"held_out","question":"How is the temple floor arranged?","preferred":"floor","over":"seal","required":["floor"]},
+    {"id":"planning-held-out","split":"held_out","question":"What is the Regent planning for the harbor?","preferred":"plan","over":"mural","required":["plan"]}
+  ]
+}

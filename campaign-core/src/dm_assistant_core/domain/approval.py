@@ -52,4 +52,3 @@ def validate_current_approval(
 
     if approval.proposal_id != proposal_id or approval.version != current_version:
         raise StaleApprovalError("approval does not match the current proposal ID and version")
-

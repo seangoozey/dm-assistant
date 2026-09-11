@@ -8,10 +8,27 @@ from enum import StrEnum
 from typing import Annotated, Any, Literal, Protocol
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
+from pydantic import (
+    AliasChoices,
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    field_validator,
+    model_validator,
+)
 
-from dm_assistant_core.domain import ClaimState, RequesterRole, RequesterVisibility, Visibility
+from dm_assistant_core.domain import (
+    ClaimState,
+    EntityKind,
+    RequesterRole,
+    RequesterVisibility,
+    Visibility,
+    normalize_tags,
+)
 from dm_assistant_core.domain.change_sets import Sha256
+from dm_assistant_core.domain.chronology import CampaignDate
+from dm_assistant_core.domain.rules_elements import RulesElementMechanics
 from dm_assistant_core.importer import CandidateAuthority
 
 NonEmptyText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
@@ -31,47 +48,87 @@ class CreateEntityDecision(BaseModel):
     candidate_id: UUID
     evidence_revision_id: UUID
     target_id: UUID
-    entity_type: NonEmptyText
+    entity_kind: EntityKind = Field(validation_alias=AliasChoices("entity_kind", "entity_type"))
     canonical_name: NonEmptyText
+    tags: tuple[str, ...] = ()
+    rules_element_mechanics: RulesElementMechanics | None = None
+
+    @field_validator("tags")
+    @classmethod
+    def require_normalized_unique_tags(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        return normalize_tags(value)
+
+    @model_validator(mode="after")
+    def require_mechanics_for_rules_element(self) -> CreateEntityDecision:
+        if self.entity_kind is EntityKind.RULES_ELEMENT and self.rules_element_mechanics is None:
+            raise ValueError("a rules_element entity requires rules_element_mechanics")
+        if (
+            self.entity_kind is not EntityKind.RULES_ELEMENT
+            and self.rules_element_mechanics is not None
+        ):
+            raise ValueError("rules_element_mechanics is valid only for rules_element entities")
+        return self
 
 
 class CreateClaimDecision(BaseModel):
-    """An explicit claim target and lifecycle decision; assertion text remains source-bound."""
+    """An explicit claim target and lifecycle decision bound to source or extraction text."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     mutation_kind: Literal["create_claim"]
     candidate_id: UUID
+    candidate_extraction_id: UUID | None = None
     evidence_revision_id: UUID
     target_id: UUID
-    subject_entity_id: UUID
+    subject_entity_id: UUID | None = None
     object_entity_id: UUID | None = None
-    predicate: NonEmptyText
+    related_entity_ids: tuple[UUID, ...] = ()
+    assertion_text: NonEmptyText | None = None
+    predicate: NonEmptyText | None = None
     state: ClaimState
     authority: CandidateAuthority
     visibility: Visibility
     confidence: Decimal = Field(ge=0, le=1)
     is_conditional: bool
     predicts_subject_action: bool
+    condition_text: NonEmptyText | None = None
+    condition_reference_type: Literal["claim", "event", "plan", "entity"] | None = None
+    condition_reference_id: UUID | None = None
     recorded_at: datetime
-    effective_from: datetime | None = None
-    effective_until: datetime | None = None
-    expected_at: datetime | None = None
-    observed_at: datetime | None = None
-    time_precision: str | None = None
+    effective_from: CampaignDate | None = None
+    effective_until: CampaignDate | None = None
+    expected_at: CampaignDate | None = None
+    observed_at: CampaignDate | None = None
 
-    @field_validator(
-        "recorded_at",
-        "effective_from",
-        "effective_until",
-        "expected_at",
-        "observed_at",
-    )
+    @field_validator("related_entity_ids")
     @classmethod
-    def require_explicit_timezone(cls, value: datetime | None) -> datetime | None:
-        if value is not None and (value.tzinfo is None or value.utcoffset() is None):
-            raise ValueError("claim times require an explicit timezone")
+    def require_distinct_related_entities(cls, value: tuple[UUID, ...]) -> tuple[UUID, ...]:
+        if len(set(value)) != len(value):
+            raise ValueError("related entity IDs must be distinct")
         return value
+
+    @field_validator("recorded_at")
+    @classmethod
+    def require_explicit_timezone(cls, value: datetime) -> datetime:
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("audit recorded_at requires an explicit timezone")
+        return value
+
+    @model_validator(mode="after")
+    def require_explicit_condition_trigger(self) -> CreateClaimDecision:
+        reference_complete = (self.condition_reference_type is None) == (
+            self.condition_reference_id is None
+        )
+        if not reference_complete:
+            raise ValueError("condition reference type and ID must be supplied together")
+        has_trigger = self.condition_text is not None or self.condition_reference_id is not None
+        if self.is_conditional and not has_trigger:
+            raise ValueError("conditional claim requires an explicit trigger")
+        if not self.is_conditional and has_trigger:
+            raise ValueError("non-conditional claim cannot carry a condition trigger")
+        if self.state is ClaimState.POSSIBLE and self.is_conditional:
+            raise ValueError("possible claims cannot be conditional")
+        return self
 
 
 ProposalItemDecision = Annotated[
@@ -82,6 +139,7 @@ ProposalItemDecision = Annotated[
 class CreateCandidateProposalCommand(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
+    workflow_session_id: UUID | None = None
     items: tuple[ProposalItemDecision, ...] = Field(min_length=1)
 
 
@@ -185,6 +243,8 @@ class CandidateProposalRepository(Protocol):
 
     def get(self, proposal_id: UUID) -> CandidateProposalVersion | None: ...
 
+    def get_for_candidate(self, candidate_id: UUID) -> CandidateProposalVersion | None: ...
+
     def approve(self, command: ApproveCandidateProposalCommand) -> CandidateProposalApproval: ...
 
     def disposition(self, command: DispositionCandidateCommand) -> CandidateDispositionResult: ...
@@ -216,6 +276,12 @@ class CandidateProposalService:
     ) -> CandidateProposalVersion | None:
         self._require_dm(requester)
         return self._repository.get(proposal_id)
+
+    def get_for_candidate(
+        self, candidate_id: UUID, requester: RequesterVisibility
+    ) -> CandidateProposalVersion | None:
+        self._require_dm(requester)
+        return self._repository.get_for_candidate(candidate_id)
 
     def approve(
         self, command: ApproveCandidateProposalCommand, requester: RequesterVisibility

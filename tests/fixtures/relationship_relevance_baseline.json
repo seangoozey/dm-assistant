@@ -1,0 +1,139 @@
+{
+  "version": "relative-relevance-v1",
+  "arm": "lexical-token-overlap",
+  "limitations": "Small judged-pool diagnostic; not live retrieval or production acceptance.",
+  "cases": [
+    {
+      "id": "organization",
+      "split": "development",
+      "ranked": [
+        "command",
+        "goodman",
+        "power",
+        "titan"
+      ],
+      "coverage_missing": [],
+      "pair_correct": false,
+      "recall_at_10": 0.5,
+      "precision_at_10": 0.25
+    },
+    {
+      "id": "causality",
+      "split": "development",
+      "ranked": [
+        "power",
+        "command",
+        "goodman",
+        "titan"
+      ],
+      "coverage_missing": [],
+      "pair_correct": true,
+      "recall_at_10": 1,
+      "precision_at_10": 0.25
+    },
+    {
+      "id": "indirect",
+      "split": "development",
+      "ranked": [
+        "command",
+        "goodman",
+        "power",
+        "titan"
+      ],
+      "coverage_missing": [],
+      "pair_correct": true,
+      "recall_at_10": 1,
+      "precision_at_10": 0.25
+    },
+    {
+      "id": "layout-counterexample",
+      "split": "development",
+      "ranked": [
+        "rooms",
+        "floor"
+      ],
+      "coverage_missing": [],
+      "pair_correct": true,
+      "recall_at_10": 1,
+      "precision_at_10": 0.5
+    },
+    {
+      "id": "organization-paraphrase",
+      "split": "held_out",
+      "ranked": [
+        "plan",
+        "company",
+        "floor",
+        "mural",
+        "regent",
+        "seal",
+        "aris",
+        "command",
+        "power",
+        "rooms"
+      ],
+      "coverage_missing": [],
+      "pair_correct": false,
+      "recall_at_10": 0.5,
+      "precision_at_10": 0.1
+    },
+    {
+      "id": "cause-paraphrase",
+      "split": "held_out",
+      "ranked": [
+        "plan",
+        "regent",
+        "seal",
+        "aris",
+        "command",
+        "company",
+        "floor",
+        "mural",
+        "power"
+      ],
+      "coverage_missing": [],
+      "pair_correct": true,
+      "recall_at_10": 1,
+      "precision_at_10": 0.1111111111111111
+    },
+    {
+      "id": "layout-held-out",
+      "split": "held_out",
+      "ranked": [
+        "floor",
+        "seal",
+        "aris",
+        "command",
+        "company",
+        "mural",
+        "plan",
+        "power",
+        "regent",
+        "rooms"
+      ],
+      "coverage_missing": [],
+      "pair_correct": true,
+      "recall_at_10": 1,
+      "precision_at_10": 0.1
+    },
+    {
+      "id": "planning-held-out",
+      "split": "held_out",
+      "ranked": [
+        "plan",
+        "regent",
+        "seal",
+        "aris",
+        "command",
+        "company",
+        "floor",
+        "mural",
+        "power"
+      ],
+      "coverage_missing": [],
+      "pair_correct": true,
+      "recall_at_10": 1,
+      "precision_at_10": 0.1111111111111111
+    }
+  ]
+}

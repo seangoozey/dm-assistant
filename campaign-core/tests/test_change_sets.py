@@ -81,9 +81,7 @@ def test_apply_contract_rejects_stale_or_unauthorized_request() -> None:
     response = asyncio.run(post_application(RecordingRepository(reject=True)))
 
     assert response.status_code == 409
-    assert response.json() == {
-        "detail": "approval does not authorize this proposal version"
-    }
+    assert response.json() == {"detail": "approval does not authorize this proposal version"}
 
 
 def test_apply_contract_rejects_unknown_fields_and_invalid_hash() -> None:
@@ -122,8 +120,7 @@ def test_apply_is_the_only_mutating_http_operation() -> None:
         (path, method)
         for path, operations in app.openapi()["paths"].items()
         for method, operation in operations.items()
-        if method in {"post", "put", "patch", "delete"}
-        and "campaign" in operation.get("tags", [])
+        if method in {"post", "put", "patch", "delete"} and "campaign" in operation.get("tags", [])
     }
 
     assert canonical_mutating_operations == {("/change-sets/{change_set_id}/apply", "post")}

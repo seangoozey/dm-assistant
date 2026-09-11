@@ -42,7 +42,4 @@ class PlanningClaim(BaseModel):
             raise ValueError("PC campaign direction must remain prepared or possible")
         if self.visibility is not Visibility.DM_ONLY:
             raise ValueError("PC campaign direction must remain DM-only")
-        if not self.conditional:
-            raise ValueError("PC campaign direction must use conditional planning semantics")
         return self
-

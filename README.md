@@ -29,6 +29,7 @@ The verified Starfall scope has been ingested into the local development databas
 - Docker Compose on TrueNAS.
 - Local Git as the authoritative source; Windmill deployment through the CLI.
 - Cognee as an optional, disposable graph/retrieval index.
+- OpenRouter as the v1 AI provider, with a DM-visible controlled model profile selector and `deepseek/deepseek-chat` as the recommended extraction profile. See ADR-0008.
 
 All platform choices remain revisable until a vertical slice proves them.
 

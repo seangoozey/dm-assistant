@@ -26,14 +26,24 @@ from dm_assistant_core.application.candidate_proposals import (
     ProposalItemDecision,
     ReviseCandidateProposalCommand,
 )
+from dm_assistant_core.domain.chronology import compare_same_calendar
 
 _BLOCKED_CLASSIFICATIONS = {"template", "navigation_index", "quarantine"}
-_ALLOWED_CLAIM_TRANSITIONS = {
-    ("real_play", "observed", "real_play"),
-    ("explicit_lore", "established", "explicit_lore"),
-    ("npc_intention", "intended", "npc_intention"),
-    ("preparation", "prepared", "preparation"),
-    ("brainstorm", "possible", "brainstorm"),
+_ALLOWED_CLAIM_COORDINATES = {
+    ("observed", "real_play"),
+    ("established", "explicit_lore"),
+    ("intended", "npc_intention"),
+    ("prepared", "preparation"),
+    ("possible", "brainstorm"),
+}
+_ALLOWED_AUTHORITY_CORRECTIONS = {
+    "real_play": {"real_play"},
+    # A human reviewer may recognize durable source wording as an event that
+    # occurred during play even when automated import classified it as lore.
+    "explicit_lore": {"real_play", "explicit_lore", "preparation", "brainstorm"},
+    "npc_intention": {"npc_intention", "brainstorm"},
+    "preparation": {"preparation", "brainstorm"},
+    "brainstorm": {"brainstorm"},
 }
 
 
@@ -45,17 +55,35 @@ class PostgresCandidateProposalRepository:
 
     def create(self, command: CreateCandidateProposalCommand) -> CandidateProposalVersion:
         proposal_id = uuid4()
-        workflow_id = uuid4()
+        workflow_id = command.workflow_session_id or uuid4()
         version_id = uuid4()
         now = datetime.now(UTC)
         with self._database.connection() as connection:
+            if command.workflow_session_id is not None:
+                workflow = connection.execute(
+                    "SELECT kind::text, closed_at FROM workflow_sessions WHERE id = %s "
+                    "FOR UPDATE",
+                    (workflow_id,),
+                ).fetchone()
+                if workflow is None or str(workflow[0]) != "brainstorm":
+                    raise CandidateProposalError("proposal workflow is not a brainstorm session")
+                if workflow[1] is not None:
+                    raise CandidateProposalError("closed brainstorm cannot create a proposal")
+                existing = connection.execute(
+                    "SELECT 1 FROM proposals WHERE workflow_session_id = %s "
+                    "AND status NOT IN ('rejected', 'superseded') LIMIT 1",
+                    (workflow_id,),
+                ).fetchone()
+                if existing is not None:
+                    raise CandidateProposalError("brainstorm already has a promotion proposal")
             prepared = _prepare_items(connection, command.items, workflow_id, None)
             content_hash = _content_hash(prepared)
-            connection.execute(
-                "INSERT INTO workflow_sessions (id, kind, started_at) "
-                "VALUES (%s, 'import_review', %s)",
-                (workflow_id, now),
-            )
+            if command.workflow_session_id is None:
+                connection.execute(
+                    "INSERT INTO workflow_sessions (id, kind, started_at) "
+                    "VALUES (%s, 'import_review', %s)",
+                    (workflow_id, now),
+                )
             connection.execute(
                 "INSERT INTO proposals (id, workflow_session_id, status, created_at) "
                 "VALUES (%s, %s, 'pending', %s)",
@@ -163,6 +191,19 @@ class PostgresCandidateProposalRepository:
             items=tuple(_proposal_item(row) for row in rows),
         )
 
+    def get_for_candidate(self, candidate_id: UUID) -> CandidateProposalVersion | None:
+        with self._database.connection() as connection:
+            row = connection.execute(
+                "SELECT pv.proposal_id FROM proposal_candidate_bindings pcb "
+                "JOIN proposal_items pi ON pi.id = pcb.proposal_item_id "
+                "JOIN proposal_versions pv ON pv.id = pi.proposal_version_id "
+                "JOIN proposals p ON p.id = pv.proposal_id "
+                "WHERE pcb.candidate_id = %s AND p.status = 'pending' "
+                "ORDER BY pv.version_number DESC LIMIT 1",
+                (candidate_id,),
+            ).fetchone()
+        return self.get(row[0]) if row else None
+
     def approve(self, command: ApproveCandidateProposalCommand) -> CandidateProposalApproval:
         if len(set(command.item_ids)) != len(command.item_ids):
             raise CandidateProposalError("approval scope contains duplicate proposal items")
@@ -269,12 +310,39 @@ class PostgresCandidateProposalRepository:
             ).fetchone()
             if row is None:
                 raise CandidateProposalError("candidate does not exist")
-            if str(row[0]) != "active":
-                raise CandidateProposalError("source-removed candidate cannot be dispositioned")
             if str(row[1]) in {"proposed", "applied"}:
                 raise CandidateProposalError(
                     "proposed or applied candidate cannot be dispositioned"
                 )
+            if str(row[0]) == "source_removed":
+                bound = connection.execute(
+                    "SELECT 1 FROM proposal_candidate_bindings "
+                    "WHERE candidate_id = %s LIMIT 1",
+                    (command.candidate_id,),
+                ).fetchone()
+                if bound is not None:
+                    raise CandidateProposalError(
+                        "proposal-bound source-removed candidate cannot be dispositioned"
+                    )
+            if str(row[1]) == command.disposition.value:
+                existing = connection.execute(
+                    "SELECT id, created_at FROM candidate_dispositions "
+                    "WHERE candidate_id = %s AND disposition = %s AND reason = %s "
+                    "ORDER BY created_at DESC, id DESC LIMIT 1",
+                    (
+                        command.candidate_id,
+                        command.disposition.value,
+                        command.reason,
+                    ),
+                ).fetchone()
+                if existing is not None:
+                    return CandidateDispositionResult(
+                        disposition_id=existing[0],
+                        candidate_id=command.candidate_id,
+                        review_status=command.disposition,
+                        reason=command.reason,
+                        created_at=existing[1],
+                    )
             connection.execute(
                 "INSERT INTO candidate_dispositions (id, candidate_id, disposition, reason, "
                 "created_at) VALUES (%s, %s, %s, %s, %s)",
@@ -335,7 +403,7 @@ def _prepare_items(
     if len({decision.target_id for decision in decisions}) != len(decisions):
         raise CandidateProposalError("proposal contains duplicate immutable target IDs")
     new_entities = {
-        decision.target_id: decision.entity_type
+        decision.target_id: decision.entity_kind.value
         for decision in decisions
         if isinstance(decision, CreateEntityDecision)
     }
@@ -370,15 +438,39 @@ def _prepare_items(
         if isinstance(decision, CreateEntityDecision):
             _validate_new_entity(connection, decision)
             target_type = "entity"
-            after = {
+            after: dict[str, Any] = {
                 "id": str(decision.target_id),
-                "entity_type": decision.entity_type,
+                "record_type": "entity",
+                "entity_kind": decision.entity_kind.value,
+                "entity_kind_version": 1,
+                "entity_type": decision.entity_kind.value,
                 "canonical_name": decision.canonical_name,
+                "tags": list(decision.tags),
             }
+            if decision.rules_element_mechanics is not None:
+                after["rules_element_mechanics"] = {
+                    "rules_kind": decision.rules_element_mechanics.rules_kind.value,
+                    "summary": decision.rules_element_mechanics.summary,
+                    "mechanics": decision.rules_element_mechanics.mechanics,
+                }
         else:
-            _validate_claim(connection, decision, candidate, new_entities)
+            _validate_claim(connection, decision, candidate, new_entities, workflow_id)
             target_type = "claim"
-            after = _claim_payload(decision, str(candidate[1]), span_id, workflow_id)
+            assertion_text = str(candidate[1])
+            if decision.candidate_extraction_id is not None:
+                extraction = connection.execute(
+                    "SELECT assertion_text FROM candidate_extractions "
+                    "WHERE id = %s AND candidate_id = %s",
+                    (decision.candidate_extraction_id, decision.candidate_id),
+                ).fetchone()
+                if extraction is None:
+                    raise CandidateProposalError(
+                        "candidate extraction does not belong to the proposed candidate"
+                    )
+                assertion_text = str(extraction[0])
+            if decision.assertion_text is not None:
+                assertion_text = decision.assertion_text
+            after = _claim_payload(decision, assertion_text, span_id, workflow_id)
         prepared.append(
             _PreparedItem(
                 item_id=uuid4(),
@@ -428,7 +520,7 @@ def _validate_new_entity(connection: Any, decision: CreateEntityDecision) -> Non
     collision = connection.execute(
         "SELECT 1 FROM entities WHERE id = %s OR "
         "(lower(canonical_name) = lower(%s) AND entity_type = %s) LIMIT 1",
-        (decision.target_id, decision.canonical_name, decision.entity_type),
+        (decision.target_id, decision.canonical_name, decision.entity_kind.value),
     ).fetchone()
     if collision is not None:
         raise CandidateProposalError("entity target or exact canonical identity already exists")
@@ -439,61 +531,115 @@ def _validate_claim(
     decision: CreateClaimDecision,
     candidate: tuple[Any, ...],
     new_entities: dict[UUID, str],
+    workflow_id: UUID,
 ) -> None:
-    transition = (str(candidate[3]), decision.state.value, decision.authority.value)
-    if transition not in _ALLOWED_CLAIM_TRANSITIONS:
-        raise CandidateProposalError("candidate authority cannot produce the requested claim state")
-    if decision.visibility.value != str(candidate[4]):
-        raise CandidateProposalError("claim visibility must match the reviewed candidate")
-    if decision.is_conditional != bool(candidate[5]) or decision.predicts_subject_action != bool(
-        candidate[6]
-    ):
-        raise CandidateProposalError("claim agency flags must match the reviewed candidate")
+    coordinates = (decision.state.value, decision.authority.value)
+    if coordinates not in _ALLOWED_CLAIM_COORDINATES:
+        raise CandidateProposalError("claim state and authority are not a valid pair")
+    authority_allowed = (
+        decision.authority.value in _ALLOWED_AUTHORITY_CORRECTIONS[str(candidate[3])]
+    )
+    if not authority_allowed and str(candidate[3]) == "brainstorm":
+        authority_allowed = connection.execute(
+            "SELECT 1 FROM brainstorm_thoughts WHERE workflow_session_id = %s "
+            "AND candidate_id = %s LIMIT 1",
+            (workflow_id, decision.candidate_id),
+        ).fetchone() is not None
+    if not authority_allowed:
+        raise CandidateProposalError("claim authority cannot be strengthened beyond its evidence")
     if decision.state.value == "observed" and decision.observed_at is None:
-        raise CandidateProposalError("observed claim requires an observed_at value")
-    if decision.observed_at is not None and decision.observed_at > decision.recorded_at:
-        raise CandidateProposalError("an observation cannot occur after its recorded time")
+        raise CandidateProposalError("observed claim requires an observed campaign year")
     planning_states = {"intended", "prepared"}
     if decision.expected_at is not None and decision.state.value not in planning_states:
         raise CandidateProposalError("expected_at is valid only for intended or prepared claims")
-    if decision.effective_from is not None and decision.effective_from > decision.recorded_at:
+    if (
+        decision.effective_from is not None
+        and decision.effective_until is not None
+        and compare_same_calendar(decision.effective_until, decision.effective_from) < 0
+    ):
+        raise CandidateProposalError("effective_until cannot precede effective_from")
+    if (
+        decision.effective_from is not None
+        and decision.effective_from.year is not None
+        and decision.effective_from.year > decision.recorded_at.year
+    ):
         if decision.state.value not in planning_states:
             raise CandidateProposalError("future facts must remain intended or prepared")
         if decision.expected_at is None:
             raise CandidateProposalError("future intended or prepared claim requires expected_at")
-    if (
-        decision.effective_from is not None
-        and decision.effective_until is not None
-        and decision.effective_until < decision.effective_from
-    ):
-        raise CandidateProposalError("effective_until cannot precede effective_from")
-    subject_type = _entity_type(connection, decision.subject_entity_id, new_entities)
+    subject_type = (
+        _entity_type(connection, decision.subject_entity_id, new_entities)
+        if decision.subject_entity_id is not None
+        else None
+    )
     if decision.object_entity_id is not None:
         _entity_type(connection, decision.object_entity_id, new_entities)
-        if decision.object_entity_id == decision.subject_entity_id:
+        if (
+            decision.subject_entity_id is not None
+            and decision.object_entity_id == decision.subject_entity_id
+        ):
             raise CandidateProposalError("claim subject and object cannot be the same entity")
+    for related_entity_id in decision.related_entity_ids:
+        _entity_type(connection, related_entity_id, new_entities)
     if subject_type == "pc":
         if decision.predicts_subject_action:
             raise CandidateProposalError("future PC actions cannot be predicted or prescribed")
         if decision.authority.value in {"preparation", "brainstorm"} and (
             decision.state.value not in {"prepared", "possible"}
             or decision.visibility.value != "dm_only"
-            or not decision.is_conditional
         ):
             raise CandidateProposalError(
-                "PC campaign direction must be conditional, DM-only planning"
+                "PC campaign direction must remain prepared or possible and DM-only"
             )
     if connection.execute("SELECT 1 FROM claims WHERE id = %s", (decision.target_id,)).fetchone():
         raise CandidateProposalError("claim target already exists")
-    conflict = connection.execute(
-        "SELECT 1 FROM claims WHERE subject_entity_id = %s "
-        "AND predicate IS NOT DISTINCT FROM %s LIMIT 1",
-        (decision.subject_entity_id, decision.predicate),
-    ).fetchone()
-    if conflict is not None:
-        raise CandidateProposalError(
-            "existing claim with this subject and predicate requires conflict review"
+    proposed_assertion = decision.assertion_text or str(candidate[1])
+    if decision.subject_entity_id is None:
+        existing_claims = connection.execute(
+            "SELECT assertion_text, predicate FROM claims "
+            "WHERE subject_entity_id IS NULL AND lower(assertion_text) = lower(%s)",
+            (proposed_assertion,),
+        ).fetchall()
+    else:
+        existing_claims = connection.execute(
+            "SELECT assertion_text, predicate FROM claims WHERE subject_entity_id = %s",
+            (decision.subject_entity_id,),
+        ).fetchall()
+    if any(
+        _assertions_require_conflict_review(
+            proposed_assertion,
+            decision.predicate,
+            str(existing[0]),
+            str(existing[1]) if existing[1] is not None else None,
         )
+        for existing in existing_claims
+    ):
+        raise CandidateProposalError(
+            "existing claim with this subject and overlapping assertion requires conflict review"
+        )
+
+
+def _assertions_require_conflict_review(
+    proposed: str,
+    proposed_predicate: str | None,
+    existing: str,
+    existing_predicate: str | None,
+) -> bool:
+    import re
+
+    def terms(value: str) -> set[str]:
+        return {word for word in re.findall(r"[a-z0-9]+", value.casefold()) if len(word) > 2}
+
+    proposed_terms = terms(proposed)
+    existing_terms = terms(existing)
+    if proposed_terms == existing_terms:
+        return True
+    if proposed_predicate is None or existing_predicate is None:
+        return False
+    if proposed_predicate.casefold().strip() != existing_predicate.casefold().strip():
+        return False
+    union = proposed_terms | existing_terms
+    return bool(union) and len(proposed_terms & existing_terms) / len(union) >= 0.35
 
 
 def _entity_type(connection: Any, entity_id: UUID, new_entities: dict[UUID, str]) -> str:
@@ -510,11 +656,14 @@ def _entity_type(connection: Any, entity_id: UUID, new_entities: dict[UUID, str]
 def _claim_payload(
     decision: CreateClaimDecision, assertion_text: str, span_id: UUID, workflow_id: UUID
 ) -> dict[str, Any]:
-    return {
+    payload: dict[str, Any] = {
         "id": str(decision.target_id),
-        "subject_entity_id": str(decision.subject_entity_id),
+        "subject_entity_id": (
+            str(decision.subject_entity_id) if decision.subject_entity_id else None
+        ),
         "predicate": decision.predicate,
         "object_entity_id": str(decision.object_entity_id) if decision.object_entity_id else None,
+        "related_entity_ids": [str(entity_id) for entity_id in decision.related_entity_ids],
         "assertion_text": assertion_text,
         "state": decision.state.value,
         "authority": decision.authority.value,
@@ -522,18 +671,40 @@ def _claim_payload(
         "visibility": decision.visibility.value,
         "is_conditional": decision.is_conditional,
         "predicts_subject_action": decision.predicts_subject_action,
+        "condition_text": decision.condition_text,
+        "condition_reference_type": decision.condition_reference_type,
+        "condition_reference_id": (
+            str(decision.condition_reference_id) if decision.condition_reference_id else None
+        ),
         "recorded_at": decision.recorded_at.isoformat(),
-        "effective_from": decision.effective_from.isoformat() if decision.effective_from else None,
-        "effective_until": decision.effective_until.isoformat()
-        if decision.effective_until
-        else None,
-        "expected_at": decision.expected_at.isoformat() if decision.expected_at else None,
-        "observed_at": decision.observed_at.isoformat() if decision.observed_at else None,
-        "time_precision": decision.time_precision,
         "session_id": str(workflow_id),
         "source_span_id": str(span_id),
         "evidence_role": "support",
     }
+    payload.update(_date_fields("effective_from", decision.effective_from))
+    payload.update(_date_fields("effective_until", decision.effective_until))
+    payload.update(_date_fields("expected", decision.expected_at))
+    payload.update(_date_fields("observed", decision.observed_at))
+    return payload
+
+
+def _date_fields(prefix: str, date: Any) -> dict[str, Any]:
+    """Flatten a CampaignDate into the year/month/day/calendar columns the SQL expects."""
+    if date is None:
+        return {
+            f"{prefix}_year": None,
+            f"{prefix}_month": None,
+            f"{prefix}_day": None,
+        }
+    calendar_id = getattr(date, "calendar_id", None)
+    fields: dict[str, Any] = {
+        f"{prefix}_year": getattr(date, "year", None),
+        f"{prefix}_month": getattr(date, "month", None),
+        f"{prefix}_day": getattr(date, "day", None),
+    }
+    if prefix == "effective_from":
+        fields["campaign_calendar_id"] = calendar_id
+    return fields
 
 
 def _content_hash(prepared: tuple[_PreparedItem, ...]) -> str:

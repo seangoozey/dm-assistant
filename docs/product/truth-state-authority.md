@@ -17,6 +17,8 @@ Every claim records separate values for state, authority, confidence, visibility
 
 Rumor, belief, secrecy, and uncertainty are epistemic or visibility attributes, not replacements for a lifecycle state.
 
+Entity kinds and tags are also independent of truth state. An entity kind describes what stable subject a record represents; a tag is an optional retrieval facet. Neither says that a disputed assertion is true. For example, an NPC may be tagged `deity` only when that organizational classification is accepted; disputed divinity is represented by sourced claims instead.
+
 ## Claim-state transitions
 
 | State | Entry rule | Exit rule | Supersession rule |

@@ -1,0 +1,35 @@
+{
+  "version": "relative-relevance-v2-explicit-bridges",
+  "origin": "Synthetic evidence extending v1: every organizational bridge a required path relies on is explicitly stated by a bridge record, and absent-bridge cases must never be connected. Records carry explicit entity tokens so bridge coverage is machine-checkable offline. Campaign-name cases reflect user-provided relative relevance judgments, not new canon. Held-out cases are excluded from extraction prompts and tuning.",
+  "records": [
+    {"id": "command", "text": "Romulus is Grand Inquisitor and commands the Inquisition.", "entities": ["Romulus", "Inquisition"]},
+    {"id": "company", "text": "Sorin served in the company led by Inquisitor Eustice.", "entities": ["Sorin", "Eustice", "Eustice's company"]},
+    {"id": "company-bridge", "text": "Inquisitor Eustice's company is a field company of the Inquisition.", "entities": ["Eustice", "Eustice's company", "Inquisition"]},
+    {"id": "power", "text": "The death of Arkin's mortal body released leyline flow, increasing Romulus's power.", "entities": ["Arkin", "Romulus"]},
+    {"id": "rooms", "text": "Ishirala Floor 3 has triangular rooms and mirror portals. Its statue depicts Goodman.", "entities": ["Ishirala", "Goodman"]},
+    {"id": "goodman", "text": "Romulus controls Goodman.", "entities": ["Romulus", "Goodman"]},
+    {"id": "titan", "text": "Romulus ordered Ishi'go'dan to destroy a distant castle.", "entities": ["Romulus", "Ishi'go'dan"]},
+    {"id": "aris", "text": "Aris survived the earlier destruction of her city by Ishi'go'dan.", "entities": ["Aris", "Ishi'go'dan"]},
+    {"id": "regent", "text": "The Regent commands the Wardens.", "entities": ["Regent", "Wardens"]},
+    {"id": "warden-bridge", "text": "Captain Vale's Warden patrol is part of the Wardens.", "entities": ["Vale", "Vale's Warden patrol", "Wardens"]},
+    {"id": "warden", "text": "Mira belonged to Captain Vale's Warden patrol.", "entities": ["Mira", "Vale", "Vale's Warden patrol"]},
+    {"id": "mural", "text": "The inn corridor has a mural of Captain Vale beside a window.", "entities": ["Vale"]},
+    {"id": "seal", "text": "Breaking the temple seal freed magical energy that strengthened the Regent.", "entities": ["Regent", "temple"]},
+    {"id": "floor", "text": "The temple floor is tiled blue and has three exits.", "entities": ["temple"]},
+    {"id": "plan", "text": "The Regent intends to close the harbor tomorrow; no closure has occurred.", "entities": ["Regent", "harbor"]},
+    {"id": "silver-helms", "text": "Inquisitor Brandt commands the Silver Helms.", "entities": ["Brandt", "Silver Helms"]},
+    {"id": "ossler-company", "text": "Kade served in the company of Merchant-Lord Ossler.", "entities": ["Kade", "Ossler", "Ossler's company"]}
+  ],
+  "cases": [
+    {"id": "organization", "split": "development", "question": "Romulus's organization", "preferred": "company", "over": "rooms", "required": ["command", "company-bridge", "company"], "required_path": ["command", "company-bridge", "company"]},
+    {"id": "causality", "split": "development", "question": "Romulus's power", "preferred": "power", "over": "rooms", "required": ["power"]},
+    {"id": "indirect", "split": "development", "question": "Romulus's orders", "preferred": "titan", "over": "aris", "required": ["titan"]},
+    {"id": "layout-counterexample", "split": "development", "question": "Ishirala Floor 3 room layout", "preferred": "rooms", "over": "power", "required": ["rooms"]},
+    {"id": "absent-bridge-development", "split": "development", "question": "Brandt's organization", "preferred": "silver-helms", "over": "ossler-company", "required": ["silver-helms"], "absent_bridges": [["silver-helms", "ossler-company"]]},
+    {"id": "organization-paraphrase", "split": "held_out", "question": "Who has served under the Regent's officers?", "preferred": "warden", "over": "mural", "required": ["regent", "warden-bridge", "warden"], "required_path": ["regent", "warden-bridge", "warden"]},
+    {"id": "cause-paraphrase", "split": "held_out", "question": "What made the Regent more powerful?", "preferred": "seal", "over": "floor", "required": ["seal"]},
+    {"id": "layout-held-out", "split": "held_out", "question": "How is the temple floor arranged?", "preferred": "floor", "over": "seal", "required": ["floor"]},
+    {"id": "planning-held-out", "split": "held_out", "question": "What is the Regent planning for the harbor?", "preferred": "plan", "over": "mural", "required": ["plan"]},
+    {"id": "absent-bridge-held-out", "split": "held_out", "question": "Who served under an Inquisitor?", "preferred": "company", "over": "ossler-company", "required": ["company"], "absent_bridges": [["ossler-company", "company"], ["ossler-company", "command"]]}
+  ]
+}

@@ -117,9 +117,7 @@ def test_character_identity_and_missing_records_fail_closed() -> None:
     app = create_app(settings(), import_reviews=ImportReviewService(repository))
     missing_id = "10000000-0000-0000-0000-000000000001"
 
-    invalid_requester = asyncio.run(
-        _get(app, "/imports/candidates?requester_role=character")
-    )
+    invalid_requester = asyncio.run(_get(app, "/imports/candidates?requester_role=character"))
     missing_candidate = asyncio.run(
         _get(app, f"/imports/candidates/{missing_id}?requester_role=dm")
     )

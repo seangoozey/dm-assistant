@@ -56,4 +56,58 @@ describe("reviewCampaign backend runnable", () => {
       expect.objectContaining({ method: "POST", body: JSON.stringify(body) }),
     );
   });
+
+  it("routes plan creation and lifecycle proposals only through Campaign Core", async () => {
+    const request = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify({ proposal_id: "plan-proposal" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    await reviewCampaign(
+      { operation: "transition_plan_proposal", plan_id: "plan-1", body: {
+        plan_id: "plan-1", lifecycle: "failed", supporting_claim_ids: ["claim-1"],
+      } },
+      "http://campaign-core:8000",
+      request,
+    );
+    const endpoint = request.mock.calls[0]?.[0] as URL;
+    expect(endpoint.pathname).toBe("/plans/plan-1/lifecycle-proposals");
+    expect(endpoint.searchParams.get("requester_role")).toBe("dm");
+  });
+
+  it("routes source document listing to Campaign Core", async () => {
+    const request = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify({ items: [], total: 0, limit: 500, offset: 0 }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    await reviewCampaign(
+      { operation: "list_source_documents", query: { limit: 500 } },
+      "http://campaign-core:8000",
+      request,
+    );
+    const endpoint = request.mock.calls[0]?.[0] as URL;
+    expect(endpoint.pathname).toBe("/imports/source-documents");
+    expect(endpoint.searchParams.get("requester_role")).toBe("dm");
+    expect(endpoint.searchParams.get("limit")).toBe("500");
+  });
+
+  it("routes durable session note writes and deletes", async () => {
+    const request = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify({ deleted: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    await reviewCampaign(
+      { operation: "delete_session_run_note", run_id: "run-1", note_id: "note-1" },
+      "http://campaign-core:8000",
+      request,
+    );
+    const endpoint = request.mock.calls[0]?.[0] as URL;
+    expect(endpoint.pathname).toBe("/campaign/session-runs/run-1/notes/note-1");
+    expect(request.mock.calls[0]?.[1]).toEqual(expect.objectContaining({ method: "DELETE" }));
+  });
 });
