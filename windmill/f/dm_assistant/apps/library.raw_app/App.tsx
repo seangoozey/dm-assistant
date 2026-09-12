@@ -1,4 +1,4 @@
-import { FormEvent, KeyboardEvent as ReactKeyboardEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, KeyboardEvent as ReactKeyboardEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { evidenceTitle } from "./evidenceTitle";
 
 import type {
@@ -38,6 +38,8 @@ import type {
   SessionRun,
   EncounterProgress,
   EncounterLifecycle,
+  IdentityGap,
+  IdentityDecisionReceipt,
 } from "./campaignClient";
 import type { JobPlatform, JobSnapshot } from "./jobPlatform";
 import {
@@ -420,7 +422,8 @@ function CharacterProfileEditor({ profile, kind, changedFields, preview, onChang
         <label>Race<input aria-label={`${label} race`} value={profile.race ?? ""} onChange={(event) => onChange({ ...profile, race: event.target.value || undefined })} /></label>
         <label>Sex<input aria-label={`${label} sex`} value={profile.sex ?? ""} onChange={(event) => onChange({ ...profile, sex: event.target.value || undefined })} /></label>
         <label>Status<input aria-label={`${label} status`} value={profile.status} onChange={(event) => onChange({ ...profile, status: event.target.value })} /></label>
-        <label>Aliases<input aria-label={`${label} aliases`} value={profile.aliases.join(", ")} onChange={(event) => onChange({ ...profile, aliases: event.target.value.split(",").map((value) => value.trim()).filter(Boolean) })} /></label>
+        {/* The in-progress (last) segment keeps its trailing space mid-word; its leading space would double the join separator, so it is start-trimmed. */}
+        <label>Aliases<input aria-label={`${label} aliases`} value={profile.aliases.join(", ")} onChange={(event) => onChange({ ...profile, aliases: event.target.value.split(",").map((value, index, all) => index < all.length - 1 ? value.trim() : value.trimStart()) })} onBlur={(event) => onChange({ ...profile, aliases: event.target.value.split(",").map((value) => value.trim()).filter(Boolean) })} /></label>
       </div>
       <label className="pc-background-field">Background<textarea aria-label={`${label} background`} rows={14} value={profile.background} onChange={(event) => onChange({ ...profile, background: event.target.value })} /></label>
       {preview && <section className="pc-change-preview" aria-label={`${label} profile change review`}><div><h2>Save these changes?</h2><p>{changedFields.length === 1 ? "1 field changed" : `${changedFields.length} fields changed`}: {changedFields.join(", ")}.</p></div><button onClick={onSave} type="button">Save changes</button></section>}
@@ -779,6 +782,11 @@ function App({ campaignClient, jobPlatform, storage, pollIntervalMs = 700 }: App
   const [runs, setRuns] = useState<ImportRunSummary[]>([]);
   const [candidates, setCandidates] = useState<ImportCandidate[]>([]);
   const [reviews, setReviews] = useState<ImportReviewItem[]>([]);
+  const [identityGaps, setIdentityGaps] = useState<IdentityGap[] | null>(null);
+  const [identityBusy, setIdentityBusy] = useState(false);
+  const [identityMessage, setIdentityMessage] = useState("");
+  const [identityKinds, setIdentityKinds] = useState<Record<string, string>>({});
+  const [identityAliasSelection, setIdentityAliasSelection] = useState<Record<string, string[]>>({});
   const [queueTotal, setQueueTotal] = useState(0);
   const [sourceDocuments, setSourceDocuments] = useState<SourceDocument[]>([]);
   const [libraryEntries, setLibraryEntries] = useState<LibraryEntrySummary[]>([]);
@@ -1702,6 +1710,36 @@ function App({ campaignClient, jobPlatform, storage, pollIntervalMs = 700 }: App
     }
   }
 
+  const loadIdentityGaps = useCallback(async () => {
+    setIdentityBusy(true);
+    try {
+      const queue = await campaignClient.getIdentityGaps(30);
+      setIdentityGaps(queue.gaps);
+      // Related surfaces default to selected: merging variants is the common
+      // case, and deselecting is the explicit refusal.
+      setIdentityAliasSelection(Object.fromEntries(queue.gaps.map((gap) => [
+        gap.normalized_surface, [...gap.related_surfaces]])));
+      setIdentityMessage("");
+    } catch (error) {
+      setIdentityMessage(error instanceof Error ? error.message : "Identity queue could not be loaded");
+    } finally {
+      setIdentityBusy(false);
+    }
+  }, [campaignClient]);
+
+  const decideIdentity = useCallback(async (action: () => Promise<IdentityDecisionReceipt>, done: string) => {
+    setIdentityBusy(true);
+    try {
+      const receipt = await action();
+      await loadIdentityGaps();
+      setIdentityMessage(`${done} with receipt ${receipt.decision_id}`);
+    } catch (error) {
+      setIdentityMessage(error instanceof Error ? error.message : "Identity decision failed");
+    } finally {
+      setIdentityBusy(false);
+    }
+  }, [campaignClient, loadIdentityGaps]);
+
   const selectedReviews = useMemo(
     () => reviews.filter((review) => review.subject_id === selected?.source_document_id),
     [reviews, selected?.source_document_id],
@@ -2365,12 +2403,19 @@ function App({ campaignClient, jobPlatform, storage, pollIntervalMs = 700 }: App
         source_revision_id: pcDraft.source_revision_id, version: pcDraft.version,
         canonical_name: pcDraft.canonical_name.trim(), player: pcDraft.player?.trim() || undefined,
         race: pcDraft.race?.trim() || undefined, sex: pcDraft.sex?.trim() || undefined,
-        status: pcDraft.status.trim(), aliases: pcDraft.aliases, background: pcDraft.background,
+        status: pcDraft.status.trim(),
+        aliases: pcDraft.aliases.map((value) => value.trim()).filter(Boolean),
+        background: pcDraft.background,
         idempotency_key: pcSaveKey || `pc-profile:${pcDraft.document_id}:${pcDraft.version}:${crypto.randomUUID()}`,
       });
       const saved = { ...pcDraft, version: receipt.version };
       setPCProfile(saved); setPCDraft(saved); setPCEditing(false); setPCPreview(false); setPCSaveKey("");
-      setPCMessage(`Saved with receipt ${receipt.receipt_id}`);
+      const sync = receipt.alias_sync;
+      const syncCopy = !sync ? "" : ` Identity aliases ${sync.applied.length || sync.removed.length || sync.skipped_conflicting.length ? `for ${sync.entity_name}:` : `checked for ${sync.entity_name}; no changes.`}`
+        + [sync.applied.length ? ` added ${sync.applied.join(", ")}` : "",
+           sync.removed.length ? ` removed ${sync.removed.join(", ")}` : "",
+           sync.skipped_conflicting.length ? ` skipped (owned by another identity): ${sync.skipped_conflicting.join(", ")}` : ""].filter(Boolean).join(";") + ".";
+      setPCMessage(`Saved with receipt ${receipt.receipt_id}${syncCopy}`);
     } catch (error) { setPCMessage(error instanceof Error ? error.message : "PC profile could not be saved"); }
   }
 
@@ -2627,6 +2672,28 @@ function App({ campaignClient, jobPlatform, storage, pollIntervalMs = 700 }: App
         </section>
 
         {sourceReviews.length > 0 && <section className="operations source-reviews-tool" aria-label="Source reviews"><div className="section-heading"><div><p className="kicker">Import maintenance</p><h2>Source Reviews</h2></div><p>Source-level quarantine and unresolved-reference work lives outside the migration workflow.</p></div><div className="source-review-queue"><header><span>Open source reviews</span><b>{sourceReviews.length} open · {quarantineCount} quarantined</b></header>{sourceReviews.slice(0, 20).map((review) => <article key={review.review_id}><span>{display(review.kind)} · {display(review.classification ?? "unclassified")}</span><b>{review.source_path ?? review.subject_id}</b><p>{reviewSummary(review)}</p></article>)}</div></section>}
+
+        <section className="operations identity-review-tool" aria-label="Identity review">
+          <div className="section-heading"><div><p className="kicker">Identity maintenance</p><h2>Identity Review</h2></div><p>Names that recur in current claims but resolve to no identity. Detection is automatic; every decision is yours and recorded. Nothing merges automatically.</p></div>
+          <div className="identity-queue" data-testid="identity-queue">
+            <header><span>Unresolved surfaces</span><button className="secondary-button" disabled={identityBusy} onClick={() => void loadIdentityGaps()}>{identityBusy ? "Working…" : identityGaps === null ? "Review identities" : "Refresh"}</button></header>
+            {identityMessage && <p role="status">{identityMessage}</p>}
+            {identityGaps !== null && identityGaps.length === 0 && <p className="identity-empty">No unresolved surfaces right now.</p>}
+            {identityGaps?.slice(0, 20).map((gap) => <article key={gap.normalized_surface} className="identity-gap">
+              <div className="identity-gap-main"><b>{gap.surface}</b><span>{gap.retrieval_demand > 0 && <>{gap.retrieval_demand} lookup miss{gap.retrieval_demand === 1 ? "" : "es"} · </>}{gap.claims_with_phrase} claim{gap.claims_with_phrase === 1 ? "" : "s"} · {gap.total_mentions} mention{gap.total_mentions === 1 ? "" : "s"}</span></div>
+              {gap.evidence[0] && <p className="identity-evidence">“{gap.evidence[0].excerpt}”</p>}
+              {gap.role_hint && <p className="identity-role-hint">Ends like a role or title you have marked before.</p>}
+              {gap.related_surfaces.length > 0 && <fieldset className="identity-related"><legend>Merge these related surfaces as aliases?</legend>{gap.related_surfaces.map((surface) => <label key={surface}><input checked={(identityAliasSelection[gap.normalized_surface] ?? []).includes(surface)} onChange={(event) => setIdentityAliasSelection((current) => ({ ...current, [gap.normalized_surface]: event.target.checked ? [...(current[gap.normalized_surface] ?? []), surface] : (current[gap.normalized_surface] ?? []).filter((item) => item !== surface) }))} type="checkbox" />{surface}</label>)}</fieldset>}
+              {gap.alias_candidates.length > 0 && <div className="identity-alias-candidates">{gap.alias_candidates.map((candidate) => <button key={candidate.entity_id} type="button" disabled={identityBusy} onClick={() => void decideIdentity(() => campaignClient.addIdentityAlias(gap.surface, candidate.entity_id, `identity-alias:${gap.normalized_surface}:${candidate.entity_id}:${Date.now()}`), `Aliased “${gap.surface}” to ${candidate.canonical_name}`)}>Alias → {candidate.canonical_name}</button>)}</div>}
+              <div className="identity-actions">
+                <label>Kind<select aria-label={`Entity kind for ${gap.surface}`} value={identityKinds[gap.normalized_surface] ?? "faction"} onChange={(event) => setIdentityKinds((current) => ({ ...current, [gap.normalized_surface]: event.target.value }))}>{["faction", "worldbuilding", "location", "npc", "item", "event"].map((kind) => <option key={kind} value={kind}>{display(kind)}</option>)}</select></label>
+                <button type="button" disabled={identityBusy} onClick={() => void decideIdentity(() => campaignClient.createIdentityEntity(gap.surface, identityKinds[gap.normalized_surface] ?? "faction", `identity-create:${gap.normalized_surface}:${Date.now()}`, identityAliasSelection[gap.normalized_surface] ?? []), `Created ${gap.surface} as an identity${(identityAliasSelection[gap.normalized_surface] ?? []).length ? ` with ${(identityAliasSelection[gap.normalized_surface] ?? []).length} alias${(identityAliasSelection[gap.normalized_surface] ?? []).length === 1 ? "" : "es"}` : ""}`)}>{(identityAliasSelection[gap.normalized_surface] ?? []).length ? `Create with ${(identityAliasSelection[gap.normalized_surface] ?? []).length} alias${(identityAliasSelection[gap.normalized_surface] ?? []).length === 1 ? "" : "es"}` : "Create entity"}</button>
+                <button className="text-button" type="button" disabled={identityBusy} onClick={() => void decideIdentity(() => campaignClient.markIdentityRole(gap.surface, `identity-role:${gap.normalized_surface}:${Date.now()}`), `Marked “${gap.surface}” as a role or title`)}>Mark as role</button>
+                <button className="text-button" type="button" disabled={identityBusy} onClick={() => void decideIdentity(() => campaignClient.dismissIdentityGap(gap.surface, `identity-dismiss:${gap.normalized_surface}:${Date.now()}`), `Dismissed “${gap.surface}”`)}>Dismiss</button>
+              </div>
+            </article>)}
+          </div>
+        </section>
 
         <ClaimReconciliationWorkspace campaignClient={campaignClient} />
         <PlanWorkspace campaignClient={campaignClient} />

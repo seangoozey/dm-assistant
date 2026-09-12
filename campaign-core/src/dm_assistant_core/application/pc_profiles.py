@@ -31,12 +31,29 @@ class UpdatePCProfileCommand(PCProfile):
     idempotency_key: str = Field(min_length=1)
 
 
+class ProfileAliasSync(BaseModel):
+    """Identity-alias mutations one profile save applied to its focal entity.
+
+    The profile editor manages the 'profile' namespace only: aliases removed
+    from the profile remove that namespace's rows; aliases owned by another
+    identity are skipped, never stolen.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    entity_id: UUID
+    entity_name: str
+    applied: tuple[str, ...] = ()
+    removed: tuple[str, ...] = ()
+    skipped_conflicting: tuple[str, ...] = ()
+
+
 class PCProfileReceipt(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     receipt_id: UUID
     document_id: UUID
     version: int
     idempotent_replay: bool
+    alias_sync: ProfileAliasSync | None = None
 
 
 class PCProfileError(ValueError):

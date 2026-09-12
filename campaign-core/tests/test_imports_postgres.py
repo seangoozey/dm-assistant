@@ -122,11 +122,11 @@ def test_fixture_scan_is_atomic_idempotent_and_noncanonical_through_http() -> No
     assert first.json()["import_run_id"] == retry.json()["import_run_id"]
     assert first.json()["idempotent_replay"] is False
     assert retry.json()["idempotent_replay"] is True
-    assert count("source_documents") == 17
-    assert count("source_revisions") == 17
-    assert count("import_candidates") == 18
+    assert count("source_documents") == 20
+    assert count("source_revisions") == 20
+    assert count("import_candidates") == 20
     assert count("import_runs") == 1
-    assert count("import_observations") == 17
+    assert count("import_observations") == 20
     assert count("entities") == 0
     assert count("claims") == 0
     with psycopg.connect(TEST_DSN) as connection:
@@ -425,4 +425,4 @@ def test_concurrent_retry_creates_one_import_run() -> None:
     assert receipts[0].import_run_id == receipts[1].import_run_id
     assert {receipt.idempotent_replay for receipt in receipts} == {False, True}
     assert count("import_runs") == 1
-    assert count("source_revisions") == 17
+    assert count("source_revisions") == 20

@@ -11,7 +11,7 @@ from budget_gateway import CHAT_MODEL, EMBED_MODEL, Ledger, start_gateway
 from dotenv import dotenv_values
 
 
-async def trial(search_only=False, cross_document=False, retire_cross_source=False, replace_cross_source=False, evidence_expansion=False, corpus_scope=None, live_pilot=False, live_generation="live-pilot-v2", live_search_only=False, relevance_trial=False, relevance_search_only=False):
+async def trial(search_only=False, cross_document=False, retire_cross_source=False, replace_cross_source=False, evidence_expansion=False, corpus_scope=None, live_pilot=False, live_generation="live-pilot-v2", live_search_only=False, relevance_trial=False, relevance_search_only=False, weighted_trial=False, weighted_search_only=False, live_slice=False):
     root = Path(__file__).resolve().parents[2]
     runtime = root / ".local" / "cognee-evaluation"
     if Path.cwd().resolve() != runtime:
@@ -58,11 +58,17 @@ async def trial(search_only=False, cross_document=False, retire_cross_source=Fal
             storage = runtime / live_generation
         if relevance_trial:
             storage = runtime / "relevance-v1"
+        if weighted_trial:
+            storage = runtime / ("relevance-v3-live" if live_slice else "relevance-v2")
         cognee.config.system_root_directory(str(storage / "system"))
         cognee.config.data_root_directory(str(storage / "data"))
         if relevance_trial:
             from relevance_trial import run
             await run(cognee, report, ledger, search_only=relevance_search_only)
+            return
+        if weighted_trial:
+            from weighted_trial import run
+            await run(cognee, report, ledger, search_only=weighted_search_only, live_slice=live_slice)
             return
         if live_pilot:
             from live_pilot import run
@@ -135,6 +141,11 @@ async def trial(search_only=False, cross_document=False, retire_cross_source=Fal
         filename = "retrieval-report.json" if search_only else "trial-report.json"
         if relevance_trial:
             filename = "relevance-v1-expanded-report.json" if relevance_search_only else "relevance-v1-report.json"
+        if weighted_trial:
+            if live_slice:
+                filename = "relevance-v3-live-search-report.json" if weighted_search_only else "relevance-v3-live-report.json"
+            else:
+                filename = "relevance-v2-weighted-search-report.json" if weighted_search_only else "relevance-v2-weighted-report.json"
         if cross_document:
             filename = "cross-document-report.json"
         if retire_cross_source:
@@ -165,11 +176,14 @@ if __name__ == "__main__":
     modes.add_argument("--corpus-scope", choices=["dm", "party", "conflict"])
     modes.add_argument("--live-pilot", action="store_true")
     modes.add_argument("--relevance-trial", action="store_true")
+    modes.add_argument("--weighted-trial", action="store_true")
     parser.add_argument("--relevance-search-only", action="store_true")
+    parser.add_argument("--weighted-search-only", action="store_true")
+    parser.add_argument("--live-slice", action="store_true")
     parser.add_argument("--live-generation", choices=["live-pilot-v2", "live-pilot-v3"], default="live-pilot-v2")
     parser.add_argument("--live-search-only", action="store_true")
     args = parser.parse_args()
     asyncio.run(trial(search_only=args.search_only, cross_document=args.cross_document,
                       retire_cross_source=args.retire_cross_source,
                       replace_cross_source=args.replace_cross_source, evidence_expansion=args.evidence_expansion,
-                      corpus_scope=args.corpus_scope, live_pilot=args.live_pilot, live_generation=args.live_generation, live_search_only=args.live_search_only, relevance_trial=args.relevance_trial, relevance_search_only=args.relevance_search_only))
+                      corpus_scope=args.corpus_scope, live_pilot=args.live_pilot, live_generation=args.live_generation, live_search_only=args.live_search_only, relevance_trial=args.relevance_trial, relevance_search_only=args.relevance_search_only, weighted_trial=args.weighted_trial, weighted_search_only=args.weighted_search_only, live_slice=args.live_slice))

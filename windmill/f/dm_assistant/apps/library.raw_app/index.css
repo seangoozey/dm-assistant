@@ -687,3 +687,17 @@ main.page-migration { width: calc(100% - 24px); max-width: 1600px; }
 .brainstorm-connection-sources { padding: .5rem .85rem; font-size: .82rem; line-height: 1.5; overflow-wrap: anywhere; }
 .brainstorm-connection-sources summary { cursor: pointer; color: #695946; }
 .brainstorm-connection-sources section { max-height: 16rem; overflow: auto; margin-top: .65rem; }
+
+.identity-review-tool .identity-queue { display: grid; gap: 0.75rem; }
+.identity-review-tool .identity-queue > header { display: flex; justify-content: space-between; align-items: center; }
+.identity-review-tool .identity-gap { display: grid; gap: 0.4rem; padding: 0.75rem 0.9rem; border: 1px solid var(--line, #d8dee9); border-radius: 8px; }
+.identity-review-tool .identity-gap-main { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; }
+.identity-review-tool .identity-evidence { margin: 0; font-size: 0.85rem; opacity: 0.8; font-style: italic; }
+.identity-review-tool .identity-alias-candidates { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.identity-review-tool .identity-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.identity-review-tool .identity-actions label { display: flex; align-items: center; gap: 0.35rem; font-size: 0.8rem; }
+.identity-review-tool .identity-empty { margin: 0; opacity: 0.7; }
+.identity-review-tool .identity-role-hint { margin: 0; font-size: 0.8rem; font-style: italic; opacity: 0.75; }
+.identity-review-tool .identity-related { display: flex; flex-wrap: wrap; gap: 0.6rem; border: 1px dashed var(--line, #d8dee9); border-radius: 6px; padding: 0.4rem 0.6rem; margin: 0; }
+.identity-review-tool .identity-related legend { font-size: 0.75rem; padding: 0 0.3rem; }
+.identity-review-tool .identity-related label { display: flex; align-items: center; gap: 0.3rem; font-size: 0.85rem; }

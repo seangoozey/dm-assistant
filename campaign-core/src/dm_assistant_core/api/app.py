@@ -302,6 +302,13 @@ def create_app(
     active_claim_reconciliation = claim_reconciliation or ClaimReconciliationService(
         PostgresClaimReconciliationRepository(PostgresDatabase(active_settings.database_dsn))
     )
+    from dm_assistant_core.adapters.postgres.identity_gaps import (
+        PostgresIdentityQueueRepository,
+    )
+    from dm_assistant_core.application.identity_gaps import IdentityQueueError
+    active_identity_queue = PostgresIdentityQueueRepository(
+        PostgresDatabase(active_settings.database_dsn)
+    )
     if candidate_extraction is not None:
         active_candidate_extraction = candidate_extraction
     elif active_settings.openrouter_api_key:
@@ -332,6 +339,7 @@ def create_app(
     app.state.pc_profiles = active_pc_profiles
     app.state.session_runs = active_session_runs
     app.state.brainstorms = active_brainstorms
+    app.state.identity_queue = active_identity_queue
 
     @app.get("/health", response_model=HealthResponse, tags=["operations"])
     def health() -> HealthResponse:
@@ -452,7 +460,12 @@ def create_app(
     ) -> tuple[EntityIdentity, ...]:
         if requester_role is not RequesterRole.DM:
             raise HTTPException(status_code=403, detail="entity identity lookup requires DM access")
-        return active_entity_lookup.search(canonical_name, limit)
+        matches = active_entity_lookup.search(canonical_name, limit)
+        if not matches:
+            # Best-effort demand telemetry for the identity review queue; never
+            # blocks or fails the lookup path.
+            active_identity_queue.record_demand(canonical_name, "entity_lookup")
+        return matches
 
     @app.get("/library/entries", response_model=tuple[LibraryEntrySummary, ...], tags=["campaign"])
     def list_library_entries(
@@ -1096,6 +1109,81 @@ def create_app(
             raise HTTPException(status_code=403, detail=str(error)) from error
         except (PCProfileError, ValueError) as error:
             raise HTTPException(status_code=409, detail=str(error)) from error
+
+    from dm_assistant_core.application.identity_gaps import (  # noqa: E402
+        AddAliasDecision,
+        CreateEntityDecision,
+        IdentityGapQueue,
+        IdentityDecisionReceipt,
+        SurfaceDecision,
+    )
+
+    def _identity_dm(requester_role: RequesterRole) -> None:
+        if requester_role is not RequesterRole.DM:
+            raise PermissionError("identity review is DM-only")
+
+    @app.get("/identity/gaps", response_model=IdentityGapQueue, tags=["identity"])
+    def identity_gaps(
+        limit: Annotated[int, Query(ge=1, le=200)] = 50,
+        requester_role: Annotated[RequesterRole, Query()] = RequesterRole.DM,
+    ) -> IdentityGapQueue:
+        try:
+            _identity_dm(requester_role)
+            return active_identity_queue.queue(limit)
+        except PermissionError as error:
+            raise HTTPException(status_code=403, detail=str(error)) from error
+
+    @app.post("/identity/decisions/add-alias",
+              response_model=IdentityDecisionReceipt, tags=["identity"])
+    def identity_add_alias(
+        request: AddAliasDecision,
+        requester_role: Annotated[RequesterRole, Query()] = RequesterRole.DM,
+    ) -> IdentityDecisionReceipt:
+        try:
+            _identity_dm(requester_role)
+            return active_identity_queue.add_alias(request)
+        except PermissionError as error:
+            raise HTTPException(status_code=403, detail=str(error)) from error
+        except IdentityQueueError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+
+    @app.post("/identity/decisions/create-entity",
+              response_model=IdentityDecisionReceipt, tags=["identity"])
+    def identity_create_entity(
+        request: CreateEntityDecision,
+        requester_role: Annotated[RequesterRole, Query()] = RequesterRole.DM,
+    ) -> IdentityDecisionReceipt:
+        try:
+            _identity_dm(requester_role)
+            return active_identity_queue.create_entity(request)
+        except PermissionError as error:
+            raise HTTPException(status_code=403, detail=str(error)) from error
+        except IdentityQueueError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+
+    @app.post("/identity/decisions/mark-role",
+              response_model=IdentityDecisionReceipt, tags=["identity"])
+    def identity_mark_role(
+        request: SurfaceDecision,
+        requester_role: Annotated[RequesterRole, Query()] = RequesterRole.DM,
+    ) -> IdentityDecisionReceipt:
+        try:
+            _identity_dm(requester_role)
+            return active_identity_queue.mark_role(request)
+        except PermissionError as error:
+            raise HTTPException(status_code=403, detail=str(error)) from error
+
+    @app.post("/identity/decisions/dismiss",
+              response_model=IdentityDecisionReceipt, tags=["identity"])
+    def identity_dismiss(
+        request: SurfaceDecision,
+        requester_role: Annotated[RequesterRole, Query()] = RequesterRole.DM,
+    ) -> IdentityDecisionReceipt:
+        try:
+            _identity_dm(requester_role)
+            return active_identity_queue.dismiss(request)
+        except PermissionError as error:
+            raise HTTPException(status_code=403, detail=str(error)) from error
 
     @app.post(
         "/imports/proposals",

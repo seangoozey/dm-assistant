@@ -11,6 +11,7 @@ None.
 
 ## Backlog
 
+- [TKT-0106: Identity review queue](in-progress/TKT-0106-identity-review-queue.md) — continuous gap detection/resolution; alias input space bug fixed, profile↔entity_aliases disconnect open; Phase-1 detector validated
 - [TKT-0103: Clean evidence-linked relationship indexing](backlog/TKT-0103-clean-weighted-relationship-index.md) — after 0102
 - [TKT-0104: Native Cognee ranked retrieval evaluation](backlog/TKT-0104-native-cognee-ranked-retrieval.md) — after 0102/0103; grouping deferred
 - [TKT-0105: Measured Cognee/Neo4j decision](backlog/TKT-0105-graph-backend-decision.md) — after 0104; no automatic migration

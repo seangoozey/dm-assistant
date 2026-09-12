@@ -286,6 +286,11 @@ function makeClient(overrides: Partial<CampaignClient> = {}): CampaignClient {
     }),
     getPCProfile: vi.fn().mockResolvedValue(null),
     updatePCProfile: vi.fn().mockResolvedValue({ receipt_id: "95000000-0000-0000-0000-000000000001", document_id: "61000000-0000-0000-0000-000000000002", version: 1, idempotent_replay: false }),
+    getIdentityGaps: vi.fn().mockResolvedValue({ gaps: [], total_candidates: 0 }),
+    addIdentityAlias: vi.fn(),
+    createIdentityEntity: vi.fn().mockResolvedValue({ decision_id: "96000000-0000-0000-0000-000000000001", kind: "create_entity", surface: "", idempotent_replay: false }),
+    markIdentityRole: vi.fn().mockResolvedValue({ decision_id: "96000000-0000-0000-0000-000000000002", kind: "mark_role", surface: "", idempotent_replay: false }),
+    dismissIdentityGap: vi.fn().mockResolvedValue({ decision_id: "96000000-0000-0000-0000-000000000003", kind: "dismiss", surface: "", idempotent_replay: false }),
     discoverClaimOverlaps: vi.fn().mockResolvedValue([]),
     reconcileClaims: vi.fn(),
     getClaimSnapshot: vi.fn(),
@@ -854,6 +859,46 @@ describe("DM Assistant shell", () => {
       }),
     ));
     expect(await screen.findByText(/Saved with receipt 95000000/)).toBeInTheDocument();
+  });
+
+  it("accepts aliases with spaces while typing and trims them at save", async () => {
+    const document = {
+      document_id: "61000000-0000-0000-0000-000000000003", path: "pcs/coreferra.md",
+      classification: "durable_evidence" as const, candidate_count: 0, extraction_count: 0,
+      open_review_count: 0, missing_source: false,
+    };
+    const updatePCProfile = vi.fn().mockResolvedValue({
+      receipt_id: "95000000-0000-0000-0000-000000000002",
+      document_id: document.document_id, version: 1, idempotent_replay: false,
+    });
+    const campaignClient = makeClient({
+      listSourceDocuments: vi.fn().mockResolvedValue({ items: [document], total: 1, limit: 500, offset: 0 }),
+      getSourceDocument: vi.fn().mockResolvedValue({
+        document_id: document.document_id,
+        source_revision_id: "60000000-0000-0000-0000-000000000003",
+        path: document.path,
+        content: "---\ntype: pc\nplayer: Presto\nstatus: active\n---\n# Coreferra\n\n## Original Biography Source\nBiography.",
+      }),
+      getPCProfile: vi.fn().mockResolvedValue(null), updatePCProfile,
+    });
+    render(<App campaignClient={campaignClient} jobPlatform={makeQuietJobs()} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /pcs.*1/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /coreferra\.md/i }));
+    fireEvent.click(await screen.findByRole("button", { name: "Edit PC page" }));
+    const aliases = screen.getByLabelText("PC aliases");
+    fireEvent.change(aliases, { target: { value: "The " } });
+    expect(aliases).toHaveValue("The ");
+    fireEvent.blur(aliases);
+    expect(aliases).toHaveValue("The");
+    fireEvent.change(aliases, { target: { value: "The Grand Inquisitor, The Shadow" } });
+    expect(aliases).toHaveValue("The Grand Inquisitor, The Shadow");
+    fireEvent.click(screen.getByRole("button", { name: "Review changes" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() => expect(updatePCProfile).toHaveBeenCalledWith(
+      document.document_id,
+      expect.objectContaining({ aliases: ["The Grand Inquisitor", "The Shadow"] }),
+    ));
   });
 
   it("shows complete plan coordinates before exact approval and application", async () => {
@@ -1764,6 +1809,37 @@ describe("DM Assistant shell", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Pin suggested evidence" }));
     await waitFor(() => expect(pinBrainstormEvidence).toHaveBeenCalledWith(openSession.session_id, recordId));
     expect(screen.getByRole("button", { name: "Unpin suggested evidence" })).toBeInTheDocument();
+  });
+
+  it("reviews identity gaps and records a create-entity decision with receipt", async () => {
+    const gap = {
+      surface: "White Cloaks", normalized_surface: "white cloaks",
+      claims_with_phrase: 3, total_mentions: 4, retrieval_demand: 2,
+      role_hint: false, related_surfaces: ["White Cloaks'"],
+      evidence: [{ claim_id: "97000000-0000-0000-0000-000000000001", excerpt: "Members of the White Cloaks collect tolls." }],
+      alias_candidates: [],
+    };
+    const getIdentityGaps = vi.fn().mockResolvedValueOnce({ gaps: [gap], total_candidates: 1 })
+      .mockResolvedValue({ gaps: [], total_candidates: 0 });
+    const createIdentityEntity = vi.fn().mockResolvedValue({
+      decision_id: "96000000-0000-0000-0000-00000000000a", kind: "create_entity",
+      surface: "White Cloaks", idempotent_replay: false,
+    });
+    render(<App campaignClient={makeClient({ getIdentityGaps, createIdentityEntity })} jobPlatform={makeQuietJobs()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Tools" }));
+    fireEvent.click(screen.getByRole("button", { name: "Review identities" }));
+    expect(await screen.findByText("White Cloaks")).toBeInTheDocument();
+    expect(screen.getByText(/2 lookup misses · 3 claims · 4 mentions/)).toBeInTheDocument();
+    expect(screen.getByText(/Members of the White Cloaks collect tolls/)).toBeInTheDocument();
+    expect(screen.getByText(/Merge these related surfaces as aliases?/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Create with 1 alias" })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Entity kind for White Cloaks"), { target: { value: "faction" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create with 1 alias" }));
+    await waitFor(() => expect(createIdentityEntity).toHaveBeenCalledWith(
+      "White Cloaks", "faction", expect.stringMatching(/^identity-create:/), ["White Cloaks'"]));
+    expect(await screen.findByText(/Created White Cloaks as an identity with 1 alias with receipt 96000000/)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("No unresolved surfaces right now.")).toBeInTheDocument());
   });
 });
 

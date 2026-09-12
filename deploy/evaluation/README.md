@@ -137,3 +137,44 @@ Official provider guidance: https://docs.cognee.ai/setup-configuration/llm-provi
 supports the custom provider with OpenRouter model routing. Embeddings are configured
 separately. The pinned wheel uses `litellm_native` as the default structured-output
 framework; do not blindly copy older documentation's Instructor defaults.
+
+`verify_extension_points.py` is an offline (no network, no LLM, no index writes)
+check of the installed Cognee's weighted-edge extension points for TKT-0103.
+Run it with the evaluation venv. It confirms `cognify(graph_model=...,
+custom_prompt=...)` are public parameters, a strength-bearing graph model parses,
+the default conversion in `_add_extracted_edges` drops custom fields (persisted
+edges carry only `relationship_type`/`edge_text`), and the persisted `Edge`
+model does accept `weight`/`weights`/`properties`. Full findings and the
+resulting manifest-join design are recorded in the TKT-0103 ticket.
+
+`weighted_trial.py` (via `run_cognee_trial.py --weighted-trial [--weighted-search-only]`)
+is the TKT-0103 weighted-edge trial on the v2 explicit-bridge corpus: strength is
+requested through public `graph_model`/`custom_prompt` parameters, captured by the
+`calculate_chunk_graphs` hook before conversion drops it, aggregated into the
+versioned manifest (`relevance-v2-manifest.json`, raw captures alongside), and
+joined at retrieval time. The search-only variant reuses the index with a
+top_k=100 candidate pool. `weighted_manifest.py` and its tests are offline and
+run under the main development venv. See the TKT-0103 ticket for measured
+results and open gaps (precision truncation, multi-hop path coverage,
+identity-based joining).
+
+`manifest_traversal.py` resolves manifest endpoints to corpus entity identities
+(unique whole-word match only; ambiguous endpoints exclude their edges) and runs
+seeded multi-hop walks through the `evidence_paths` safety harness.
+`manifest_traversal_report.py` re-ranks the saved paid-run artifacts offline
+(P0/P1/P2 policies) into `relevance-v2-traversal-report.json`; both run under the
+main development venv with no provider calls. Measured outcomes live in the
+TKT-0103 ticket notes.
+
+`export_slice_v3.py` (read-only SQL, Romulus-neighborhood canonical claims) and
+`assemble_v3_corpus.py` (canonical-mention entity associations, DRAFT judgments)
+build the v3 live corpus in ignored local storage; `--live-slice` runs the
+weighted trial against it, and `manifest_traversal_report.py --slice live`
+re-ranks offline. The live corpus is never committed. Findings and open
+canonical gaps are in the TKT-0103 ticket.
+
+`identity_gap_candidates.py` is the TKT-0106 Phase-1 detector proof: mines
+current canonical claims read-only for recurring proper-noun phrases matching
+no canonical identity, ranked by retrieval demand from the live-slice
+unresolved-endpoint audit. Output is derived review material only; nothing is
+created or written.

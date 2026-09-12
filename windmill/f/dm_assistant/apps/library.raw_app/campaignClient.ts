@@ -238,7 +238,13 @@ export interface SourceDocumentClaim { claim_id: string; assertion_text: string;
 export interface SourceDocumentClaimHistory extends SourceDocumentClaim { superseded_by_claim_id: string; supersession_reason: string; }
 
 export interface PCProfile { document_id: string; source_revision_id: string; version: number; canonical_name: string; player?: string; race?: string; sex?: string; status: string; aliases: string[]; background: string; }
-export interface PCProfileReceipt { receipt_id: string; document_id: string; version: number; idempotent_replay: boolean; }
+export interface ProfileAliasSync { entity_id: string; entity_name: string; applied: string[]; removed: string[]; skipped_conflicting: string[]; }
+export interface PCProfileReceipt { receipt_id: string; document_id: string; version: number; idempotent_replay: boolean; alias_sync?: ProfileAliasSync; }
+export interface IdentityGapEvidence { claim_id: string; excerpt: string; }
+export interface IdentityGapAliasCandidate { entity_id: string; canonical_name: string; }
+export interface IdentityGap { surface: string; normalized_surface: string; claims_with_phrase: number; total_mentions: number; retrieval_demand: number; role_hint: boolean; related_surfaces: string[]; evidence: IdentityGapEvidence[]; alias_candidates: IdentityGapAliasCandidate[]; }
+export interface IdentityGapQueue { gaps: IdentityGap[]; total_candidates: number; }
+export interface IdentityDecisionReceipt { decision_id: string; kind: string; surface: string; entity_id?: string; idempotent_replay: boolean; }
 export interface CampaignDate { calendar_id: string; year: number; month: number; day: number; }
 export interface DirectInputMention { entity_id: string; display_name: string; start_offset: number; end_offset: number; }
 export interface SessionNoteCaptureInput { session_date: string; in_game_date: CampaignDate; title: string; text: string; visibility: "dm_only" | "party" | "character"; mentions: DirectInputMention[]; idempotency_key: string; capture_id?: string; }
@@ -424,6 +430,11 @@ export interface CampaignClient {
   getSourceDocument(documentId: string): Promise<SourceDocumentContent>;
   getPCProfile(documentId: string): Promise<PCProfile | null>;
   updatePCProfile(documentId: string, profile: Omit<PCProfile, "document_id"> & { idempotency_key: string }): Promise<PCProfileReceipt>;
+  getIdentityGaps(limit?: number): Promise<IdentityGapQueue>;
+  addIdentityAlias(surface: string, entityId: string, idempotencyKey: string): Promise<IdentityDecisionReceipt>;
+  createIdentityEntity(surface: string, entityKind: string, idempotencyKey: string, aliasSurfaces?: string[]): Promise<IdentityDecisionReceipt>;
+  markIdentityRole(surface: string, idempotencyKey: string): Promise<IdentityDecisionReceipt>;
+  dismissIdentityGap(surface: string, idempotencyKey: string): Promise<IdentityDecisionReceipt>;
   discoverClaimOverlaps(): Promise<ClaimOverlap[]>;
   reconcileClaims(overlap: ClaimOverlap, decision: ReconciliationDecision, reason: string): Promise<ClaimReconciliationReceipt>;
   getClaimSnapshot(claimId: string): Promise<ClaimSnapshot>;
@@ -490,6 +501,11 @@ export interface ReviewBackendRequest {
     | "get_source_document"
     | "get_pc_profile"
     | "update_pc_profile"
+    | "list_identity_gaps"
+    | "add_identity_alias"
+    | "create_identity_entity"
+    | "mark_identity_role"
+    | "dismiss_identity_gap"
     | "create_proposal"
     | "revise_proposal"
     | "get_proposal"
@@ -687,6 +703,11 @@ export class HttpCampaignClient implements CampaignClient {
   }
   getPCProfile(documentId: string): Promise<PCProfile | null> { return this.core(`/imports/source-documents/${documentId}/pc-profile?requester_role=dm`); }
   updatePCProfile(documentId: string, profile: Omit<PCProfile, "document_id"> & { idempotency_key: string }): Promise<PCProfileReceipt> { return this.core(`/imports/source-documents/${documentId}/pc-profile?requester_role=dm`, "PUT", profile); }
+  getIdentityGaps(limit = 50): Promise<IdentityGapQueue> { return this.core(`/identity/gaps?requester_role=dm&limit=${limit}`); }
+  addIdentityAlias(surface: string, entityId: string, idempotencyKey: string): Promise<IdentityDecisionReceipt> { return this.core("/identity/decisions/add-alias?requester_role=dm", "POST", { surface, entity_id: entityId, idempotency_key: idempotencyKey }); }
+  createIdentityEntity(surface: string, entityKind: string, idempotencyKey: string, aliasSurfaces: string[] = []): Promise<IdentityDecisionReceipt> { return this.core("/identity/decisions/create-entity?requester_role=dm", "POST", { surface, entity_kind: entityKind, alias_surfaces: aliasSurfaces, idempotency_key: idempotencyKey }); }
+  markIdentityRole(surface: string, idempotencyKey: string): Promise<IdentityDecisionReceipt> { return this.core("/identity/decisions/mark-role?requester_role=dm", "POST", { surface, idempotency_key: idempotencyKey }); }
+  dismissIdentityGap(surface: string, idempotencyKey: string): Promise<IdentityDecisionReceipt> { return this.core("/identity/decisions/dismiss?requester_role=dm", "POST", { surface, idempotency_key: idempotencyKey }); }
   discoverClaimOverlaps(): Promise<ClaimOverlap[]> { return this.core("/claims/reconciliation-candidates?requester_role=dm&limit=100"); }
   reconcileClaims(overlap: ClaimOverlap, decision: ReconciliationDecision, reason: string): Promise<ClaimReconciliationReceipt> {
     return this.core("/claims/reconciliations?requester_role=dm", "POST", {
@@ -872,6 +893,11 @@ export class WindmillCampaignClient implements CampaignClient {
   }
   getPCProfile(documentId: string): Promise<PCProfile | null> { return this.review({ operation: "get_pc_profile", document_id: documentId }); }
   updatePCProfile(documentId: string, profile: Omit<PCProfile, "document_id"> & { idempotency_key: string }): Promise<PCProfileReceipt> { return this.review({ operation: "update_pc_profile", document_id: documentId, body: profile }); }
+  getIdentityGaps(limit = 50): Promise<IdentityGapQueue> { return this.review({ operation: "list_identity_gaps", query: { limit } }); }
+  addIdentityAlias(surface: string, entityId: string, idempotencyKey: string): Promise<IdentityDecisionReceipt> { return this.review({ operation: "add_identity_alias", body: { surface, entity_id: entityId, idempotency_key: idempotencyKey } }); }
+  createIdentityEntity(surface: string, entityKind: string, idempotencyKey: string, aliasSurfaces: string[] = []): Promise<IdentityDecisionReceipt> { return this.review({ operation: "create_identity_entity", body: { surface, entity_kind: entityKind, alias_surfaces: aliasSurfaces, idempotency_key: idempotencyKey } }); }
+  markIdentityRole(surface: string, idempotencyKey: string): Promise<IdentityDecisionReceipt> { return this.review({ operation: "mark_identity_role", body: { surface, idempotency_key: idempotencyKey } }); }
+  dismissIdentityGap(surface: string, idempotencyKey: string): Promise<IdentityDecisionReceipt> { return this.review({ operation: "dismiss_identity_gap", body: { surface, idempotency_key: idempotencyKey } }); }
   discoverClaimOverlaps(): Promise<ClaimOverlap[]> { return this.review({ operation: "discover_claim_overlaps" }); }
   reconcileClaims(overlap: ClaimOverlap, decision: ReconciliationDecision, reason: string): Promise<ClaimReconciliationReceipt> {
     return this.review({ operation: "reconcile_claims", body: {

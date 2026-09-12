@@ -34,6 +34,11 @@ interface ReviewBackendRequest {
     | "get_source_document"
     | "get_pc_profile"
     | "update_pc_profile"
+    | "list_identity_gaps"
+    | "add_identity_alias"
+    | "create_identity_entity"
+    | "mark_identity_role"
+    | "dismiss_identity_gap"
     | "create_proposal"
     | "revise_proposal"
     | "get_proposal"
@@ -167,6 +172,11 @@ function route(input: ReviewBackendRequest): { method: "GET" | "POST" | "PUT" | 
       };
     case "get_pc_profile": return { method: "GET", path: `imports/source-documents/${required(input.document_id, "document_id")}/pc-profile` };
     case "update_pc_profile": return { method: "PUT", path: `imports/source-documents/${required(input.document_id, "document_id")}/pc-profile` };
+    case "list_identity_gaps": return { method: "GET", path: "identity/gaps" };
+    case "add_identity_alias": return { method: "POST", path: "identity/decisions/add-alias" };
+    case "create_identity_entity": return { method: "POST", path: "identity/decisions/create-entity" };
+    case "mark_identity_role": return { method: "POST", path: "identity/decisions/mark-role" };
+    case "dismiss_identity_gap": return { method: "POST", path: "identity/decisions/dismiss" };
     case "create_proposal":
       return { method: "POST", path: "imports/proposals" };
     case "revise_proposal":
