@@ -1,4 +1,5 @@
 import { FormEvent, KeyboardEvent as ReactKeyboardEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { LogEntry, ToastStack, toast } from "./toasts";
 import { evidenceTitle } from "./evidenceTitle";
 
 import type {
@@ -14,7 +15,12 @@ import type {
   EntityKind,
   EntityKindGuidance,
   EntityIdentity,
+  FactionRole,
+  IdentityDecisionEntry,
+  FactionRoleSummary,
   LibraryEntrySummary,
+  RoleDeclarationSummary,
+  LibraryMember,
   LibraryEntry,
   LibraryEntrySource,
   ImportCandidate,
@@ -40,6 +46,7 @@ import type {
   EncounterLifecycle,
   IdentityGap,
   IdentityDecisionReceipt,
+  EntityProfile,
 } from "./campaignClient";
 import type { JobPlatform, JobSnapshot } from "./jobPlatform";
 import {
@@ -213,7 +220,8 @@ function ClaimAssertion({ claim }: { claim: SourceDocumentClaim }) {
   return <><p>{summary}</p><details className="full-assertion"><summary>Read full canonical assertion</summary><p>{claim.assertion_text}</p></details></>;
 }
 
-function RecordIcon({ kind }: { kind: "edit" | "source" | "hide" | "show" | "note" }) {
+function RecordIcon({ kind }: { kind: "edit" | "source" | "hide" | "show" | "note" | "unpaged" }) {
+  if (kind === "unpaged") return <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 3h9l3 3v15H6V3Z" strokeDasharray="3 2.6" /><path d="M9.5 11h5M9.5 15h5" strokeDasharray="2 2.4" /></svg>;
   if (kind === "edit") return <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16v4Zm9.5-13.5 4 4" /></svg>;
   if (kind === "source") return <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 3h9l3 3v15H6V3Z" /><path d="M15 3v4h4M9 11h6M9 15h6" /></svg>;
   if (kind === "hide") return <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3 12s3.5-6 9-6 9 6 9 6-3.5 6-9 6-9-6-9-6Z" /><path d="m4 4 16 16" /></svg>;
@@ -290,11 +298,15 @@ function NpcDossierDrawer({ dossier, collapsed, initialScroll, onScroll, onToggl
   </aside>;
 }
 
-function StructuredEntryView({ entry, path, claims, history, sources, onEditClaim }: { entry: ParsedEntry; path: string; claims: SourceDocumentClaim[]; history: SourceDocumentClaimHistory[]; sources: LibraryEntrySource[]; onEditClaim?: (claimId: string) => void }) {
+function StructuredEntryView({ entry, path, claims, history, sources, onEditClaim, onEdit, entityTemplate }: { entry: ParsedEntry; path: string; claims: SourceDocumentClaim[]; history: SourceDocumentClaimHistory[]; sources: LibraryEntrySource[]; onEditClaim?: (claimId: string) => void; onEdit?: () => void; entityTemplate?: { aliases: string[]; base_location?: string | null; location_type?: string | null; parent_location?: string | null; roles?: FactionRole[] } }) {
   const label = pathEntryType(path) === "Source" ? (entry.type === "lore" ? "Worldbuilding" : display(entry.type)) : pathEntryType(path);
+  // Entity-sourced template fields win over a borrowed document's frontmatter;
+  // profile edits must never display stale doc metadata.
+  const field = (key: "location_type" | "parent_location") =>
+    (entityTemplate && entityTemplate[key]) || entry.metadata.get(key) || null;
   return <article className={`document-view entry-view ${entry.type}-entry`}>
-    <header><b>{label}</b><span>Campaign entry</span></header>
-    <section className="entry-hero"><span>{label}</span><h1>{entry.name}</h1><dl>{["location_type", "status", "canon_status", "parent_location"].map((key) => entry.metadata.get(key) && <div key={key}><dt>{display(key)}</dt><dd>{cleanMarkdown(entry.metadata.get(key)!)}</dd></div>)}</dl></section>
+    <header><b>{label}</b><span>Campaign entry</span>{onEdit && <div className="entry-page-actions"><button aria-label="Edit entry" onClick={onEdit} title="Edit" type="button"><RecordIcon kind="edit" /></button></div>}</header>
+    <section className="entry-hero"><span>{label}</span><h1>{entry.name}</h1><dl>{field("location_type") && <div><dt>Location type</dt><dd>{cleanMarkdown(field("location_type")!)}</dd></div>}{entry.metadata.get("status") && <div><dt>Status</dt><dd>{cleanMarkdown(entry.metadata.get("status")!)}</dd></div>}{entry.metadata.get("canon_status") && <div><dt>Canon status</dt><dd>{cleanMarkdown(entry.metadata.get("canon_status")!)}</dd></div>}{field("parent_location") && <div><dt>Parent location</dt><dd>{cleanMarkdown(field("parent_location")!)}</dd></div>}{entityTemplate && entityTemplate.aliases.length > 0 && <div><dt>Aliases</dt><dd>{entityTemplate.aliases.join(", ")}</dd></div>}{entityTemplate?.base_location && <div><dt>Location</dt><dd>{cleanMarkdown(entityTemplate.base_location)}</dd></div>}{entityTemplate?.roles && entityTemplate.roles.length > 0 && <div><dt>Roles</dt><dd>{entityTemplate.roles.map((role) => `${role.name}${role.is_leadership ? " ★" : ""}${role.holder_names.length > 0 ? ` — ${role.holder_names.join(", ")}` : " — vacant"}`).join("; ")}</dd></div>}</dl></section>
     {entry.intro && <section className="entry-summary"><EntryText text={entry.intro} /></section>}
     <div className="entry-sections">{entry.sections.filter((section) => section.title.toLocaleLowerCase() !== "sources" && section.title.toLocaleLowerCase() !== "references").map((section, index) => <section className={`entry-section level-${section.level}`} key={`${section.title}-${index}`}><h2>{section.title}</h2><EntryText text={section.content} /></section>)}</div>
     <CanonicalClaimSections claims={claims} history={history} onEditClaim={onEditClaim} />
@@ -432,6 +444,157 @@ function CharacterProfileEditor({ profile, kind, changedFields, preview, onChang
   </article>;
 }
 
+export function normalizeEntryName(value: string): string {
+  return value.toLocaleLowerCase().replace(/['’]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+export function selectEntrySource(entry: Pick<LibraryEntrySummary, "canonical_name" | "entity_kind">, sources: { document_id: string; path: string }[], entityNames: string[] = []): { document_id: string; path: string } | undefined {
+  if (sources.length === 0) return undefined;
+  const preferredRoot = ({ pc: "pcs/", npc: "npcs/", location: "locations/" } as Partial<Record<EntityKind, string>>)[entry.entity_kind];
+  const normalizedName = entry.canonical_name.toLocaleLowerCase().replace(/['’]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+  const nameTokens = new Set(normalizedName.split(" ").filter((token) => token.length > 2 && !["the", "of", "and", "for"].includes(token)));
+  const stemOf = (source: { path: string }) =>
+    source.path.toLocaleLowerCase().split("/").pop()!.replace(/\.md$/, "").replace(/['’]/g, "");
+  // Generic words a lore writeup may append to the entity's name
+  // ("thanore-history.md" is Thanore's page; "vika-lana-journal.md" is a
+  // player handout, so journal/diary/notes stay foreign).
+  const FILENAME_GENERIC = new Set(["the", "of", "and", "for", "history", "myth", "lore", "legend"]);
+  const distinctive = (tokens: string[]) =>
+    tokens.filter((token) => token.length > 2 && !FILENAME_GENERIC.has(token));
+  // A document may represent an entity only when its filename uses nothing
+  // beyond the entity's own name. Dropping qualifier words is fine
+  // ("Monastery of Arkin" -> monastery.md), but a foreign word means sibling
+  // subject matter, not this entry's page ("Council of Unity" must not borrow
+  // heart-of-unity.md; "Romulus" must not borrow the-wrath-of-romulus.md).
+  // An exact filename match always wins when one exists.
+  // A filename that is exactly another entity's name belongs to that entity,
+  // even when this entity's name contains it ("Council of Unity" must not
+  // borrow unity.md — that is the city Unity's page).
+  const otherEntityNames = new Set(entityNames.map(normalizeEntryName).filter((name) => name !== normalizedName));
+  const exact = sources.filter((source) => stemOf(source).replace(/-/g, " ") === normalizedName);
+  if (exact.length > 0) {
+    const score = (source: { path: string }) =>
+      (preferredRoot && source.path.toLocaleLowerCase().startsWith(preferredRoot) ? 1 : 0);
+    return [...exact].sort((left, right) => score(right) - score(left) || left.path.localeCompare(right.path))[0];
+  }
+  const stemTokensOf = (source: { path: string }) => distinctive(stemOf(source).split(/[^a-z0-9']+/));
+  const named = sources.filter((source) => {
+    const stem = stemOf(source).replace(/-/g, " ");
+    if (otherEntityNames.has(stem)) return false;
+    const stemTokens = stemTokensOf(source);
+    return stemTokens.length > 0 && stemTokens.every((token) => nameTokens.has(token));
+  });
+  if (named.length === 0) return undefined;
+  const score = (source: { path: string }) =>
+    (preferredRoot && source.path.toLocaleLowerCase().startsWith(preferredRoot) ? 2 : 0) + stemTokensOf(source).length;
+  return [...named].sort((left, right) => score(right) - score(left) || left.path.localeCompare(right.path))[0];
+}
+
+export function synthesizedEntryDocument(entry: Pick<LibraryEntrySummary, "canonical_name" | "entity_kind" | "aliases"> & { members?: LibraryMember[]; related?: string[] }, profile?: EntityProfile | null): string {
+  // Identities without a source file of their own still deserve a proper
+  // entry page: kind frontmatter the viewers recognize, a kind-appropriate
+  // section heading, and the canonical-name heading the hero renders.
+  const section = ({ pc: "Current Status", npc: "Current Status", location: "Established Facts",
+    faction: "Operations", worldbuilding: "Lore", item: "Details", event: "Account",
+    rules_element: "Rules" } as Record<string, string>)[entry.entity_kind] ?? "Established Facts";
+  const memberList = entry.members ?? [];
+  const memberNames = entry.entity_kind === "faction" && memberList.length > 0
+    ? `\n## Members\n\n${memberList.map((member) => `- ${member.name}${member.role_title ? ` — ${member.role_title}${member.is_leadership ? " ★" : ""}` : ""}`).join("\n")}\n`
+    : entry.entity_kind === "faction" && (entry.related ?? []).length > 0
+      ? `\n## Appears with\n\nCo-mentioned in shared records; not an explicit roster.\n\n${(entry.related ?? []).map((name) => `- ${name}`).join("\n")}\n`
+      : "";
+  const aliases = entry.aliases.length > 0 ? `aliases: ${entry.aliases.join(", ")}\n` : "";
+  const profileLine = (key: string, value?: string | null) =>
+    value ? `${key}: ${value}\n` : "";
+  const profileFrontmatter = [
+    profileLine("location_type", profile?.location_type),
+    profileLine("status", profile?.status),
+    profileLine("parent_location", profile?.parent_location),
+    profileLine("base_location", profile?.base_location),
+    profileLine("race", profile?.race),
+    profileLine("sex", profile?.sex),
+    profileLine("player", profile?.player),
+  ].join("");
+  const summary = profile?.summary?.trim()
+    ? `\n${profile.summary.trim()}\n` : "";
+  return `---\ntype: ${entry.entity_kind === "worldbuilding" ? "lore" : entry.entity_kind}\n${aliases}${profileFrontmatter}---\n\n# ${entry.canonical_name}\n${summary}\n## ${section}\n${memberNames}`;
+}
+
+function MemberRoleControl({ member, roles, onAssign }: { member: LibraryMember; roles: FactionRole[]; onAssign: (roleName: string | null, isLeadership: boolean) => void }) {
+  const [newRoleOpen, setNewRoleOpen] = useState(false);
+  const [newRoleName, setNewRoleName] = useState("");
+  const [newRoleLeadership, setNewRoleLeadership] = useState(false);
+  const current = member.role_title ?? "";
+  return <span className="member-role-control">
+    <select aria-label={`Role for ${member.name}`} value={newRoleOpen ? "__new" : current} onChange={(event) => {
+      const value = event.target.value;
+      if (value === "__new") { setNewRoleOpen(true); setNewRoleName(""); setNewRoleLeadership(false); return; }
+      setNewRoleOpen(false);
+      if (value !== current) onAssign(value || null, false);
+    }}>
+      <option value="">No role</option>
+      {member.role_title && !roles.some((role) => role.name === member.role_title) && <option value={member.role_title}>{member.role_title} (outside catalog)</option>}
+      {roles.map((role) => <option key={role.name} value={role.name}>
+        {role.name}{role.is_leadership ? " ★" : ""}{role.holder_names.length > 0 && !role.holder_names.includes(member.name) ? ` (held by ${role.holder_names.join(", ")})` : ""}
+      </option>)}
+      <option value="__new">New role…</option>
+    </select>
+    {newRoleOpen && <span className="member-role-new">
+      <input aria-label={`New role name for ${member.name}`} placeholder="Role name" value={newRoleName} onChange={(event) => setNewRoleName(event.target.value)} />
+      <label className="member-role-leadership"><input checked={newRoleLeadership} onChange={(event) => setNewRoleLeadership(event.target.checked)} type="checkbox" />Leadership ★</label>
+      <button className="text-button" disabled={!newRoleName.trim()} onClick={() => { onAssign(newRoleName.trim(), newRoleLeadership); setNewRoleOpen(false); }} type="button">Assign</button>
+      <button className="text-button" onClick={() => setNewRoleOpen(false)} type="button">Cancel</button>
+    </span>}
+  </span>;
+}
+
+function EntityProfileEditor({ entry, profile, onChange, onCancel, onSave, message, messageIsError, onKindChange, members, roles, memberSearch, memberResults, onMemberSearch, onAddMember, onRemoveMember, onAssignRole }: {
+  entry: LibraryEntrySummary; profile: EntityProfile; onChange: (profile: EntityProfile) => void;
+  onCancel: () => void; onSave: () => void; message: string; messageIsError?: boolean; onKindChange?: (kind: string) => void;
+  members?: LibraryMember[]; roles?: FactionRole[]; memberSearch?: string; memberResults?: EntityIdentity[];
+  onMemberSearch?: (value: string) => void; onAddMember?: (member: EntityIdentity) => void;
+  onRemoveMember?: (member: LibraryMember) => void; onAssignRole?: (member: LibraryMember, roleName: string | null, isLeadership: boolean) => void;
+}) {
+  const isCharacter = entry.entity_kind === "pc" || entry.entity_kind === "npc";
+  const isLocation = entry.entity_kind === "location";
+  return <article className="document-view entity-profile-editor" aria-label="Identity profile editor">
+    <header><b>{display(entry.entity_kind)} identity</b><span>Editing version {profile.version}</span></header>
+    <section className="character-content">
+      <div className="form-grid">
+        <label>Name<input aria-label="Identity name" value={profile.canonical_name} onChange={(event) => onChange({ ...profile, canonical_name: event.target.value })} /></label>
+        {entry.entity_kind === "pc" && <label>Player<input aria-label="Identity player" value={profile.player ?? ""} onChange={(event) => onChange({ ...profile, player: event.target.value })} /></label>}
+        {isCharacter && <label>Race<input aria-label="Identity race" value={profile.race ?? ""} onChange={(event) => onChange({ ...profile, race: event.target.value })} /></label>}
+        {isCharacter && <label>Sex<input aria-label="Identity sex" value={profile.sex ?? ""} onChange={(event) => onChange({ ...profile, sex: event.target.value })} /></label>}
+        {isLocation && <label>Location type<input aria-label="Identity location type" value={profile.location_type ?? ""} onChange={(event) => onChange({ ...profile, location_type: event.target.value })} /></label>}
+        {isLocation && <label>Parent location<input aria-label="Identity parent location" value={profile.parent_location ?? ""} onChange={(event) => onChange({ ...profile, parent_location: event.target.value })} /></label>}
+        {entry.entity_kind === "faction" && <label>Base location<input aria-label="Identity base location" placeholder="Where the faction operates" value={profile.base_location ?? ""} onChange={(event) => onChange({ ...profile, base_location: event.target.value })} /></label>}
+        <label>Status<input aria-label="Identity status" value={profile.status ?? ""} onChange={(event) => onChange({ ...profile, status: event.target.value })} /></label>
+        {onKindChange && <label>Kind (audited)<select aria-label="Identity kind correction" value={entry.entity_kind} onChange={(event) => { if (event.target.value !== entry.entity_kind) onKindChange(event.target.value); }}><option value={entry.entity_kind}>{display(entry.entity_kind)} (current)</option>{ENTITY_KINDS.filter((kind) => kind.kind !== entry.entity_kind).map((kind) => <option key={kind.kind} value={kind.kind}>{kind.label}</option>)}</select></label>}
+        <label>Aliases<input aria-label="Identity aliases" value={profile.aliases.join(", ")} onChange={(event) => onChange({ ...profile, aliases: event.target.value.split(",").map((value, index, all) => index < all.length - 1 ? value.trim() : value.trimStart()) })} onBlur={(event) => onChange({ ...profile, aliases: event.target.value.split(",").map((value) => value.trim()).filter(Boolean) })} /></label>
+      </div>
+      {members !== undefined && onAddMember && onRemoveMember && <div className="identity-members-editor" aria-label="Faction members">
+        <b>Members (audited roster)</b>
+        <span className="identity-members-legend">★ unique leadership seat</span>
+        {members.length === 0 && <p className="roles-explainer">No explicit roster yet. Names this faction appears with in shared records show on the entry page as associations — add a member below to start the audited roster.</p>}
+        <ul>{members.map((member) => <li key={member.member_id}>
+          <span className="member-name">{member.name}</span>
+          {member.role_title && <span className={member.is_leadership ? "role-chip leadership" : "role-chip"}>{member.role_title}{member.is_leadership ? " ★" : ""}</span>}
+          {onAssignRole && <MemberRoleControl member={member} roles={roles ?? []} onAssign={(roleName, isLeadership) => onAssignRole(member, roleName, isLeadership)} />}
+          <button className="text-button" type="button" onClick={() => onRemoveMember(member)} title="Remove membership">Remove</button>
+        </li>)}</ul>
+        {onMemberSearch !== undefined && <label>Add member<input aria-label="Search identities to add as member" placeholder="Search identities…" value={memberSearch ?? ""} onChange={(event) => onMemberSearch(event.target.value)} /></label>}
+        {(memberResults ?? []).length > 0 && <div className="identity-target-results">{(memberResults ?? []).map((match) => <button key={match.entity_id} type="button" onClick={() => onAddMember(match)}><b>{match.canonical_name}</b><small>{display(match.entity_kind)}</small></button>)}</div>}
+      </div>}
+      <label className="pc-background-field">Summary<textarea aria-label="Identity summary" rows={8} value={profile.summary} onChange={(event) => onChange({ ...profile, summary: event.target.value })} /></label>
+      {message && <p role={messageIsError ? "alert" : "status"} className={messageIsError ? "notice error" : undefined}>{message}</p>}
+      <div className="step-actions">
+        <button className="text-button" onClick={onCancel} type="button">Cancel</button>
+        <button className="decision-button" disabled={!profile.canonical_name.trim()} onClick={onSave} type="button">Save identity profile</button>
+      </div>
+    </section>
+  </article>;
+}
+
 function subjectKey(value: string): string {
   return value.trim().toLocaleLowerCase();
 }
@@ -554,7 +717,7 @@ function SourceBackedFamily({ family, documents, selectedDocumentId, onSelect, o
     {document.document_type === "session_note" && <button aria-label={`Edit ${sourceDocumentLabel(document)}`} className="source-entry-edit" onClick={() => onEditSession(document)} title="Edit session note" type="button"><RecordIcon kind="edit" /></button>}
   </div>;
   const sorted = [...documents].sort(sourceDocumentOrder);
-  const heading = ({ "GM planning": "GM planning", Worldbuilding: "Worldbuilding", Session: "Sessions", Handout: "Handouts" } as Record<string, string>)[family] ?? `${family}s`;
+  const heading = ({ "GM planning": "GM planning", Worldbuilding: "Worldbuilding sources", Session: "Sessions", Handout: "Handouts" } as Record<string, string>)[family] ?? `${family}s`;
   if (family !== "Encounter") return <details className="canonical-entry-group source-backed-group"><summary>{heading}</summary><div>{sorted.map(row)}</div></details>;
   const collections = new Map<string, SourceDocument[]>();
   sorted.forEach((document) => {
@@ -638,6 +801,186 @@ function TreeDir(props: {
       )}
     </div>
   );
+}
+
+function FactionRolesPage({ campaignClient, factions, onRefreshLibrary, onOpenFaction }: { campaignClient: CampaignClient; factions: LibraryEntrySummary[]; onRefreshLibrary: () => void; onOpenFaction: (entryId: string) => void }) {
+  const [roles, setRoles] = useState<FactionRoleSummary[] | null>(null);
+  const [declarations, setDeclarations] = useState<RoleDeclarationSummary[] | null>(null);
+  const [linkChoices, setLinkChoices] = useState<Record<string, { factionId: string; leadership: boolean }>>({});
+  const [loading, setLoading] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const [messageIsError, setMessageIsError] = useState(false);
+  const [defineFaction, setDefineFaction] = useState("");
+  const [defineName, setDefineName] = useState("");
+  const [defineLeadership, setDefineLeadership] = useState(false);
+
+  const loadRoles = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [roleList, declarationList] = await Promise.all([
+        campaignClient.listFactionRoles(),
+        campaignClient.listRoleDeclarations().catch(() => [] as RoleDeclarationSummary[]),
+      ]);
+      setRoles(roleList);
+      setDeclarations(declarationList);
+    } catch (error) {
+      setMessageIsError(true);
+      setMessage(error instanceof Error ? error.message : "Roles could not be loaded");
+    } finally { setLoading(false); }
+  }, [campaignClient]);
+
+  useEffect(() => { if (roles === null && !loading) void loadRoles(); }, [roles === null, loading, loadRoles]);
+
+  const decide = async (action: () => Promise<unknown>, done: string) => {
+    setBusy(true);
+    try {
+      await action();
+      setMessageIsError(false);
+      setMessage(done);
+      toast.push("success", done);
+      await loadRoles();
+      onRefreshLibrary();
+    } catch (error) {
+      setMessageIsError(true);
+      setMessage(error instanceof Error && error.message ? error.message : "Role decision failed");
+      toast.push("error", error instanceof Error && error.message ? error.message : "Role decision failed");
+    } finally { setBusy(false); }
+  };
+
+  const rosterOf = (factionId: string) => factions.find((entry) => entry.entry_id === factionId)?.members ?? [];
+  const grouped = new Map<string, { faction: LibraryEntrySummary | undefined; roles: FactionRoleSummary[] }>();
+  for (const role of roles ?? []) {
+    const block = grouped.get(role.faction_id) ?? { faction: factions.find((entry) => entry.entry_id === role.faction_id), roles: [] };
+    block.roles.push(role);
+    grouped.set(role.faction_id, block);
+  }
+
+  return <main className="page-roles">
+    <section className="identity-page-header" aria-label="Faction roles">
+      <div className="section-heading"><div><p className="kicker">Identity maintenance</p><h2>Faction Roles</h2></div><p>Every role definition across factions, who holds it, and where the vacant seats are. Roles are faction-scoped titles — unique leadership seats carry the ★.</p></div>
+      <div className="identity-toolbar"><button className="secondary-button" disabled={loading || busy} onClick={() => void loadRoles()} type="button">{loading ? "Working…" : "Refresh"}</button></div>
+      {message && <p role={messageIsError ? "alert" : "status"} className={"identity-message" + (messageIsError ? " notice error" : "")}>{message}</p>}
+    </section>
+
+    {declarations !== null && declarations.length > 0 && <section className="page-panel" aria-label="Unlinked role declarations">
+      <h3>Declared during Identity Review — unlinked</h3>
+      <p className="roles-explainer">These role surfaces were marked during review but belong to no faction yet. Link one to define it in that faction's catalog; the leadership ★ marks a unique seat.</p>
+      <ul className="role-declaration-list">{declarations.map((declaration) => {
+        const choice = linkChoices[declaration.normalized_surface] ?? { factionId: "", leadership: false };
+        return <li key={declaration.normalized_surface} className="role-row">
+          <span className="role-chip">{declaration.surface}</span>
+          <span className="member-role-control">
+            <select aria-label={`Link ${declaration.surface} to faction`} value={choice.factionId} onChange={(event) => setLinkChoices((current) => ({ ...current, [declaration.normalized_surface]: { ...choice, factionId: event.target.value } }))}>
+              <option value="">Choose a faction…</option>
+              {factions.map((faction) => <option key={faction.entry_id} value={faction.entry_id}>{faction.canonical_name}</option>)}
+            </select>
+            <label className="member-role-leadership"><input aria-label={`Leadership ★ for ${declaration.surface}`} checked={choice.leadership} onChange={(event) => setLinkChoices((current) => ({ ...current, [declaration.normalized_surface]: { ...choice, leadership: event.target.checked } }))} type="checkbox" />Leadership ★</label>
+            <button className="text-button" disabled={busy || !choice.factionId} onClick={() => { const factionName = factions.find((faction) => faction.entry_id === choice.factionId)?.canonical_name ?? "the faction"; void decide(() => campaignClient.defineFactionRole(choice.factionId, declaration.surface, choice.leadership), `Linked ${declaration.surface}${choice.leadership ? " ★" : ""} to ${factionName}`).then(() => setLinkChoices((current) => { const next = { ...current }; delete next[declaration.normalized_surface]; return next; })); }} type="button">Link</button>
+          </span>
+        </li>; })}</ul>
+    </section>}
+
+    <section className="page-panel" aria-label="Define a role">
+      <h3>Define a role</h3>
+      <div className="form-grid">
+        <label>Faction<select aria-label="Role faction" value={defineFaction} onChange={(event) => setDefineFaction(event.target.value)}>
+          <option value="">Choose a faction…</option>
+          {factions.map((faction) => <option key={faction.entry_id} value={faction.entry_id}>{faction.canonical_name}</option>)}
+        </select></label>
+        <label>Role name<input aria-label="New role definition name" placeholder="Grand Inquisitor" value={defineName} onChange={(event) => setDefineName(event.target.value)} /></label>
+        <label className="member-role-leadership"><input checked={defineLeadership} onChange={(event) => setDefineLeadership(event.target.checked)} type="checkbox" />Leadership ★ (unique seat)</label>
+      </div>
+      <div className="step-actions">
+        <button className="decision-button" disabled={busy || !defineFaction || !defineName.trim()} onClick={() => { const factionName = factions.find((entry) => entry.entry_id === defineFaction)?.canonical_name ?? "the faction"; void decide(() => campaignClient.defineFactionRole(defineFaction, defineName.trim(), defineLeadership), `Defined ${defineName.trim()}${defineLeadership ? " ★" : ""} for ${factionName}`).then(() => { setDefineName(""); setDefineLeadership(false); }); }} type="button">Define role</button>
+      </div>
+    </section>
+
+    {roles !== null && roles.length === 0 && <p className="identity-empty">No roles defined yet. Define one above or seat a member from a faction's profile editor.</p>}
+    {[...grouped.entries()].map(([factionId, block]) => <section className="page-panel roles-faction-block" key={factionId} aria-label={`Roles of ${block.faction?.canonical_name ?? factionId}`}>
+      <h3>{block.faction ? <button className="text-button" onClick={() => onOpenFaction(factionId)} type="button">{block.faction.canonical_name}</button> : factionId}</h3>
+      <ul>{block.roles.map((role) => <li key={role.name} className="role-row">
+        <span className={role.is_leadership ? "role-chip leadership" : "role-chip"}>{role.name}{role.is_leadership ? " ★" : ""}</span>
+        <span className="role-holders">{role.holders.length > 0 ? role.holders.map((holder) => <span key={holder.id} className="role-holder">{holder.name} <button className="text-button" disabled={busy} onClick={() => void decide(() => campaignClient.assignFactionRole(factionId, holder.id, null, false), `Vacated ${role.name} (${holder.name})`)} type="button">Vacate</button></span>) : <span className="role-vacant">Vacant</span>}</span>
+        <span className="member-role-control">
+          <select aria-label={`Seat a member as ${role.name}`} disabled={busy} value="" onChange={(event) => { const member = rosterOf(factionId).find((row) => row.member_id === event.target.value); if (member) void decide(() => campaignClient.assignFactionRole(factionId, member.member_id, role.name, false), `Seated ${member.name} as ${role.name}${role.is_leadership ? " ★" : ""}`); event.currentTarget.value = ""; }}>
+            <option value="">Seat a member…</option>
+            {rosterOf(factionId).filter((row) => !role.holders.some((holder) => holder.id === row.member_id)).map((row) => <option key={row.member_id} value={row.member_id}>{row.name}</option>)}
+          </select>
+        </span>
+      </li>)}</ul>
+    </section>)}
+  </main>;
+}
+
+function ActivityLogPage({ campaignClient }: { campaignClient: CampaignClient }) {
+  const [sessionEvents, setSessionEvents] = useState<LogEntry[]>([]);
+  const [decisions, setDecisions] = useState<IdentityDecisionEntry[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [filter, setFilter] = useState<"all" | "errors">("all");
+  const [notice, setNotice] = useState("");
+
+  useEffect(() => toast.subscribeLog(setSessionEvents), []);
+
+  const loadDecisions = useCallback(async () => {
+    setLoading(true);
+    try {
+      setDecisions(await campaignClient.listRecentDecisions(100));
+      setNotice("");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Decisions could not be loaded");
+    } finally { setLoading(false); }
+  }, [campaignClient]);
+
+  useEffect(() => { if (decisions === null && !loading) void loadDecisions(); }, [decisions === null, loading, loadDecisions]);
+
+  const timeOf = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  const decisionSummary = (decision: IdentityDecisionEntry) => {
+    const details = (decision.details ?? {}) as Record<string, unknown>;
+    const action = typeof details.action === "string" ? details.action : null;
+    const parts = [
+      action ? display(action) : null,
+      typeof details.role_name === "string" ? `role: ${details.role_name}` : null,
+      typeof details.member_name === "string" ? `member: ${details.member_name}` : null,
+      typeof details.faction_name === "string" ? `faction: ${details.faction_name}` : null,
+    ].filter(Boolean);
+    return parts.length > 0 ? parts.join(" · ") : null;
+  };
+  const rows = [
+    ...sessionEvents.map((event) => ({
+      key: `session-${event.id}`, at: event.at, time: timeOf(event.at),
+      kind: event.kind, label: event.kind === "success" ? "Done" : event.kind === "error" ? "Error" : "Notice",
+      message: event.message, detail: null as string | null, source: "This session",
+    })),
+    ...(decisions ?? []).map((decision) => ({
+      key: `decision-${decision.decision_id}`, at: decision.decided_at, time: timeOf(decision.decided_at),
+      kind: "decision" as const, label: `Decision · ${display(decision.kind)}`,
+      message: decision.surface, detail: decisionSummary(decision), source: "Campaign Core audit",
+    })),
+  ].sort((left, right) => right.at.localeCompare(left.at));
+  const visible = filter === "errors" ? rows.filter((row) => row.kind === "error") : rows;
+
+  return <main className="page-log">
+    <section className="identity-page-header" aria-label="Activity log">
+      <div className="section-heading"><div><p className="kicker">Maintenance</p><h2>Activity Log</h2></div><p>Every outcome this session plus the durable decision audit from Campaign Core — newest first. Session events live in this browser; decisions persist with receipts.</p></div>
+      <div className="identity-toolbar">
+        <button className={filter === "all" ? "active" : ""} onClick={() => setFilter("all")} type="button">All</button>
+        <button className={filter === "errors" ? "active" : ""} onClick={() => setFilter("errors")} type="button">Errors only</button>
+        <button className="secondary-button" disabled={loading} onClick={() => void loadDecisions()} type="button">{loading ? "Working…" : "Refresh"}</button>
+      </div>
+      {notice && <p role="alert" className="identity-message notice error">{notice}</p>}
+    </section>
+    <p className="identity-count">Showing {visible.length} event{visible.length === 1 ? "" : "s"} · {sessionEvents.length} this session · {decisions?.length ?? 0} audited decisions</p>
+    {visible.length === 0 && <p className="identity-empty">Nothing logged yet.</p>}
+    <ul className="log-list" aria-label="Activity events">
+      {visible.slice(0, 300).map((row) => <li className={`log-row log-${row.kind}`} key={row.key}>
+        <time>{row.time}</time>
+        <span className="log-kind">{row.label}</span>
+        <span className="log-message">{row.message}{row.detail ? ` — ${row.detail}` : ""}</span>
+        <small>{row.source}</small>
+      </li>)}
+    </ul>
+  </main>;
 }
 
 interface AppProps {
@@ -785,8 +1128,26 @@ function App({ campaignClient, jobPlatform, storage, pollIntervalMs = 700 }: App
   const [identityGaps, setIdentityGaps] = useState<IdentityGap[] | null>(null);
   const [identityBusy, setIdentityBusy] = useState(false);
   const [identityMessage, setIdentityMessage] = useState("");
+  const [identityMessageIsError, setIdentityMessageIsError] = useState(false);
   const [identityKinds, setIdentityKinds] = useState<Record<string, string>>({});
   const [identityAliasSelection, setIdentityAliasSelection] = useState<Record<string, string[]>>({});
+  const [identityRecent, setIdentityRecent] = useState<{ receipt: IdentityDecisionReceipt; done: string }[]>([]);
+  const [identityQueueTotal, setIdentityQueueTotal] = useState(0);
+  const [entityProfile, setEntityProfile] = useState<EntityProfile | null>(null);
+  const [entityProfileDraft, setEntityProfileDraft] = useState<EntityProfile | null>(null);
+  const [entityProfileEditing, setEntityProfileEditing] = useState(false);
+  const [entityProfileMessage, setEntityProfileMessage] = useState("");
+  const [entityProfileMessageIsError, setEntityProfileMessageIsError] = useState(false);
+  const [entityProfileBaseline, setEntityProfileBaseline] = useState<string | null>(null);
+  const [blockedSwitch, setBlockedSwitch] = useState<{ label: string; proceed: () => void } | null>(null);
+  const [identityViewMode, setIdentityViewMode] = useState<"cards" | "compact">("cards");
+  const [identityVisibleCount, setIdentityVisibleCount] = useState(20);
+  const [identityCanonical, setIdentityCanonical] = useState<Record<string, string>>({});
+  const [identityManualAliases, setIdentityManualAliases] = useState<Record<string, string>>({});
+  const [identityTargetQuery, setIdentityTargetQuery] = useState<Record<string, string>>({});
+  const [identityTargetResults, setIdentityTargetResults] = useState<Record<string, EntityIdentity[]>>({});
+  const [memberSearch, setMemberSearch] = useState("");
+  const [memberResults, setMemberResults] = useState<EntityIdentity[]>([]);
   const [queueTotal, setQueueTotal] = useState(0);
   const [sourceDocuments, setSourceDocuments] = useState<SourceDocument[]>([]);
   const [libraryEntries, setLibraryEntries] = useState<LibraryEntrySummary[]>([]);
@@ -1713,12 +2074,20 @@ function App({ campaignClient, jobPlatform, storage, pollIntervalMs = 700 }: App
   const loadIdentityGaps = useCallback(async () => {
     setIdentityBusy(true);
     try {
-      const queue = await campaignClient.getIdentityGaps(30);
+      const queue = await campaignClient.getIdentityGaps(200);
       setIdentityGaps(queue.gaps);
+      setIdentityQueueTotal(queue.total_candidates);
       // Related surfaces default to selected: merging variants is the common
-      // case, and deselecting is the explicit refusal.
+      // case, and deselecting is the explicit refusal. Kind defaults to the
+      // queue's deterministic suggestion; canonical names start from the
+      // title-prefix suggestion when one exists.
       setIdentityAliasSelection(Object.fromEntries(queue.gaps.map((gap) => [
         gap.normalized_surface, [...gap.related_surfaces]])));
+      setIdentityKinds(Object.fromEntries(queue.gaps
+        .filter((gap) => gap.suggested_kind)
+        .map((gap) => [gap.normalized_surface, gap.suggested_kind as string])));
+      setIdentityCanonical(Object.fromEntries(queue.gaps.map((gap) => [
+        gap.normalized_surface, gap.suggested_canonical_name ?? gap.surface])));
       setIdentityMessage("");
     } catch (error) {
       setIdentityMessage(error instanceof Error ? error.message : "Identity queue could not be loaded");
@@ -1731,14 +2100,29 @@ function App({ campaignClient, jobPlatform, storage, pollIntervalMs = 700 }: App
     setIdentityBusy(true);
     try {
       const receipt = await action();
+      setIdentityRecent((current) => [{ receipt, done }, ...current].slice(0, 5));
       await loadIdentityGaps();
-      setIdentityMessage(`${done} with receipt ${receipt.decision_id}`);
+      // Identity decisions change the library immediately; refresh it so new
+      // entities and aliases appear without a manual page reload.
+      campaignClient.listLibraryEntries().then(setLibraryEntries).catch(() => {});
+      const linked = receipt.linked_claims ? ` · ${receipt.linked_claims} claim${receipt.linked_claims === 1 ? "" : "s"} linked` : "";
+      setIdentityMessageIsError(false);
+      setIdentityMessage(`${done} with receipt ${receipt.decision_id}${linked}`);
+      toast.push("success", `${done}${linked}`);
     } catch (error) {
-      setIdentityMessage(error instanceof Error ? error.message : "Identity decision failed");
+      setIdentityMessageIsError(true);
+      setIdentityMessage(error instanceof Error && error.message ? error.message : "Identity decision failed");
+      toast.push("error", error instanceof Error && error.message ? error.message : "Identity decision failed");
     } finally {
       setIdentityBusy(false);
     }
   }, [campaignClient, loadIdentityGaps]);
+
+  const undoIdentity = useCallback(async (decisionId: string, done: string) => {
+    await decideIdentity(
+      () => campaignClient.revertIdentityDecision(decisionId, `identity-revert:${decisionId}:${Date.now()}`),
+      `Reverted “${done}”`);
+  }, [campaignClient, decideIdentity]);
 
   const selectedReviews = useMemo(
     () => reviews.filter((review) => review.subject_id === selected?.source_document_id),
@@ -1770,10 +2154,27 @@ function App({ campaignClient, jobPlatform, storage, pollIntervalMs = 700 }: App
   const proposalBlocksSelection = proposalBelongsToSelected
     && ["proposal_pending", "approved"].includes(reviewState.phase);
 
+  // An entry "has a page" when a document represents it under the same rules
+  // the page matcher uses. Page-less entries are the uncompleted ones — the
+  // sources are the thing; entity records without documents still owe a page.
+  const unpagedEntryIds = useMemo(() => {
+    const documentStubs = sourceDocuments.map((doc) => ({ document_id: doc.document_id, path: doc.path }));
+    const entityNames = libraryEntries.map((entry) => entry.canonical_name);
+    return new Set(libraryEntries
+      .filter((entry) => !selectEntrySource(entry, documentStubs, entityNames))
+      .map((entry) => entry.entry_id));
+  }, [libraryEntries, sourceDocuments]);
+
   const sourceBackedLibraryDocuments = useMemo(() => {
     const canonicalPCNames = new Set(libraryEntries.filter((entry) => entry.entity_kind === "pc").map((entry) => entry.canonical_name.trim().toLocaleLowerCase()));
-    return sourceDocuments.filter((doc) => isSourceBackedEntry(doc) || (
+    const canonicalEntryNames = new Set(libraryEntries.map((entry) => normalizeEntryName(entry.canonical_name)));
+    return sourceDocuments.filter((doc) => (isSourceBackedEntry(doc) || (
       /^pcs\//i.test(doc.path) && !canonicalPCNames.has((doc.title ?? entryLabel(doc.path)).trim().toLocaleLowerCase())
+    )) && !(
+      // Session notes are events, not entity pages; everything else whose
+      // filename exactly names an entity is hidden behind that entity's entry.
+      !/^sessions\//i.test(doc.path)
+      && canonicalEntryNames.has(normalizeEntryName(doc.path.split("/").pop()?.replace(/\.md$/, "") ?? ""))
     ));
   }, [libraryEntries, sourceDocuments]);
 
@@ -1783,7 +2184,169 @@ function App({ campaignClient, jobPlatform, storage, pollIntervalMs = 700 }: App
     [sourceDocuments],
   );
 
-  const [activePage, setActivePage] = useState<"documents" | "brainstorm" | "migration" | "tools">("documents");
+  const [activePage, setActivePage] = useState<"documents" | "brainstorm" | "identity" | "roles" | "migration" | "tools" | "log" | "conventions">("documents");
+
+  const openEntityProfileEditor = useCallback(() => {
+    if (!selectedEntry) return;
+    const draft = entityProfile ?? {
+      entity_id: selectedEntry.entry_id, version: 0,
+      canonical_name: selectedEntry.canonical_name, status: null,
+      location_type: null, parent_location: null, player: null,
+      race: null, sex: null, aliases: [...selectedEntry.aliases], summary: "",
+    };
+    setEntityProfileDraft(draft);
+    setEntityProfileBaseline(JSON.stringify(draft));
+    setEntityProfileEditing(true);
+  }, [entityProfile, selectedEntry]);
+
+  // Leaving an open editor: clean edits auto-cancel, dirty edits force the issue.
+  const leaveEditorGuard = useCallback((label: string, proceed: () => void) => {
+    if (entityProfileEditing && entityProfileDraft && entityProfileBaseline !== null
+        && JSON.stringify(entityProfileDraft) !== entityProfileBaseline) {
+      setBlockedSwitch({ label, proceed });
+      return;
+    }
+    setEntityProfileEditing(false);
+    setEntityProfileDraft(null);
+    setEntityProfileBaseline(null);
+    setBlockedSwitch(null);
+    proceed();
+  }, [entityProfileEditing, entityProfileDraft, entityProfileBaseline]);
+  const openSourceDocument = useCallback((document: SourceDocument) => {
+    leaveEditorGuard(`the ${document.title ?? document.path} document`, () => {
+      setSelectedEntryId(null); setSelectedEntry(null); setSelectedPlan(null);
+      setSelectedDocumentId(document.document_id);
+      void loadDocumentContent(document.document_id, document.path);
+    });
+  }, [leaveEditorGuard]);
+
+  const correctEntityKind = useCallback(async (kind: string) => {
+    if (!selectedEntry) return;
+    try {
+      const proposal = await campaignClient.proposeEntityKind(selectedEntry.entry_id, kind);
+      const approval = await campaignClient.approveEntityMetadataProposal(
+        proposal.proposal_id, proposal.item.item_id, proposal.version_number,
+        proposal.content_hash);
+      await campaignClient.applyApproval(
+        { version_number: proposal.version_number, content_hash: proposal.content_hash },
+        approval);
+      setEntityProfileMessageIsError(false);
+      setEntityProfileMessage(`Kind corrected to ${display(kind)} — proposal ${proposal.proposal_id.slice(0, 8)} applied`);
+      toast.push("success", `Kind corrected to ${display(kind)} — proposal ${proposal.proposal_id.slice(0, 8)} applied`);
+      await loadCanonicalEntry(selectedEntry.entry_id);
+      setEntityProfileEditing(false);
+      campaignClient.listLibraryEntries().then(setLibraryEntries).catch(() => {});
+    } catch (error) {
+      setEntityProfileMessageIsError(true);
+      setEntityProfileMessage(error instanceof Error ? error.message : "Kind correction failed");
+      toast.push("error", error instanceof Error ? error.message : "Kind correction failed");
+    }
+  }, [campaignClient, selectedEntry, loadCanonicalEntry]);
+
+  const addFactionMember = useCallback(async (member: EntityIdentity) => {
+    if (!selectedEntry) return;
+    setMemberSearch("");
+    setMemberResults([]);
+    // Refusals ("already a member") must be visible here in the editor, not
+    // on the Identity page the DM is not looking at.
+    try {
+      const receipt = await campaignClient.addMembership(selectedEntry.entry_id, member.entity_id);
+      setEntityProfileMessageIsError(false);
+      setEntityProfileMessage(`Added ${member.canonical_name} to ${selectedEntry.canonical_name} with receipt ${receipt.decision_id.slice(0, 8)}`);
+      toast.push("success", `Added ${member.canonical_name} to ${selectedEntry.canonical_name}`);
+    } catch (error) {
+      setEntityProfileMessageIsError(true);
+      setEntityProfileMessage(error instanceof Error && error.message ? error.message : "Membership decision failed");
+      toast.push("error", error instanceof Error && error.message ? error.message : "Membership decision failed");
+      return;
+    }
+    campaignClient.listLibraryEntries().then(setLibraryEntries).catch(() => {});
+    // The roster lives on the library entry; reload it so the list updates in place.
+    await loadCanonicalEntry(selectedEntry.entry_id);
+  }, [campaignClient, selectedEntry, loadCanonicalEntry]);
+
+  const removeFactionMember = useCallback(async (member: LibraryMember) => {
+    if (!selectedEntry) return;
+    try {
+      const receipt = await campaignClient.removeMembership(selectedEntry.entry_id, member.member_id);
+      setEntityProfileMessageIsError(false);
+      setEntityProfileMessage(`Removed ${member.name} from ${selectedEntry.canonical_name} with receipt ${receipt.decision_id.slice(0, 8)}`);
+      toast.push("success", `Removed ${member.name} from ${selectedEntry.canonical_name}`);
+    } catch (error) {
+      setEntityProfileMessageIsError(true);
+      setEntityProfileMessage(error instanceof Error && error.message ? error.message : "Membership decision failed");
+      toast.push("error", error instanceof Error && error.message ? error.message : "Membership decision failed");
+      return;
+    }
+    campaignClient.listLibraryEntries().then(setLibraryEntries).catch(() => {});
+    await loadCanonicalEntry(selectedEntry.entry_id);
+  }, [campaignClient, selectedEntry, loadCanonicalEntry]);
+
+  const assignFactionRole = useCallback(async (member: LibraryMember, roleName: string | null, isLeadership: boolean) => {
+    if (!selectedEntry) return;
+    // Core refuses a leadership seat held by another member by name; that
+    // refusal surfaces here as an error instead of silently transferring.
+    try {
+      await campaignClient.assignFactionRole(selectedEntry.entry_id, member.member_id, roleName, isLeadership);
+    } catch (error) {
+      setEntityProfileMessageIsError(true);
+      setEntityProfileMessage(error instanceof Error && error.message ? error.message : "Role decision failed");
+      toast.push("error", error instanceof Error && error.message ? error.message : "Role decision failed");
+      return;
+    }
+    await loadCanonicalEntry(selectedEntry.entry_id);
+    campaignClient.listLibraryEntries().then(setLibraryEntries).catch(() => {});
+    setEntityProfileMessageIsError(false);
+    setEntityProfileMessage(roleName
+      ? `Seated ${member.name} as ${roleName}${isLeadership ? " ★" : ""} in ${selectedEntry.canonical_name}`
+      : `Cleared ${member.name}'s role in ${selectedEntry.canonical_name}`);
+    toast.push("success", roleName
+      ? `Seated ${member.name} as ${roleName}${isLeadership ? " ★" : ""} in ${selectedEntry.canonical_name}`
+      : `Cleared ${member.name}'s role in ${selectedEntry.canonical_name}`);
+  }, [campaignClient, selectedEntry, loadCanonicalEntry]);
+
+  const saveEntityProfile = useCallback(async (): Promise<boolean> => {
+    if (!selectedEntry || !entityProfileDraft || !entityProfileDraft.canonical_name.trim()) return false;
+    try {
+      const receipt = await campaignClient.updateEntityProfile(
+        selectedEntry.entry_id,
+        { ...entityProfileDraft,
+          canonical_name: entityProfileDraft.canonical_name.trim(),
+          status: entityProfileDraft.status?.trim() || null,
+          location_type: entityProfileDraft.location_type?.trim() || null,
+          parent_location: entityProfileDraft.parent_location?.trim() || null,
+          base_location: entityProfileDraft.base_location?.trim() || null,
+          race: entityProfileDraft.race?.trim() || null,
+          sex: entityProfileDraft.sex?.trim() || null,
+          player: entityProfileDraft.player?.trim() || null,
+          aliases: entityProfileDraft.aliases.map((value) => value.trim()).filter(Boolean),
+          summary: entityProfileDraft.summary,
+          version: entityProfileDraft.version,
+          idempotency_key: `entity-profile:${selectedEntry.entry_id}:${entityProfileDraft.version}:${crypto.randomUUID()}` });
+      await loadCanonicalEntry(selectedEntry.entry_id);
+      campaignClient.listLibraryEntries().then(setLibraryEntries).catch(() => {});
+      setEntityProfileEditing(false);
+      setEntityProfileBaseline(null);
+      setEntityProfileMessageIsError(false);
+      setEntityProfileMessage(`Saved with receipt ${receipt.receipt_id}` + (receipt.alias_sync ? ` · aliases for ${receipt.alias_sync.entity_name}:` +
+        [receipt.alias_sync.applied.length ? ` added ${receipt.alias_sync.applied.join(", ")}` : "",
+         receipt.alias_sync.removed.length ? ` removed ${receipt.alias_sync.removed.join(", ")}` : "",
+         receipt.alias_sync.skipped_conflicting.length ? ` skipped (owned by another identity): ${receipt.alias_sync.skipped_conflicting.join(", ")}` : ""].filter(Boolean).join(";") : ""));
+      toast.push("success", "Identity profile saved");
+      return true;
+    } catch (error) {
+      setEntityProfileMessageIsError(true);
+      setEntityProfileMessage(error instanceof Error ? error.message : "Profile could not be saved");
+      toast.push("error", error instanceof Error ? error.message : "Profile could not be saved");
+      return false;
+    }
+  }, [campaignClient, entityProfileDraft, selectedEntry, loadCanonicalEntry]);
+
+    useEffect(() => {
+    if (activePage === "identity" && identityGaps === null && !identityBusy) {
+      void loadIdentityGaps();
+    }
+  }, [activePage, identityGaps === null, identityBusy, loadIdentityGaps]);
   const [sessionCaptureOpen, setSessionCaptureOpen] = useState(false);
   const [sessionReviewComplete, setSessionReviewComplete] = useState<{ sourceDocumentId: string; sourcePath: string; receiptId?: string } | null>(null);
   const [sessionCaptureDate, setSessionCaptureDate] = useState(() => localCalendarDate());
@@ -1989,6 +2552,7 @@ function App({ campaignClient, jobPlatform, storage, pollIntervalMs = 700 }: App
       await chooseCandidate(receipt.candidate_id);
     } catch (error) {
       setSessionCaptureError(error instanceof Error ? error.message : "Session note could not be captured");
+      toast.push("error", error instanceof Error ? error.message : "Session note could not be captured");
     } finally { setSessionCaptureBusy(false); }
   }
 
@@ -2309,7 +2873,7 @@ function App({ campaignClient, jobPlatform, storage, pollIntervalMs = 700 }: App
     setEncounterDossierError("");
     try {
       const entry = await campaignClient.getLibraryEntry(npc.entry_id);
-      const source = entry.sources[0];
+      const source = selectEntrySource(entry, entry.sources, libraryEntries.map((item) => item.canonical_name));
       let profile: CharacterDocument | null = null;
       if (source) {
         const document = await campaignClient.getSourceDocument(source.document_id);
@@ -2353,13 +2917,16 @@ function App({ campaignClient, jobPlatform, storage, pollIntervalMs = 700 }: App
   }
 
   async function loadCanonicalEntry(entryId: string) {
-    setDocLoading(true);
+    // Same-entry reloads (roster and role operations) stay on screen; only a
+    // genuine entry switch swaps the panel for the loading state.
+    if (entryId !== selectedEntryId) setDocLoading(true);
+    setMemberSearch("");
+    setMemberResults([]);
     try {
       const entry = await campaignClient.getLibraryEntry(entryId);
       setSelectedEntry(entry);
       setSelectedPlan(null);
-      const preferredRoot = ({ pc: "pcs/", npc: "npcs/", location: "locations/" } as Partial<Record<EntityKind, string>>)[entry.entity_kind];
-      const source = entry.sources.find((item) => preferredRoot && item.path.toLocaleLowerCase().startsWith(preferredRoot)) ?? entry.sources[0];
+      const source = selectEntrySource(entry, entry.sources, libraryEntries.map((item) => item.canonical_name));
       setDocCanonicalClaims(entry.claims);
       setDocClaimHistory(entry.claim_history ?? []);
       setClaimEdit(null); setClaimEditMessage("");
@@ -2378,7 +2945,13 @@ function App({ campaignClient, jobPlatform, storage, pollIntervalMs = 700 }: App
       } else {
         setDocMetadata(null);
         setSelectedDocumentId(null);
-        setDocContent(`---\ntype: ${entry.entity_kind}\n---\n# ${entry.canonical_name}\n`);
+        const profile = await campaignClient.getEntityProfile(entry.entry_id).catch(() => null);
+        setEntityProfile(profile);
+        // Roster operations reload the open editor's entry; the in-progress
+        // draft survives those reloads. Switching entries goes through
+        // leaveEditorGuard, which closes the editor first.
+        if (!entityProfileEditing) setEntityProfileDraft(profile);
+        setDocContent(synthesizedEntryDocument(entry, profile));
         setDocContentPath("");
         setPCProfile(null); setPCDraft(null);
       }
@@ -2416,7 +2989,8 @@ function App({ campaignClient, jobPlatform, storage, pollIntervalMs = 700 }: App
            sync.removed.length ? ` removed ${sync.removed.join(", ")}` : "",
            sync.skipped_conflicting.length ? ` skipped (owned by another identity): ${sync.skipped_conflicting.join(", ")}` : ""].filter(Boolean).join(";") + ".";
       setPCMessage(`Saved with receipt ${receipt.receipt_id}${syncCopy}`);
-    } catch (error) { setPCMessage(error instanceof Error ? error.message : "PC profile could not be saved"); }
+      toast.push("success", "PC profile saved");
+    } catch (error) { setPCMessage(error instanceof Error ? error.message : "PC profile could not be saved"); toast.push("error", error instanceof Error ? error.message : "PC profile could not be saved"); }
   }
 
   async function beginClaimEdit(claimId: string) {
@@ -2441,7 +3015,8 @@ function App({ campaignClient, jobPlatform, storage, pollIntervalMs = 700 }: App
       if (selectedEntryId) await loadCanonicalEntry(selectedEntryId);
       else await loadDocumentContent(selectedDocumentId, docContentPath);
       setClaimEditMessage(`Claim corrected with receipt ${receipt.receipt_id}`);
-    } catch (error) { setClaimEditMessage(error instanceof Error ? error.message : "Claim correction failed"); }
+      toast.push("success", "Claim corrected");
+    } catch (error) { setClaimEditMessage(error instanceof Error ? error.message : "Claim correction failed"); toast.push("error", error instanceof Error ? error.message : "Claim correction failed"); }
     finally { setClaimEditBusy(false); }
   }
 
@@ -2474,8 +3049,12 @@ function App({ campaignClient, jobPlatform, storage, pollIntervalMs = 700 }: App
         <nav aria-label="Primary navigation">
           <button className={activePage === "documents" ? "active" : ""} onClick={() => setActivePage("documents")} type="button">Library</button>
           <button className={activePage === "brainstorm" ? "active" : ""} onClick={() => setActivePage("brainstorm")} type="button">Brainstorm</button>
+          <button className={activePage === "identity" ? "active" : ""} onClick={() => setActivePage("identity")} type="button">Identity</button>
+          <button className={activePage === "roles" ? "active" : ""} onClick={() => setActivePage("roles")} type="button">Roles</button>
           <button className={activePage === "migration" ? "active" : ""} onClick={() => setActivePage("migration")} type="button">Migration</button>
           <button className={activePage === "tools" ? "active" : ""} onClick={() => setActivePage("tools")} type="button">Tools</button>
+          <button className={activePage === "log" ? "active" : ""} onClick={() => setActivePage("log")} type="button">Log</button>
+          <button className={activePage === "conventions" ? "active" : ""} onClick={() => setActivePage("conventions")} type="button">Conventions</button>
         </nav>
         <div className="identity"><span>DM</span><b>Private archive</b></div>
       </header>
@@ -2488,15 +3067,25 @@ function App({ campaignClient, jobPlatform, storage, pollIntervalMs = 700 }: App
             <div className="tree-header library-tree-header"><div><span>{libraryMode === "entries" ? "Campaign library" : "Source files"}</span></div><div className="library-header-actions"><div className="new-session-menu"><button aria-expanded={newSessionMenuOpen} aria-label="New session" className="new-session-note" onClick={() => { if (sessionRunRef.current) setTableNotesOpen(true); else setNewSessionMenuOpen((open) => !open); }} title={sessionRun ? "Open session" : "New session"} type="button">+</button>{newSessionMenuOpen && !sessionRun && <div role="menu"><button onClick={() => void beginLiveSession()} role="menuitem" type="button"><b>Start live session</b><span>Capture events as they happen</span></button><button onClick={() => { setNewSessionMenuOpen(false); void openSessionCapture(); }} role="menuitem" type="button"><b>Write session log directly</b><span>Enter a finished account for review</span></button></div>}</div><label className="source-mode-toggle"><span>Source</span><button aria-checked={libraryMode === "sources"} aria-label="Source view" onClick={() => setLibraryMode((mode) => mode === "sources" ? "entries" : "sources")} role="switch" type="button"><i /></button></label></div></div>
             <div className="tree-body">
               {sourceDocuments.length === 0 && reviewLoading && <p className="queue-empty">Loading…</p>}
-              {libraryMode === "entries" && libraryEntries.length > 0 && Array.from(new Set(libraryEntries.map((entry) => entry.entity_kind))).map((kind) => <details className="canonical-entry-group" key={kind}><summary>{entryKindLabel(kind)}</summary><div>{libraryEntries.filter((entry) => entry.entity_kind === kind).map((entry) => <button className={`tree-doc canonical-entry-link ${selectedEntryId === entry.entry_id ? "selected" : ""}`} key={entry.entry_id} onClick={() => { setSelectedEntryId(entry.entry_id); void loadCanonicalEntry(entry.entry_id); }} type="button"><span className="tree-doc-name">{entry.canonical_name}</span></button>)}</div></details>)}
-              {libraryMode === "entries" && libraryPlans.length > 0 && <details className="canonical-entry-group"><summary>Plans</summary><div>{libraryPlans.map((plan) => <button className={`tree-doc canonical-entry-link ${selectedPlan?.id === plan.id ? "selected" : ""}`} key={plan.id} onClick={() => { setSelectedEntryId(null); setSelectedEntry(null); setSelectedPlan(plan); setDocContent(""); }} type="button"><span className="tree-doc-name">{plan.canonical_name}</span></button>)}</div></details>}
-              {libraryMode === "entries" && sourceBackedLibraryDocuments.length > 0 && Array.from(new Set(sourceBackedLibraryDocuments.map((document) => pathEntryType(document.path)))).map((family) => <SourceBackedFamily documents={sourceBackedLibraryDocuments.filter((document) => pathEntryType(document.path) === family)} family={family} key={family} onEditSession={(document) => void editSourceSessionDocument(document)} onSelect={(document) => { setSelectedEntryId(null); setSelectedEntry(null); setSelectedPlan(null); setSelectedDocumentId(document.document_id); void loadDocumentContent(document.document_id, document.path); }} selectedDocumentId={selectedDocumentId} />)}
+              {libraryMode === "entries" && libraryEntries.length > 0 && Array.from(new Set(libraryEntries.map((entry) => entry.entity_kind))).map((kind) => {
+                const loreDocuments = kind === "worldbuilding"
+                  ? sourceBackedLibraryDocuments.filter((document) => pathEntryType(document.path) === "Worldbuilding")
+                  : [];
+                const entryRows = libraryEntries.filter((entry) => entry.entity_kind === kind).map((entry) => (
+                  { key: `entry-${entry.entry_id}`, label: entry.canonical_name, selected: selectedEntryId === entry.entry_id, node: <button className={`tree-doc canonical-entry-link ${selectedEntryId === entry.entry_id ? "selected" : ""}`} key={entry.entry_id} onClick={() => leaveEditorGuard(entry.canonical_name, () => { setSelectedEntryId(entry.entry_id); void loadCanonicalEntry(entry.entry_id); })} type="button"><span className="tree-doc-name">{entry.canonical_name}</span>{unpagedEntryIds.has(entry.entry_id) && <span aria-hidden="true" className="tree-doc-flag" title="No document backs this entry yet — its page is synthesized from claims. Write a description to give it one."><RecordIcon kind="unpaged" /></span>}</button> }));
+                const documentRows = loreDocuments.map((document) => (
+                  { key: `doc-${document.document_id}`, label: sourceDocumentLabel(document), selected: selectedDocumentId === document.document_id, node: <div className="source-entry-row" key={document.document_id}><button className={`tree-doc canonical-entry-link ${selectedDocumentId === document.document_id ? "selected" : ""}`} onClick={() => openSourceDocument(document)} type="button"><span className="tree-doc-name">{sourceDocumentLabel(document)}</span></button></div> }));
+                return <details className="canonical-entry-group" key={kind}><summary>{entryKindLabel(kind)}</summary><div>{[...entryRows, ...documentRows].sort((left, right) => left.label.toLocaleLowerCase().localeCompare(right.label.toLocaleLowerCase())).map((row) => row.node)}</div></details>;
+              })}
+              {libraryMode === "entries" && libraryPlans.length > 0 && <details className="canonical-entry-group"><summary>Plans</summary><div>{libraryPlans.map((plan) => <button className={`tree-doc canonical-entry-link ${selectedPlan?.id === plan.id ? "selected" : ""}`} key={plan.id} onClick={() => leaveEditorGuard(`the ${plan.canonical_name} plan`, () => { setSelectedEntryId(null); setSelectedEntry(null); setSelectedPlan(plan); setDocContent(""); })} type="button"><span className="tree-doc-name">{plan.canonical_name}</span></button>)}</div></details>}
+              {libraryMode === "entries" && sourceBackedLibraryDocuments.length > 0 && Array.from(new Set(sourceBackedLibraryDocuments.map((document) => pathEntryType(document.path)))).filter((family) => family !== "Worldbuilding").map((family) => <SourceBackedFamily documents={sourceBackedLibraryDocuments.filter((document) => pathEntryType(document.path) === family)} family={family} key={family} onEditSession={(document) => void editSourceSessionDocument(document)} onSelect={openSourceDocument} selectedDocumentId={selectedDocumentId} />)}
               {(libraryMode === "sources" || libraryEntries.length === 0) && <>{libraryMode === "sources" && <p className="tree-explainer">Immutable imported evidence, organized by source path.</p>}{Object.entries(buildDocTree(sourceDocuments)).map(([dir, children]) => (
-                <TreeDir key={dir} name={dir} depth={0} children_={children} expanded={expandedDirs} setExpanded={setExpandedDirs} selectedDocumentId={selectedDocumentId} sourceMode={libraryMode === "sources"} onSelect={(docId) => { const doc = sourceDocuments.find((d) => d.document_id === docId); if (doc) { setSelectedEntryId(null); setSelectedEntry(null); setSelectedPlan(null); setSelectedDocumentId(docId); void loadDocumentContent(docId, doc.path); } }} />
+                <TreeDir key={dir} name={dir} depth={0} children_={children} expanded={expandedDirs} setExpanded={setExpandedDirs} selectedDocumentId={selectedDocumentId} sourceMode={libraryMode === "sources"} onSelect={(docId) => { const doc = sourceDocuments.find((d) => d.document_id === docId); if (doc) { leaveEditorGuard(`the ${doc.title ?? doc.path} document`, () => { setSelectedEntryId(null); setSelectedEntry(null); setSelectedPlan(null); setSelectedDocumentId(docId); void loadDocumentContent(docId, doc.path); }); } }} />
               ))}</>}
             </div>
           </aside>
           <section className={`doc-content-panel ${encounterDossier ? (encounterDossierCollapsed ? "dossier-collapsed" : "dossier-open") : ""}`} aria-label="Document content">
+            {blockedSwitch && <div className="notice error unresolved-edit" role="alert"><b>Unsaved identity profile changes.</b><p>Save or discard them before opening {blockedSwitch.label}.</p><div className="step-actions"><button className="text-button" type="button" onClick={() => { const proceed = blockedSwitch.proceed; setBlockedSwitch(null); setEntityProfileEditing(false); setEntityProfileDraft(entityProfile); setEntityProfileBaseline(null); proceed(); }}>Discard changes</button><button className="decision-button" type="button" onClick={() => { void (async () => { if (await saveEntityProfile()) { const proceed = blockedSwitch.proceed; setBlockedSwitch(null); proceed(); } })(); }}>Save profile</button></div></div>}
             {sessionCaptureOpen && closeoutNotes.length > 0 && <section aria-label="Session closeout context" className="session-closeout-context"><header><div><span>Session context</span><b>{closeoutNotes.length} timeline note{closeoutNotes.length === 1 ? "" : "s"}</b></div><button className="text-button" onClick={() => setTableNotesOpen(true)} type="button">Review timeline</button></header>{closeoutEncounters.length > 0 ? <div>{closeoutEncounters.map((note) => { const progress = encounterProgress.find((item) => item.source_document_id === note.sourceDocumentId); return <article key={note.sourceDocumentId || note.sourcePath}><b>{note.encounterName}</b><span>{progress?.resume_section_title ? `Resume at ${progress.resume_section_title}` : progress?.status === "completed" ? "Completed" : progress?.status === "abandoned" ? "Abandoned" : "No resume point saved"}</span></article>; })}</div> : <p>These notes occurred outside a prepared encounter.</p>}<small>Encounter and resume labels stay with the session run. Only the editable note text becomes source evidence.</small></section>}
             {sessionCaptureOpen ? <article className="document-view session-note-capture"><header><b>{sessionCaptureId ? "Edit session note" : "New session note"}</b><span>{sessionCaptureId ? "Corrected revision" : "Direct input"}</span></header><section className="character-content"><p>Capture manicured notes from actual play. The submitted text is preserved as immutable evidence before review.</p><div className="form-grid"><label>Session date<input aria-label="Session date" type="date" value={sessionCaptureDate} onChange={(event) => setSessionCaptureDate(event.target.value)} /></label><label>Title<input aria-label="Session note title" placeholder="Return to the Monastery" value={sessionCaptureTitle} onChange={(event) => setSessionCaptureTitle(event.target.value)} /></label></div><fieldset className="campaign-date-fields"><legend>In-game date</legend><p>This becomes the default campaign date for the next session note.</p><label>Campaign date (CE)<input aria-label="In-game date" type="date" value={inGameDate} onChange={(event) => setInGameDate(event.target.value)} /></label></fieldset><label className="pc-background-field session-notes-field">Notes<textarea ref={sessionNotesRef} aria-label="Session notes" placeholder="Enter one reviewable event or statement per line. Type @ to link a character or location." rows={18} value={sessionCaptureText} onChange={(event) => updateSessionCaptureText(event.target.value, event.currentTarget)} onKeyDown={handleSessionNotesKeyDown} />{mentionMatches.length > 0 && <div className="mention-suggestions" style={mentionMenuPosition} role="listbox" aria-label="Entity mentions">{mentionMatches.map((entity, index) => <button className={index === mentionHighlight ? "active" : ""} aria-selected={index === mentionHighlight} key={entity.entity_id} onMouseDown={(event) => event.preventDefault()} onClick={() => selectSessionMention(entity)} role="option" type="button"><b>{entity.canonical_name}</b><span>{display(entity.entity_kind)}</span></button>)}</div>}</label>{sessionMentions.length > 0 && <div className="mention-chips" aria-label="Linked records">{sessionMentions.map((entity) => <span key={entity.entity_id}>@{entity.canonical_name}<small>{display(entity.entity_kind)}</small></span>)}</div>}{sessionCaptureError && <div className="notice error" role="alert">{sessionCaptureError}</div>}<div className="step-actions"><button className="text-button" disabled={sessionCaptureBusy} onClick={() => { setSessionCaptureOpen(false); setSessionCaptureTableNoteIds([]); }} type="button">Cancel</button><button disabled={sessionCaptureBusy || !sessionCaptureDate || !inGameDate || !sessionCaptureTitle.trim() || !sessionCaptureText.trim()} onClick={() => void captureSessionNote()} type="button">{sessionCaptureBusy ? "Saving…" : sessionCaptureId ? "Save revision and review" : "Capture and review"}</button></div></section></article>
               : selectedPlan ? <PlanEntryView plan={selectedPlan} /> : docLoading ? <p className="queue-empty">Loading document…</p>
@@ -2504,13 +3093,22 @@ function App({ campaignClient, jobPlatform, storage, pollIntervalMs = 700 }: App
                 <>{pcProfile && !pcEditing
                   ? <><CharacterDocumentView path={docContentPath} sources={selectedEntry?.sources ?? []} profile={{ ...characterDocument(docContent)!, name: pcProfile.canonical_name, player: pcProfile.player, race: pcProfile.race, sex: pcProfile.sex, status: pcProfile.status, background: pcProfile.background, aliases: pcProfile.aliases }} dmClaims={docCanonicalClaims} claimHistory={docClaimHistory} onEditClaim={(claimId) => void beginClaimEdit(claimId)} onEdit={() => { setPCDraft(pcProfile); setPCEditing(true); setPCPreview(false); setPCSaveKey(""); setPCMessage(""); }} />{claimEdit && <ClaimReplacementEditor drafts={claimEditDrafts} busy={claimEditBusy} reason={claimEditReason} onChange={setClaimEditDrafts} onReasonChange={setClaimEditReason} onCancel={() => setClaimEdit(null)} onSave={() => void saveClaimCorrection()} />}{claimEditMessage && <div className="notice" role="status">{claimEditMessage}</div>}</>
                   : pcDraft && pcEditing ? <CharacterProfileEditor profile={pcDraft} kind={characterDocument(docContent)?.kind ?? "npc"} changedFields={pcChangedFields} preview={pcPreview} onChange={setPCDraft} onCancel={() => { setPCEditing(false); setPCPreview(false); setPCSaveKey(""); setPCDraft(pcProfile); }} onReview={() => { const prefix = characterDocument(docContent)?.kind === "pc" ? "pc-profile" : "character-profile"; setPCSaveKey((current) => current || `${prefix}:${pcDraft.document_id}:${pcDraft.version}:${crypto.randomUUID()}`); setPCPreview(true); }} onSave={() => void savePCProfile()} />
-                  : <CharacterDocumentView path={docContentPath} sources={selectedEntry?.sources ?? []} profile={characterDocument(docContent)!} dmClaims={docCanonicalClaims} claimHistory={docClaimHistory} onEditClaim={(claimId) => void beginClaimEdit(claimId)} />}{pcMessage && <div className="notice" role="status">{pcMessage}</div>}</>
+                  : !selectedDocumentId && selectedEntry
+                    ? (entityProfileEditing && entityProfileDraft
+                      ? <EntityProfileEditor entry={selectedEntry} profile={entityProfileDraft} onChange={setEntityProfileDraft} onCancel={() => { setEntityProfileEditing(false); setEntityProfileDraft(entityProfile); setEntityProfileMessage(""); setEntityProfileMessageIsError(false); }} onSave={() => void saveEntityProfile()} message={entityProfileMessage} messageIsError={entityProfileMessageIsError} onKindChange={(kind) => void correctEntityKind(kind)} members={selectedEntry.entity_kind === "faction" ? (selectedEntry.members ?? []) : undefined} roles={selectedEntry.entity_kind === "faction" ? (selectedEntry.roles ?? []) : undefined} memberSearch={memberSearch} memberResults={memberResults} onMemberSearch={(value) => { setMemberSearch(value); if (value.trim().length > 1) { campaignClient.searchEntities(value.trim()).then(setMemberResults).catch(() => setMemberResults([])); } else { setMemberResults([]); } }} onAddMember={(member) => void addFactionMember(member)} onRemoveMember={(member) => void removeFactionMember(member)} onAssignRole={(member, roleName, isLeadership) => void assignFactionRole(member, roleName, isLeadership)} />
+                      : <><CharacterDocumentView path={docContentPath} sources={selectedEntry.sources} profile={characterDocument(docContent)!} dmClaims={docCanonicalClaims} claimHistory={docClaimHistory} onEditClaim={(claimId) => void beginClaimEdit(claimId)} onEdit={openEntityProfileEditor} />{entityProfileMessage && <div className="notice" role="status">{entityProfileMessage}</div>}</>)
+                    : <CharacterDocumentView path={docContentPath} sources={selectedEntry?.sources ?? []} profile={characterDocument(docContent)!} dmClaims={docCanonicalClaims} claimHistory={docClaimHistory} onEditClaim={(claimId) => void beginClaimEdit(claimId)} />}{pcMessage && <div className="notice" role="status">{pcMessage}</div>}</>
                 : <>{parseEntry(docContent).type === "encounter" ? <EncounterEntryView entry={parseEntry(docContent)} path={docContentPath} sourceDocumentId={docMetadata?.document_id ?? selectedDocumentId ?? ""} claims={docCanonicalClaims} history={docClaimHistory} sources={selectedEntry?.sources ?? []} npcEntries={libraryEntries.filter((entry) => entry.entity_kind === "npc")} noteCounts={new Map(Array.from(encounterNotes.filter((note) => note.sourceDocumentId === (docMetadata?.document_id ?? selectedDocumentId)).reduce((counts, note) => counts.set(note.sectionKey, (counts.get(note.sectionKey) ?? 0) + 1), new Map<string, number>()).entries()))} onOpenNpc={(npc) => void openEncounterNpcDossier(npc)} onAddNote={openTableNoteComposer} onOpenNotes={() => setTableNotesOpen(true)} onEditClaim={(claimId) => void beginClaimEdit(claimId)} />
-                : <StructuredEntryView entry={parseEntry(docContent)} path={docContentPath} claims={docCanonicalClaims} history={docClaimHistory} sources={selectedEntry?.sources ?? []} onEditClaim={(claimId) => void beginClaimEdit(claimId)} />}{claimEdit && <ClaimReplacementEditor drafts={claimEditDrafts} busy={claimEditBusy} reason={claimEditReason} onChange={setClaimEditDrafts} onReasonChange={setClaimEditReason} onCancel={() => setClaimEdit(null)} onSave={() => void saveClaimCorrection()} />}{claimEditMessage && <div className="notice" role="status">{claimEditMessage}</div>}</>
+                : !selectedDocumentId && selectedEntry && entityProfileEditing
+                  ? (entityProfileDraft
+                    ? <EntityProfileEditor entry={selectedEntry} profile={entityProfileDraft} onChange={setEntityProfileDraft} onCancel={() => { setEntityProfileEditing(false); setEntityProfileDraft(entityProfile); setEntityProfileMessage(""); setEntityProfileMessageIsError(false); }} onSave={() => void saveEntityProfile()} message={entityProfileMessage} messageIsError={entityProfileMessageIsError} onKindChange={(kind) => void correctEntityKind(kind)} members={selectedEntry.entity_kind === "faction" ? (selectedEntry.members ?? []) : undefined} roles={selectedEntry.entity_kind === "faction" ? (selectedEntry.roles ?? []) : undefined} memberSearch={memberSearch} memberResults={memberResults} onMemberSearch={(value) => { setMemberSearch(value); if (value.trim().length > 1) { campaignClient.searchEntities(value.trim()).then(setMemberResults).catch(() => setMemberResults([])); } else { setMemberResults([]); } }} onAddMember={(member) => void addFactionMember(member)} onRemoveMember={(member) => void removeFactionMember(member)} onAssignRole={(member, roleName, isLeadership) => void assignFactionRole(member, roleName, isLeadership)} />
+                    : <div className="detail-empty">Identity profile could not be loaded.</div>)
+                  : <>{entityProfileMessage && <div className="notice" role="status">{entityProfileMessage}</div>}
+                <StructuredEntryView entry={parseEntry(docContent)} path={docContentPath} claims={docCanonicalClaims} history={docClaimHistory} sources={selectedEntry?.sources ?? []} onEditClaim={(claimId) => void beginClaimEdit(claimId)} onEdit={!selectedDocumentId && selectedEntry ? openEntityProfileEditor : undefined} entityTemplate={!selectedDocumentId && selectedEntry && selectedEntry.entity_kind !== "pc" && selectedEntry.entity_kind !== "npc" ? { aliases: selectedEntry.aliases, base_location: selectedEntry.entity_kind === "faction" ? (entityProfile?.base_location ?? null) : undefined, location_type: selectedEntry.entity_kind === "location" ? (entityProfile?.location_type ?? null) : undefined, parent_location: selectedEntry.entity_kind === "location" ? (entityProfile?.parent_location ?? null) : undefined, roles: selectedEntry.entity_kind === "faction" ? (selectedEntry.roles ?? []) : undefined } : undefined} /></>}{claimEdit && <ClaimReplacementEditor drafts={claimEditDrafts} busy={claimEditBusy} reason={claimEditReason} onChange={setClaimEditDrafts} onReasonChange={setClaimEditReason} onCancel={() => setClaimEdit(null)} onSave={() => void saveClaimCorrection()} />}{claimEditMessage && <div className="notice" role="status">{claimEditMessage}</div>}</>
               ) : <div className="detail-empty">Select an entry from the library.</div>}
             {encounterDossierLoading && <div className="npc-dossier-loading" role="status">Loading NPC dossier…</div>}
             {encounterDossierError && <div className="npc-dossier-error" role="alert">{encounterDossierError}<button onClick={() => setEncounterDossierError("")} type="button">Dismiss</button></div>}
-            {encounterDossier && <NpcDossierDrawer dossier={encounterDossier} collapsed={encounterDossierCollapsed} initialScroll={dossierScrollPositions.current.get(encounterDossier.entry.entry_id) ?? 0} onScroll={(position) => dossierScrollPositions.current.set(encounterDossier.entry.entry_id, position)} onToggleCollapsed={() => setEncounterDossierCollapsed((value) => !value)} onClose={() => setEncounterDossier(null)} onOpenFull={() => { const entryId = encounterDossier.entry.entry_id; setEncounterDossier(null); setSelectedDocumentId(null); setSelectedPlan(null); setSelectedEntryId(entryId); void loadCanonicalEntry(entryId); }} />}
+            {encounterDossier && <NpcDossierDrawer dossier={encounterDossier} collapsed={encounterDossierCollapsed} initialScroll={dossierScrollPositions.current.get(encounterDossier.entry.entry_id) ?? 0} onScroll={(position) => dossierScrollPositions.current.set(encounterDossier.entry.entry_id, position)} onToggleCollapsed={() => setEncounterDossierCollapsed((value) => !value)} onClose={() => setEncounterDossier(null)} onOpenFull={() => { const entryId = encounterDossier.entry.entry_id; setEncounterDossier(null); leaveEditorGuard(encounterDossier.entry.canonical_name, () => { setSelectedDocumentId(null); setSelectedPlan(null); setSelectedEntryId(entryId); void loadCanonicalEntry(entryId); }); }} />}
             {!tableNotesOpen && (sessionRun || encounterNotes.length > 0) && <button className="table-notes-launcher" onClick={() => setTableNotesOpen(true)} type="button"><RecordIcon kind="note" /><span>Open session</span>{encounterNotes.length > 0 && <b>{encounterNotes.length}</b>}</button>}
             {tableNotesOpen && <aside aria-label="Session table notes" className="table-notes-panel">
               <header><div><span>{sessionRun ? `Open session · ${sessionRun.session_date}` : "Session timeline"}</span><h2>Table notes</h2></div><div className="table-notes-header-actions"><button onClick={() => openTableNoteComposer(generalSessionNoteContext())} type="button">+ General note</button><button aria-label="Close table notes" onClick={() => { setTableNotesOpen(false); setTableNoteContext(null); setEditingTableNoteId(null); setTableNoteDraft(""); }} type="button">×</button></div></header>
@@ -2555,6 +3153,66 @@ function App({ campaignClient, jobPlatform, storage, pollIntervalMs = 700 }: App
         await chooseCandidate(firstCandidateId);
       }} />}
 
+      {activePage === "identity" && (
+      <main className="page-identity">
+        <section className="identity-page-header" aria-label="Identity review">
+          <div className="section-heading"><div><p className="kicker">Identity maintenance</p><h2>Identity Review</h2></div><p>Names that recur in current claims but resolve to no identity. Detection is automatic; every decision is yours, recorded, and undoable. Nothing merges automatically.</p></div>
+          <div className="identity-toolbar">
+            <button className={identityViewMode === "cards" ? "active" : ""} onClick={() => setIdentityViewMode("cards")} type="button">Full entries</button>
+            <button className={identityViewMode === "compact" ? "active" : ""} onClick={() => setIdentityViewMode("compact")} type="button">Compact list</button>
+            <button className="secondary-button" disabled={identityBusy} onClick={() => void loadIdentityGaps()} type="button">{identityBusy ? "Working…" : "Refresh"}</button>
+          </div>
+          {identityMessage && <p role={identityMessageIsError ? "alert" : "status"} className={"identity-message" + (identityMessageIsError ? " notice error" : "")}>{identityMessage}</p>}
+          {identityRecent.length > 0 && <div className="identity-recent" aria-label="Recent identity decisions">{identityRecent.map(({ receipt, done }) => <span key={receipt.decision_id}>{done} <button className="text-button" disabled={identityBusy || receipt.kind === "revert"} onClick={() => void undoIdentity(receipt.decision_id, done)} type="button">Undo</button></span>)}</div>}
+        </section>
+
+        {identityGaps !== null && (<p className="identity-count" data-testid="identity-count">Showing {identityViewMode === "cards" ? Math.min(identityVisibleCount, identityGaps.length) : identityGaps.length} of {identityQueueTotal} unresolved surface{identityQueueTotal === 1 ? "" : "s"}</p>)}
+        {identityGaps !== null && identityGaps.length === 0 && <p className="identity-empty">No unresolved surfaces right now.</p>}
+
+        {identityViewMode === "compact" && identityGaps !== null && identityGaps.length > 0 && <div className="identity-compact-list">
+        {identityGaps.map((gap) => (
+          <article className="identity-compact-row" key={gap.normalized_surface}>
+            <b>{gap.surface}</b>
+            {gap.suggested_canonical_name && gap.suggested_canonical_name !== gap.surface && <span className="identity-compact-suggestion">appears as “{gap.suggested_canonical_name}” without title</span>}
+            <span>{gap.retrieval_demand > 0 && <>{gap.retrieval_demand} lookup misses · </>}{gap.claims_with_phrase} claims · {gap.total_mentions} mentions{gap.role_hint ? " · role-like" : ""}</span>
+            <span className="identity-compact-actions">
+              {gap.alias_candidates.map((candidate) => <button className="decision-button outline" key={candidate.entity_id} disabled={identityBusy} onClick={() => void decideIdentity(() => campaignClient.addIdentityAlias(gap.surface, candidate.entity_id, `identity-alias:${gap.normalized_surface}:${candidate.entity_id}:${Date.now()}`), `Aliased “${gap.surface}” to ${candidate.canonical_name}`)} type="button">Alias → {candidate.canonical_name}</button>)}
+              <button className="text-button" disabled={identityBusy} onClick={() => void decideIdentity(() => campaignClient.createIdentityEntity(identityCanonical[gap.normalized_surface] ?? gap.surface, identityKinds[gap.normalized_surface] ?? gap.suggested_kind ?? "faction", `identity-create:${gap.normalized_surface}:${Date.now()}`, [], []), `Created ${identityCanonical[gap.normalized_surface] ?? gap.surface} as an identity`)} type="button">Create</button>
+              <button className="text-button" disabled={identityBusy} onClick={() => void decideIdentity(() => campaignClient.markIdentityRole(gap.surface, `identity-role:${gap.normalized_surface}:${Date.now()}`), `Marked “${gap.surface}” as a role or title`)} type="button">Role</button>
+              <button className="text-button" disabled={identityBusy} onClick={() => void decideIdentity(() => campaignClient.dismissIdentityGap(gap.surface, `identity-dismiss:${gap.normalized_surface}:${Date.now()}`), `Dismissed “${gap.surface}”`)} type="button">Dismiss</button>
+            </span>
+          </article>
+        ))}
+        </div>}
+
+        {identityViewMode === "cards" && identityGaps?.slice(0, identityVisibleCount).map((gap) => (
+          <article className="identity-gap identity-full" key={gap.normalized_surface}>
+            <div className="identity-gap-main">
+              <label className="identity-canonical">{gap.suggested_canonical_name && gap.suggested_canonical_name !== gap.surface ? `Canonical name (claims say “${gap.surface}”)` : "Canonical name"}<input aria-label={`Canonical name for ${gap.surface}`} value={identityCanonical[gap.normalized_surface] ?? gap.surface} onChange={(event) => setIdentityCanonical((current) => ({ ...current, [gap.normalized_surface]: event.target.value }))} /></label>
+              <span>{gap.retrieval_demand > 0 && <>{gap.retrieval_demand} lookup miss{gap.retrieval_demand === 1 ? "" : "es"} · </>}{gap.claims_with_phrase} claim{gap.claims_with_phrase === 1 ? "" : "s"} · {gap.total_mentions} mention{gap.total_mentions === 1 ? "" : "s"}</span>
+            </div>
+            {gap.role_hint && <p className="identity-role-hint">Ends like a role or title you have marked before.</p>}
+            <details className="identity-evidence-list"><summary>Claims mentioning “{gap.surface}” ({gap.evidence.length} shown)</summary>{gap.evidence.map((item) => <blockquote key={item.claim_id}>“{item.excerpt}”</blockquote>)}</details>
+            {gap.related_surfaces.length > 0 && <fieldset className="identity-related"><legend>Merge these related surfaces as aliases?</legend>{gap.related_surfaces.map((surface) => <label key={surface}><input checked={(identityAliasSelection[gap.normalized_surface] ?? []).includes(surface)} onChange={(event) => setIdentityAliasSelection((current) => ({ ...current, [gap.normalized_surface]: event.target.checked ? [...(current[gap.normalized_surface] ?? []), surface] : (current[gap.normalized_surface] ?? []).filter((item) => item !== surface) }))} type="checkbox" />{surface}</label>)}</fieldset>}
+            <label className="identity-manual-aliases">Manual aliases (comma-separated)<input aria-label={`Manual aliases for ${gap.surface}`} placeholder="e.g. The Stars, Court of Stars" value={identityManualAliases[gap.normalized_surface] ?? ""} onChange={(event) => setIdentityManualAliases((current) => ({ ...current, [gap.normalized_surface]: event.target.value }))} /></label>
+            <div className="identity-target">
+              <label>Alias to an existing identity<input aria-label={`Alias target search for ${gap.surface}`} placeholder="Search identities…" value={identityTargetQuery[gap.normalized_surface] ?? ""} onChange={(event) => { const value = event.target.value; setIdentityTargetQuery((current) => ({ ...current, [gap.normalized_surface]: value })); if (value.trim().length > 1) { campaignClient.searchEntities(value.trim()).then((results) => setIdentityTargetResults((current) => ({ ...current, [gap.normalized_surface]: results }))).catch(() => {}); } else { setIdentityTargetResults((current) => ({ ...current, [gap.normalized_surface]: [] })); } }} /></label>
+              {(identityTargetResults[gap.normalized_surface] ?? []).length > 0 && <div className="identity-target-results" role="listbox" aria-label={`Alias target matches for ${gap.surface}`}>{(identityTargetResults[gap.normalized_surface] ?? []).map((match) => <span className="identity-target-match" key={match.entity_id} role="option"><button onClick={() => void decideIdentity(() => campaignClient.addIdentityAlias(gap.surface, match.entity_id, `identity-alias:${gap.normalized_surface}:${match.entity_id}:${Date.now()}`), `Aliased “${gap.surface}” to ${match.canonical_name}`)} type="button"><b>{match.canonical_name}</b><small>{display(match.entity_kind)}{match.match_kind === "alias" && match.matched_name ? ` · via ${match.matched_name}` : ""}</small></button><button className="text-button" onClick={() => void decideIdentity(() => campaignClient.markIdentityMisspelling(gap.surface, match.entity_id, `identity-misspelling:${gap.normalized_surface}:${match.entity_id}:${Date.now()}`), `Recorded “${gap.surface}” as a misspelling of ${match.canonical_name}`)} title="Record this surface as a misspelling of the identity — resolvable, never a name" type="button">Misspelling</button></span>)}</div>}
+              {gap.alias_candidates.length > 0 && <div className="identity-alias-candidates"><span>Suggested:</span>{gap.alias_candidates.map((candidate) => <span className="identity-target-match" key={candidate.entity_id}><button type="button" disabled={identityBusy} onClick={() => void decideIdentity(() => campaignClient.addIdentityAlias(gap.surface, candidate.entity_id, `identity-alias:${gap.normalized_surface}:${candidate.entity_id}:${Date.now()}`), `Aliased “${gap.surface}” to ${candidate.canonical_name}`)}><b>Alias → {candidate.canonical_name}</b></button><button className="text-button" type="button" disabled={identityBusy} onClick={() => void decideIdentity(() => campaignClient.markIdentityMisspelling(gap.surface, candidate.entity_id, `identity-misspelling:${gap.normalized_surface}:${candidate.entity_id}:${Date.now()}`), `Recorded “${gap.surface}” as a misspelling of ${candidate.canonical_name}`)} title="Record this surface as a misspelling of the identity — resolvable, never a name">Misspelling</button></span>)}</div>}
+            </div>
+            <div className="identity-actions">
+              <label>Kind<select aria-label={`Entity kind for ${gap.surface}`} value={identityKinds[gap.normalized_surface] ?? gap.suggested_kind ?? "faction"} onChange={(event) => setIdentityKinds((current) => ({ ...current, [gap.normalized_surface]: event.target.value }))}>{entityKinds.map((kind) => <option key={kind.kind} value={kind.kind}>{kind.label}</option>)}</select></label>
+              <button className="decision-button" type="button" disabled={identityBusy || gap.alias_candidates.some((candidate) => candidate.canonical_name.toLocaleLowerCase() === (identityCanonical[gap.normalized_surface] ?? gap.surface).trim().toLocaleLowerCase())} title={gap.alias_candidates.some((candidate) => candidate.canonical_name.toLocaleLowerCase() === (identityCanonical[gap.normalized_surface] ?? gap.surface).trim().toLocaleLowerCase()) ? "That name already resolves — use the alias action instead" : undefined} onClick={() => { const canonical = (identityCanonical[gap.normalized_surface] ?? gap.surface).trim() || gap.surface; const manual = (identityManualAliases[gap.normalized_surface] ?? "").split(",").map((value) => value.trim()).filter(Boolean); const related = identityAliasSelection[gap.normalized_surface] ?? []; const aliases = [...related]; if (canonical !== gap.surface && !aliases.includes(gap.surface) && !manual.includes(gap.surface)) aliases.unshift(gap.surface); void decideIdentity(() => campaignClient.createIdentityEntity(canonical, identityKinds[gap.normalized_surface] ?? gap.suggested_kind ?? "faction", `identity-create:${gap.normalized_surface}:${Date.now()}`, aliases, manual), `Created ${canonical} as an identity${aliases.length + manual.length ? ` with ${aliases.length + manual.length} alias${aliases.length + manual.length === 1 ? "" : "es"}` : ""}`); }}>{(() => { const aliasCount = (identityAliasSelection[gap.normalized_surface] ?? []).length + (identityManualAliases[gap.normalized_surface] ?? "").split(",").map((value) => value.trim()).filter(Boolean).length; return aliasCount > 0 ? `Create with ${aliasCount} alias${aliasCount === 1 ? "" : "es"}` : "Create entity"; })()}</button>
+              <button className="text-button" type="button" disabled={identityBusy} onClick={() => void decideIdentity(() => campaignClient.markIdentityRole(gap.surface, `identity-role:${gap.normalized_surface}:${Date.now()}`), `Marked “${gap.surface}” as a role or title`)}>Mark as role</button>
+              <button className="text-button" type="button" disabled={identityBusy} onClick={() => void decideIdentity(() => campaignClient.dismissIdentityGap(gap.surface, `identity-dismiss:${gap.normalized_surface}:${Date.now()}`), `Dismissed “${gap.surface}”`)}>Dismiss</button>
+            </div>
+          </article>
+        ))}
+        {identityViewMode === "cards" && identityGaps !== null && identityVisibleCount < identityGaps.length && <button className="secondary-button identity-show-more" onClick={() => setIdentityVisibleCount((count) => count + 20)} type="button">Show 20 more</button>}
+      </main>
+      )}
+
+      {activePage === "roles" && <FactionRolesPage campaignClient={campaignClient} factions={libraryEntries.filter((entry) => entry.entity_kind === "faction")} onRefreshLibrary={() => campaignClient.listLibraryEntries().then(setLibraryEntries).catch(() => {})} onOpenFaction={(entryId) => { setActivePage("documents"); leaveEditorGuard(libraryEntries.find((entry) => entry.entry_id === entryId)?.canonical_name ?? "the faction", () => { setSelectedEntryId(entryId); void loadCanonicalEntry(entryId); }); }} />}
       {activePage === "migration" && (
       <main className="page-migration">
         {sessionReviewActive ? <nav aria-label="Session review progress" className="session-review-progress"><b>Review session statements</b><span>{sessionReviewComplete ? "Complete" : `${directPosition} of ${directPending.length} pending`}</span></nav> : <nav aria-label="Migration progress" className="migration-progress">
@@ -2673,34 +3331,105 @@ function App({ campaignClient, jobPlatform, storage, pollIntervalMs = 700 }: App
 
         {sourceReviews.length > 0 && <section className="operations source-reviews-tool" aria-label="Source reviews"><div className="section-heading"><div><p className="kicker">Import maintenance</p><h2>Source Reviews</h2></div><p>Source-level quarantine and unresolved-reference work lives outside the migration workflow.</p></div><div className="source-review-queue"><header><span>Open source reviews</span><b>{sourceReviews.length} open · {quarantineCount} quarantined</b></header>{sourceReviews.slice(0, 20).map((review) => <article key={review.review_id}><span>{display(review.kind)} · {display(review.classification ?? "unclassified")}</span><b>{review.source_path ?? review.subject_id}</b><p>{reviewSummary(review)}</p></article>)}</div></section>}
 
-        <section className="operations identity-review-tool" aria-label="Identity review">
-          <div className="section-heading"><div><p className="kicker">Identity maintenance</p><h2>Identity Review</h2></div><p>Names that recur in current claims but resolve to no identity. Detection is automatic; every decision is yours and recorded. Nothing merges automatically.</p></div>
-          <div className="identity-queue" data-testid="identity-queue">
-            <header><span>Unresolved surfaces</span><button className="secondary-button" disabled={identityBusy} onClick={() => void loadIdentityGaps()}>{identityBusy ? "Working…" : identityGaps === null ? "Review identities" : "Refresh"}</button></header>
-            {identityMessage && <p role="status">{identityMessage}</p>}
-            {identityGaps !== null && identityGaps.length === 0 && <p className="identity-empty">No unresolved surfaces right now.</p>}
-            {identityGaps?.slice(0, 20).map((gap) => <article key={gap.normalized_surface} className="identity-gap">
-              <div className="identity-gap-main"><b>{gap.surface}</b><span>{gap.retrieval_demand > 0 && <>{gap.retrieval_demand} lookup miss{gap.retrieval_demand === 1 ? "" : "es"} · </>}{gap.claims_with_phrase} claim{gap.claims_with_phrase === 1 ? "" : "s"} · {gap.total_mentions} mention{gap.total_mentions === 1 ? "" : "s"}</span></div>
-              {gap.evidence[0] && <p className="identity-evidence">“{gap.evidence[0].excerpt}”</p>}
-              {gap.role_hint && <p className="identity-role-hint">Ends like a role or title you have marked before.</p>}
-              {gap.related_surfaces.length > 0 && <fieldset className="identity-related"><legend>Merge these related surfaces as aliases?</legend>{gap.related_surfaces.map((surface) => <label key={surface}><input checked={(identityAliasSelection[gap.normalized_surface] ?? []).includes(surface)} onChange={(event) => setIdentityAliasSelection((current) => ({ ...current, [gap.normalized_surface]: event.target.checked ? [...(current[gap.normalized_surface] ?? []), surface] : (current[gap.normalized_surface] ?? []).filter((item) => item !== surface) }))} type="checkbox" />{surface}</label>)}</fieldset>}
-              {gap.alias_candidates.length > 0 && <div className="identity-alias-candidates">{gap.alias_candidates.map((candidate) => <button key={candidate.entity_id} type="button" disabled={identityBusy} onClick={() => void decideIdentity(() => campaignClient.addIdentityAlias(gap.surface, candidate.entity_id, `identity-alias:${gap.normalized_surface}:${candidate.entity_id}:${Date.now()}`), `Aliased “${gap.surface}” to ${candidate.canonical_name}`)}>Alias → {candidate.canonical_name}</button>)}</div>}
-              <div className="identity-actions">
-                <label>Kind<select aria-label={`Entity kind for ${gap.surface}`} value={identityKinds[gap.normalized_surface] ?? "faction"} onChange={(event) => setIdentityKinds((current) => ({ ...current, [gap.normalized_surface]: event.target.value }))}>{["faction", "worldbuilding", "location", "npc", "item", "event"].map((kind) => <option key={kind} value={kind}>{display(kind)}</option>)}</select></label>
-                <button type="button" disabled={identityBusy} onClick={() => void decideIdentity(() => campaignClient.createIdentityEntity(gap.surface, identityKinds[gap.normalized_surface] ?? "faction", `identity-create:${gap.normalized_surface}:${Date.now()}`, identityAliasSelection[gap.normalized_surface] ?? []), `Created ${gap.surface} as an identity${(identityAliasSelection[gap.normalized_surface] ?? []).length ? ` with ${(identityAliasSelection[gap.normalized_surface] ?? []).length} alias${(identityAliasSelection[gap.normalized_surface] ?? []).length === 1 ? "" : "es"}` : ""}`)}>{(identityAliasSelection[gap.normalized_surface] ?? []).length ? `Create with ${(identityAliasSelection[gap.normalized_surface] ?? []).length} alias${(identityAliasSelection[gap.normalized_surface] ?? []).length === 1 ? "" : "es"}` : "Create entity"}</button>
-                <button className="text-button" type="button" disabled={identityBusy} onClick={() => void decideIdentity(() => campaignClient.markIdentityRole(gap.surface, `identity-role:${gap.normalized_surface}:${Date.now()}`), `Marked “${gap.surface}” as a role or title`)}>Mark as role</button>
-                <button className="text-button" type="button" disabled={identityBusy} onClick={() => void decideIdentity(() => campaignClient.dismissIdentityGap(gap.surface, `identity-dismiss:${gap.normalized_surface}:${Date.now()}`), `Dismissed “${gap.surface}”`)}>Dismiss</button>
-              </div>
-            </article>)}
-          </div>
-        </section>
-
         <ClaimReconciliationWorkspace campaignClient={campaignClient} />
         <PlanWorkspace campaignClient={campaignClient} />
 
         <section className="operations" id="operations"><div className="section-heading"><div><p className="kicker">Infrastructure</p><h2>Operations</h2></div><p>Background work remains visible and recoverable after refresh.</p></div><article className="operation-card"><div className="operation-icon"><PulseIcon /></div><div className="operation-copy"><span>Campaign Core</span><h3>Service health check</h3><p>Runs through the isolated Windmill job adapter. No campaign database credential crosses this boundary.</p>{job && <div className={`job-status status-${job.state}`} role="status"><div><b>{JOB_COPY[job.state]}</b><span>{job.jobId.slice(0, 12)}</span></div><div className="progress-track"><span style={{ width: `${job.progress}%` }} /></div>{job.error && <p>{job.error}</p>}</div>}{jobActionError && <p className="inline-error">Status unavailable: {jobActionError}</p>}</div><button className="secondary-button" disabled={Boolean(isPending)} onClick={startHealthCheck} type="button">{isPending ? "Checking…" : job?.state === "failed" ? "Retry check" : "Run check"}</button></article></section>
       </main>
       )}
+      {activePage === "log" && <ActivityLogPage campaignClient={campaignClient} />}
+      {activePage === "conventions" && (
+      <main className="page-conventions">
+        <section className="identity-page-header" aria-label="UI conventions">
+          <div className="section-heading"><div><p className="kicker">Reference</p><h2>Conventions</h2></div><p>The design language of this app, rendered live. Every component below names its CSS class so styling can be fixed by name. The written reference is docs/architecture/ui-conventions.md; this page is generated from the same stylesheet.</p></div>
+        </section>
+
+        <section className="convention-group" aria-label="Design tokens">
+          <h3>Design tokens</h3>
+          <div className="convention-swatches">
+            <span className="convention-swatch"><i style={{ background: "#292821" }} /><b>Ink #292821</b><small>body text</small></span>
+            <span className="convention-swatch"><i style={{ background: "#f2f0e8", border: "1px solid #cbc5b7" }} /><b>Paper #f2f0e8</b><small>page background</small></span>
+            <span className="convention-swatch"><i style={{ background: "#fffefa", border: "1px solid #cbc5b7" }} /><b>Card #fffefa</b><small>panels</small></span>
+            <span className="convention-swatch"><i style={{ background: "#f0ede4", border: "1px solid #cbc5b7" }} /><b>Panel tint #f0ede4</b><small>queues</small></span>
+            <span className="convention-swatch"><i style={{ background: "#82533a" }} /><b>Accent #82533a</b><small>actions, kickers</small></span>
+            <span className="convention-swatch"><i style={{ background: "#68412d" }} /><b>Accent hover #68412d</b><small>button hover</small></span>
+            <span className="convention-swatch"><i style={{ background: "#7d776c" }} /><b>Muted #7d776c</b><small>descriptions</small></span>
+            <span className="convention-swatch"><i style={{ background: "#d6d0c3" }} /><b>Hairline #d6d0c3</b><small>borders</small></span>
+          </div>
+          <p className="convention-note">Type: <b>Manrope</b> UI · <b>Libre Caslon Display</b> headings &amp; prose · <b>DM Mono</b> uppercase kickers/labels/counts. Kicker pattern: <code>.kicker</code> / mono 8–10px uppercase, letter-spacing .06–.13em.</p>
+        </section>
+
+        <section className="convention-group" aria-label="Buttons">
+          <h3>Buttons</h3>
+          <div className="convention-row">
+            <button className="secondary-button" type="button">Primary · .secondary-button / .ask-row button</button>
+            <span className="convention-tag">solid #82533a · 6px radius · 11px bold</span>
+          </div>
+          <div className="convention-row">
+            <button className="text-button" type="button">Tertiary · .text-button</button>
+            <span className="convention-tag">borderless · muted/accent text</span>
+          </div>
+          <div className="convention-row">
+            <div className="entry-page-actions"><button aria-label="Edit entry" title="Edit" type="button"><RecordIcon kind="edit" /></button><button aria-label="Show hidden records" title="Show hidden" type="button"><RecordIcon kind="show" /></button><button aria-label="Add note" title="Note" type="button"><RecordIcon kind="note" /></button></div>
+            <span className="convention-tag">Icon slot · .entry-page-actions / .record-card-actions — the compact upper-right edit/hide/note buttons (28px squares, RecordIcon)</span>
+          </div>
+          <div className="convention-row">
+            <div className="identity-toolbar"><button className="active" type="button">Full entries</button><button type="button">Compact list</button></div>
+            <span className="convention-tag">View toggle · .identity-toolbar button (+ .active) — hover fills accent</span>
+          </div>
+          <div className="convention-row">
+            <button className="decision-button" type="button">Create entity · .decision-button</button>
+            <button className="decision-button outline" type="button">Alias → name · .decision-button.outline</button>
+            <span className="convention-tag">Commit/confirm actions · solid accent; outline variant for suggestions</span>
+          </div>
+          <p className="convention-note">No button ever moves or resizes on hover or click — state changes are color-only (fill, border, or darkened accent).</p>
+        </section>
+
+        <section className="convention-group" aria-label="Panels and cards">
+          <h3>Panels &amp; cards</h3>
+          <article className="identity-full">
+            <div className="identity-gap-main"><b>Card · .identity-full</b><span>mono meta line · 28c 28m</span></div>
+            <p className="identity-role-hint">Role hint · .identity-role-hint (italic, accent)</p>
+            <fieldset className="identity-related"><legend>Merge surfaces · .identity-related</legend><label><input type="checkbox" />Related surface</label></fieldset>
+          </article>
+          <div className="identity-compact-list">
+            <article className="identity-compact-row"><b>Queue panel row · .identity-compact-list / .identity-compact-row</b><span>hover #f8f5ec</span><span className="identity-compact-actions"><button type="button">Create</button><button className="text-button" type="button">Dismiss</button></span></article>
+            <article className="identity-compact-row"><b>Second row</b><span>hairline separators · #d9d3c6</span></article>
+          </div>
+          <div className="convention-row"><div className="notice"><b>Notice · .notice</b><span>warm announcement/error surface</span></div></div>
+          <p className="identity-empty">Empty state · .identity-empty (serif, muted)</p>
+        </section>
+
+        <section className="convention-group" aria-label="Entry page anatomy">
+          <h3>Entry pages</h3>
+          <article className="document-view entry-view location-entry">
+            <header><b>Location</b><span>Campaign entry</span><div className="entry-page-actions"><button aria-label="Edit entry" title="Edit" type="button"><RecordIcon kind="edit" /></button></div></header>
+            <section className="entry-hero"><span>location</span><h1>Entry hero · .entry-hero</h1><dl><div><dt>Location type</dt><dd>building</dd></div><div><dt>Status</dt><dd>seat-of-power</dd></div></dl></section>
+            <section className="entry-summary"><p>Entry summary · .entry-summary (intro prose)</p></section>
+            <div className="entry-sections"><section className="entry-section"><h2>Entry section · .entry-section</h2><p className="entry-text">Two-column section grid; level-2 sections span both columns.</p></section></div>
+            <details className="source-drawer"><summary>Source drawer · .source-drawer</summary></details>
+          </article>
+        </section>
+
+        <section className="convention-group" aria-label="Forms">
+          <h3>Forms</h3>
+          <div className="form-grid">
+            <label>Label + input · .form-grid label<input readOnly value="1px solid #c8bcac · focus #82533a" /></label>
+            <label>Select<select><option>Select · native + styled</option></select></label>
+            <label>Aliases (comma-separated · trim on blur)<input readOnly value="The Stars, Court of Stars" /></label>
+          </div>
+          <div className="step-actions"><button className="text-button" type="button">Cancel · left</button><button className="secondary-button" type="button">Save · right</button></div>
+          <p className="convention-note">Actions row · .step-actions — Cancel left, primary right. Alias inputs must never trim per keystroke (space-eating bug).</p>
+        </section>
+
+        <section className="convention-group" aria-label="Page header rhythm">
+          <h3>Page header</h3>
+          <p className="convention-note">Kicker → h2 (Libre Caslon 34px) → right-aligned muted description → border-bottom. Widths: wide pages <code>main.page-documents/.page-migration/.page-identity</code> (max 1600px); reading pages bare <code>main</code> (1080px). Count lines are mono uppercase: “SHOWING 20 OF 129 UNRESOLVED SURFACES”.</p>
+        </section>
+      </main>
+      )}
+
+      <ToastStack />
       <footer className="page-footer"><span>Private campaign workspace</span></footer>
     </div>
   );
@@ -3069,7 +3798,7 @@ function BrainstormWorkspace({ campaignClient, onReviewProposal }: {
           {contentSearchError && <p className="inline-error" role="alert">Content search failed: {contentSearchError}</p>}
 {contentSearchGroups.map(([heading, results]) => results.length > 0 && <section className="brainstorm-content-results" key={heading}><details className="brainstorm-search-category"><summary>{heading}<span>{results.length}</span></summary>{results.map((item) => { const owner = item.entity_id ? entries.find((entry) => entry.entry_id === item.entity_id) : undefined; const ownerName = owner?.canonical_name ?? "canonical record"; const pinned = (session.evidence_pins ?? []).some((pin) => pin.record_id === item.record_id); const expanded = expandedEvidence.has(item.record_id); const excerpt = brainstormEvidenceExcerpt(item.assertion, contentSearchTerms, expanded); return <article className={`brainstorm-canon-card brainstorm-search-card${expanded ? " expanded" : ""}`} key={`search-${item.record_id}`}><div className="brainstorm-search-title" title={`${evidenceTitle(item.citation, entries)}\n${item.citation}`}>{evidenceTitle(item.citation, entries)}</div><button aria-expanded={expanded} aria-label={`${expanded ? "Collapse" : "Expand"} canonical result from ${item.citation}`} className="brainstorm-result-main" onClick={() => setExpandedEvidence((current) => { const next = new Set(current); if (next.has(item.record_id)) next.delete(item.record_id); else next.add(item.record_id); return next; })} type="button"><p>{highlightBrainstormTerms(excerpt, contentSearchTerms)}</p>{heading === "Related discoveries" && <div className="brainstorm-connection"><strong>Connected through</strong>{item.graph_trace?.filter((step) => step.startsWith("Connected through:")).map((step, index) => <span key={index}>{step.replace("Connected through: ", "")}</span>)}<small>Associated names · not an event claim</small></div>}<cite>{item.citation}</cite><span>{expanded ? "Show excerpt" : "Show full text"}</span></button>{heading === "Related discoveries" && Boolean(item.graph_sources?.length) && <details className="brainstorm-connection-sources"><summary>Read connection context</summary>{item.graph_sources!.map((source) => <section key={source.record_id}><p>{source.assertion}</p><cite>{source.citation}</cite></section>)}</details>}<div className="brainstorm-card-actions"><button aria-label={`${expanded ? "Collapse" : "Expand"} search card from ${item.citation}`} aria-expanded={expanded} onClick={() => setExpandedEvidence((current) => { const next = new Set(current); if (next.has(item.record_id)) next.delete(item.record_id); else next.add(item.record_id); return next; })} title={expanded ? "Collapse text" : "Expand full text"} type="button">{expanded ? "−" : "⤢"}</button>{item.entity_id && <button aria-label={`Open ${ownerName}`} onClick={() => void openDossier(item.entity_id!)} title={`Open ${ownerName} dossier`} type="button">↗</button>}<button aria-label={`${pinned ? "Unpin" : "Pin"} search evidence from ${item.citation}`} className={pinned ? "pin active" : "pin"} disabled={busy || session.status !== "open"} onClick={() => void toggleEvidencePin(item.record_id, search)} title={pinned ? "Remove from Brainstorm context" : "Keep in Brainstorm context"} type="button"><PinIcon /></button></div></article>; })}</details></section>)}
           {dossierLoading && <p className="brainstorm-empty">Opening campaign record…</p>}
-          {dossier && <section className="brainstorm-dossier" aria-label="Brainstorm record dossier"><header><div><span>{display(dossier.entity_kind)}</span><h3>{dossier.canonical_name}</h3></div><button aria-label="Close brainstorm dossier" onClick={() => setDossier(null)} type="button">×</button></header>{dossier.aliases.length > 0 && <p><b>Also known as:</b> {dossier.aliases.join(", ")}</p>}<div>{dossier.claims.length ? dossier.claims.map((claim) => <article key={claim.claim_id}><p>{claim.assertion_text}</p></article>) : <p className="brainstorm-empty">No current claims are recorded.</p>}</div></section>}
+          {dossier && <section className="brainstorm-dossier" aria-label="Brainstorm record dossier"><header><div><span>{display(dossier.entity_kind)}</span><h3>{dossier.canonical_name}</h3></div><button aria-label="Close brainstorm dossier" onClick={() => setDossier(null)} type="button">×</button></header>{dossier.aliases.length > 0 && <p><b>Also known as:</b> {dossier.aliases.join(", ")}</p>}{(dossier.misspellings ?? []).length > 0 && <p><b>Recorded misspellings:</b> {(dossier.misspellings ?? []).join(", ")}</p>}<div>{dossier.claims.length ? dossier.claims.map((claim) => <article key={claim.claim_id}><p>{claim.assertion_text}</p></article>) : <p className="brainstorm-empty">No current claims are recorded.</p>}</div></section>}
           <section className="brainstorm-pinned"><h3>Pinned context</h3>{session.pins.map((pin) => <article className="brainstorm-context-card" key={pin.entity_id}><button className="brainstorm-card-main" onClick={() => void openDossier(String(pin.entity_id))} type="button"><b>{pin.canonical_name}</b><span>{display(pin.entity_kind)}</span></button><button aria-label={`Unpin ${pin.canonical_name}`} className="pin active" disabled={busy || session.status !== "open"} onClick={() => void togglePin(String(pin.entity_id))} title="Remove from Brainstorm context" type="button"><PinIcon /></button></article>)}{(session.evidence_pins ?? []).map((pin) => <article className="brainstorm-canon-card" key={`pinned-${pin.record_id}`}><div><p>{pin.assertion}</p><cite>{pin.citation}</cite></div><div className="brainstorm-card-actions">{pin.entity_id && <button aria-label="Open pinned evidence record" onClick={() => void openDossier(pin.entity_id!)} title="Open dossier" type="button">↗</button>}<button aria-label="Unpin suggested evidence" className="pin active" disabled={busy || session.status !== "open"} onClick={() => void toggleEvidencePin(pin.record_id)} title="Remove evidence from Brainstorm context" type="button"><PinIcon /></button></div></article>)}{session.pins.length === 0 && (session.evidence_pins ?? []).length === 0 && <p className="brainstorm-empty">Pin records or exact evidence you want kept in view and included in later continuity searches.</p>}</section>
           <section><h3>Suggested for latest thought</h3>{suggestions.length ? suggestions.map((item) => { const pinned = (session.evidence_pins ?? []).some((pin) => pin.record_id === item.record_id); return <article className="brainstorm-canon-card" key={item.record_id}><div><p>{item.assertion}</p><cite>{item.citation}</cite></div><div className="brainstorm-card-actions">{item.entity_id && <button aria-label={`Open relevant record ${item.entity_id}`} onClick={() => void openDossier(item.entity_id!)} title="Open dossier" type="button">↗</button>}<button aria-label={`${pinned ? "Unpin" : "Pin"} suggested evidence`} className={pinned ? "pin active" : "pin"} disabled={busy || session.status !== "open"} onClick={() => void toggleEvidencePin(item.record_id)} title={pinned ? "Remove evidence from Brainstorm context" : "Keep this evidence in Brainstorm context"} type="button"><PinIcon /></button></div></article>; }) : <p className="brainstorm-empty">No additional suggestions; pinned evidence is kept above.</p>}</section>
           <section className={contradictions.length ? "has-conflict" : ""}><details className="brainstorm-search-category"><summary>Possible conflicts<span>{contradictions.length}</span></summary>{contradictions.length ? contradictions.map((item) => <article key={item.record_id}><p>{item.assertion}</p><cite>{item.citation}</cite></article>) : <p className="brainstorm-empty">No contradiction was found in the retrieved canon.</p>}</details></section>

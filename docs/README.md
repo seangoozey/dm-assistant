@@ -26,6 +26,7 @@ An older document can still reveal intent. Do not silently overwrite a newer dec
 - [Campaign Core schema](architecture/campaign-core-schema.md)
 - [Workflows](architecture/workflows.md)
 - [Deployment](architecture/deployment.md)
+- [UI conventions](architecture/ui-conventions.md) — the app's design language; check before styling new UI
 - [Current-system migration](migration/current-system.md)
 - [Incremental Markdown importer](migration/markdown-importer.md)
 - [Acceptance strategy](testing/acceptance-strategy.md)

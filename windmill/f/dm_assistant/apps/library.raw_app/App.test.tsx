@@ -19,6 +19,7 @@ import { REVIEW_STATE_KEY } from "./reviewState";
 
 afterEach(() => {
   cleanup();
+  toast.resetForTest();
   window.sessionStorage.clear();
   window.localStorage.clear();
   vi.restoreAllMocks();
@@ -291,6 +292,19 @@ function makeClient(overrides: Partial<CampaignClient> = {}): CampaignClient {
     createIdentityEntity: vi.fn().mockResolvedValue({ decision_id: "96000000-0000-0000-0000-000000000001", kind: "create_entity", surface: "", idempotent_replay: false }),
     markIdentityRole: vi.fn().mockResolvedValue({ decision_id: "96000000-0000-0000-0000-000000000002", kind: "mark_role", surface: "", idempotent_replay: false }),
     dismissIdentityGap: vi.fn().mockResolvedValue({ decision_id: "96000000-0000-0000-0000-000000000003", kind: "dismiss", surface: "", idempotent_replay: false }),
+    revertIdentityDecision: vi.fn().mockResolvedValue({ decision_id: "96000000-0000-0000-0000-000000000004", kind: "revert", surface: "", details: { reverts: "x" }, idempotent_replay: false }),
+    markIdentityMisspelling: vi.fn().mockResolvedValue({ decision_id: "96000000-0000-0000-0000-000000000005", kind: "mark_misspelling", surface: "", linked_claims: 2, idempotent_replay: false }),
+    getEntityProfile: vi.fn().mockResolvedValue(null),
+    updateEntityProfile: vi.fn(),
+    proposeEntityKind: vi.fn(),
+    approveEntityMetadataProposal: vi.fn(),
+    addMembership: vi.fn(),
+    removeMembership: vi.fn(),
+    assignFactionRole: vi.fn(),
+    defineFactionRole: vi.fn(),
+    listFactionRoles: vi.fn().mockResolvedValue([]),
+    listRoleDeclarations: vi.fn().mockResolvedValue([]),
+    listRecentDecisions: vi.fn().mockResolvedValue([]),
     discoverClaimOverlaps: vi.fn().mockResolvedValue([]),
     reconcileClaims: vi.fn(),
     getClaimSnapshot: vi.fn(),
@@ -337,6 +351,55 @@ function renderTools(client: CampaignClient, platform: JobPlatform = makeQuietJo
   fireEvent.click(screen.getByRole("button", { name: "Tools" }));
   return view;
 }
+
+import { selectEntrySource, synthesizedEntryDocument } from "./App";
+import { toast } from "./toasts";
+
+describe("entry source selection", () => {
+  it("prefers the document whose name matches the entity over an alphabetically earlier one", () => {
+    const sources = [
+      { document_id: "d1", path: "encounters/the-descent.md" },
+      { document_id: "d2", path: "locations/illisan/fleurite/fleurite.md" },
+      { document_id: "d3", path: "locations/illisan/fleurite/monastery.md" },
+      { document_id: "d4", path: "npcs/arkin.md" },
+    ];
+    expect(selectEntrySource(
+      { canonical_name: "Monastery of Arkin", entity_kind: "location" }, sources)
+    ).toEqual(sources[2]);
+    expect(selectEntrySource(
+      { canonical_name: "Arkin", entity_kind: "npc" }, sources)
+    ).toEqual(sources[3]);
+  });
+
+  it("synthesizes kind-appropriate entry templates", () => {
+    const location = synthesizedEntryDocument({ canonical_name: "Far Realm", entity_kind: "location", aliases: ["Far Realm Entity"] });
+    expect(location).toContain("type: location");
+    expect(location).toContain("aliases: Far Realm Entity");
+    expect(location).toContain("# Far Realm");
+    expect(location).toContain("## Established Facts");
+    const worldbuilding = synthesizedEntryDocument({ canonical_name: "Infinite Twilight", entity_kind: "worldbuilding", aliases: [] });
+    expect(worldbuilding).toContain("type: lore");
+    expect(worldbuilding).toContain("## Lore");
+    const npc = synthesizedEntryDocument({ canonical_name: "Ruh", entity_kind: "npc", aliases: [] });
+    expect(npc).toContain("type: npc");
+    expect(npc).toContain("## Current Status");
+    // The no-aliases case must still produce parseable frontmatter: a glued
+    // "type: location---" fence made these entries render as bare sources.
+    const bare = synthesizedEntryDocument({ canonical_name: "Far Realm", entity_kind: "location", aliases: [] });
+    expect(bare.startsWith("---\ntype: location\n---\n")).toBe(true);
+  });
+
+  it("never borrows an unrelated document for an identity with no file of its own", () => {
+    const sources = [
+      { document_id: "d1", path: "lore/timeline.md" },
+      { document_id: "d2", path: "npcs/Goodman.md" },
+      { document_id: "d3", path: "npcs/Romulus.md" },
+    ];
+    expect(selectEntrySource(
+      { canonical_name: "Ruh", entity_kind: "npc" }, sources)
+    ).toBeUndefined();
+  });
+});
 
 describe("DM Assistant shell", () => {
   it("starts a live session from the unified New Session menu", async () => {
@@ -494,6 +557,33 @@ describe("DM Assistant shell", () => {
     fireEvent.click(screen.getByText("Ishirala"));
     expect(screen.getByRole("button", { name: "Ishirala Floor1" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Ishirala Perch" })).toBeInTheDocument();
+  });
+
+  it("merges lore documents into one Worldbuilding group and flags page-less entries", async () => {
+    const loreDocs = [
+      { document_id: "61000000-0000-0000-0000-0000000000a1", path: "lore/infinite-twilight.md", classification: "durable_evidence" as const, candidate_count: 0, extraction_count: 0, open_review_count: 0, missing_source: false },
+      { document_id: "61000000-0000-0000-0000-0000000000a2", path: "lore/cosmology.md", classification: "durable_evidence" as const, candidate_count: 0, extraction_count: 0, open_review_count: 0, missing_source: false },
+    ];
+    const campaignClient = makeClient({
+      listLibraryEntries: vi.fn().mockResolvedValue([
+        { entry_id: "62000000-0000-0000-0000-0000000000a1", canonical_name: "Infinite Twilight", entity_kind: "worldbuilding", aliases: [], tags: [], current_claim_count: 3, source_count: 1 },
+        { entry_id: "62000000-0000-0000-0000-0000000000a2", canonical_name: "Starfall", entity_kind: "worldbuilding", aliases: [], tags: [], current_claim_count: 1, source_count: 1 },
+      ]),
+      listSourceDocuments: vi.fn().mockResolvedValue({ items: loreDocs, total: 2, limit: 500, offset: 0 }),
+    });
+    render(<App campaignClient={campaignClient} jobPlatform={makeQuietJobs()} />);
+    // One Worldbuilding group: entities and lore documents, no second family.
+    const worldbuildingSummaries = await waitFor(() => {
+      const summaries = screen.getAllByRole("group").filter((group) => group.querySelector("summary")?.textContent?.trim() === "Worldbuilding");
+      expect(summaries).toHaveLength(1);
+      return summaries;
+    });
+    // Documents join the group; the exact-name doc stays homed by its entity.
+    expect(screen.getByText("Cosmology")).toBeInTheDocument();
+    expect(screen.getAllByText("Infinite Twilight")).toHaveLength(1);
+    // The page-less entity is the one called out as uncompleted (dashed-page icon).
+    expect(screen.getByTitle(/No document backs this entry yet/)).toBeInTheDocument();
+    expect(document.querySelector(".tree-doc-flag svg")).toBeInTheDocument();
   });
 
   it("keeps source-backed PCs visible when only one PC has canonical identity", async () => {
@@ -1340,7 +1430,7 @@ describe("DM Assistant shell", () => {
     expect(await screen.findByLabelText("Editable extraction review")).toBeInTheDocument();
     expect(screen.getByLabelText("Extraction coverage")).toHaveTextContent("2 / 2 accounted for");
     expect(screen.getByLabelText("Extraction coverage")).toHaveTextContent("context only");
-    expect(screen.getByRole("status")).toHaveTextContent("1 candidate extracted.");
+    expect(screen.getAllByRole("status").some((status) => status.textContent?.includes("1 candidate extracted."))).toBe(true);
     const backgroundTasks = screen.getByLabelText("Background tasks");
     expect(backgroundTasks).toHaveTextContent("0 active");
     expect(backgroundTasks).toHaveTextContent("succeeded");
@@ -1364,7 +1454,7 @@ describe("DM Assistant shell", () => {
     fireEvent.click(screen.getByRole("button", { name: "Re-extract this candidate" }));
 
     expect(await screen.findByLabelText("Editable extraction review")).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent("1 candidate extracted.");
+    expect(screen.getAllByRole("status").some((status) => status.textContent?.includes("1 candidate extracted."))).toBe(true);
   });
 
   it("retries a failed extraction directly from Background Tasks", async () => {
@@ -1811,35 +1901,620 @@ describe("DM Assistant shell", () => {
     expect(screen.getByRole("button", { name: "Unpin suggested evidence" })).toBeInTheDocument();
   });
 
-  it("reviews identity gaps and records a create-entity decision with receipt", async () => {
+  it("opens the Identity page, shows counts, and records a create decision with manual alias and edited name", async () => {
     const gap = {
       surface: "White Cloaks", normalized_surface: "white cloaks",
       claims_with_phrase: 3, total_mentions: 4, retrieval_demand: 2,
-      role_hint: false, related_surfaces: ["White Cloaks'"],
+      role_hint: false, suggested_canonical_name: "White Cloak Order", suggested_kind: "faction",
+      related_surfaces: [],
       evidence: [{ claim_id: "97000000-0000-0000-0000-000000000001", excerpt: "Members of the White Cloaks collect tolls." }],
       alias_candidates: [],
     };
-    const getIdentityGaps = vi.fn().mockResolvedValueOnce({ gaps: [gap], total_candidates: 1 })
+    const getIdentityGaps = vi.fn().mockResolvedValueOnce({ gaps: [gap], total_candidates: 129 })
       .mockResolvedValue({ gaps: [], total_candidates: 0 });
     const createIdentityEntity = vi.fn().mockResolvedValue({
       decision_id: "96000000-0000-0000-0000-00000000000a", kind: "create_entity",
-      surface: "White Cloaks", idempotent_replay: false,
+      surface: "White Cloak Order", linked_claims: 3, idempotent_replay: false,
     });
     render(<App campaignClient={makeClient({ getIdentityGaps, createIdentityEntity })} jobPlatform={makeQuietJobs()} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Tools" }));
-    fireEvent.click(screen.getByRole("button", { name: "Review identities" }));
-    expect(await screen.findByText("White Cloaks")).toBeInTheDocument();
-    expect(screen.getByText(/2 lookup misses · 3 claims · 4 mentions/)).toBeInTheDocument();
-    expect(screen.getByText(/Members of the White Cloaks collect tolls/)).toBeInTheDocument();
-    expect(screen.getByText(/Merge these related surfaces as aliases?/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Identity" }));
+    expect(await screen.findByText("Showing 1 of 129 unresolved surfaces")).toBeInTheDocument();
+    expect((screen.getByLabelText("Canonical name for White Cloaks") as HTMLInputElement).value).toBe("White Cloak Order");
+    expect(screen.getByText(/3 claims · 4 mentions/)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Manual aliases for White Cloaks"), { target: { value: "The Cloaks" } });
     expect(screen.getByRole("button", { name: "Create with 1 alias" })).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("Entity kind for White Cloaks"), { target: { value: "faction" } });
+    fireEvent.change(screen.getByLabelText("Canonical name for White Cloaks"), { target: { value: "White Cloak Order" } });
     fireEvent.click(screen.getByRole("button", { name: "Create with 1 alias" }));
     await waitFor(() => expect(createIdentityEntity).toHaveBeenCalledWith(
-      "White Cloaks", "faction", expect.stringMatching(/^identity-create:/), ["White Cloaks'"]));
-    expect(await screen.findByText(/Created White Cloaks as an identity with 1 alias with receipt 96000000/)).toBeInTheDocument();
+      "White Cloak Order", "faction", expect.stringMatching(/^identity-create:/),
+      ["White Cloaks"], ["The Cloaks"]));
+    expect(await screen.findByText(/Created White Cloak Order as an identity with 2 aliases with receipt 96000000/)).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText("No unresolved surfaces right now.")).toBeInTheDocument());
+  });
+
+  it("renders the conventions reference page with named components", async () => {
+    render(<App campaignClient={makeClient()} jobPlatform={makeQuietJobs()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Conventions" }));
+    expect(await screen.findByRole("heading", { name: "Conventions" })).toBeInTheDocument();
+    for (const label of ["Design tokens", "Buttons", "Panels & cards", "Entry pages", "Forms"]) {
+      expect(screen.getByRole("heading", { name: label })).toBeInTheDocument();
+    }
+    expect(screen.getByText(/\.identity-full/)).toBeInTheDocument();
+    expect(screen.getByText(/\.entry-page-actions/)).toBeInTheDocument();
+    expect(screen.getByText(/\.secondary-button/)).toBeInTheDocument();
+  });
+
+  it("edits a queue-created location identity profile", async () => {
+    const entry = {
+      entry_id: "a1000000-0000-0000-0000-0000000000f1", canonical_name: "Far Realm",
+      entity_kind: "location" as const, aliases: [], misspellings: [], tags: [],
+      current_claim_count: 12, source_count: 0,
+    };
+    const savedProfile = {
+      entity_id: entry.entry_id, version: 1, canonical_name: "Far Realm",
+      status: "sealed", location_type: "planar region", parent_location: "cosmology",
+      player: null, race: null, sex: null, aliases: ["the Far Realm"], summary: "It presses.",
+    };
+    const getEntityProfile = vi.fn()
+      .mockResolvedValueOnce(null)                      // first load: no profile
+      .mockResolvedValueOnce(savedProfile);             // reload after save
+    const updateEntityProfile = vi.fn().mockResolvedValue({
+      receipt_id: "a2000000-0000-0000-0000-0000000000f2", entity_id: entry.entry_id,
+      version: 1, idempotent_replay: false,
+      alias_sync: { entity_name: "Far Realm", applied: ["the Far Realm"], removed: [], skipped_conflicting: [] },
+    });
+    const getLibraryEntry = vi.fn().mockResolvedValue({
+      ...entry, claims: [], claim_history: [], sources: [],
+    });
+    const getIdentityGaps = vi.fn().mockResolvedValue({ gaps: [], total_candidates: 0 });
+    render(<App campaignClient={makeClient({
+      listLibraryEntries: vi.fn().mockResolvedValue([entry]),
+      getLibraryEntry, getEntityProfile, updateEntityProfile, getIdentityGaps,
+    })} jobPlatform={makeQuietJobs()} />);
+
+    const entryButton = await screen.findByRole("button", { name: "Far Realm" });
+    fireEvent.click(entryButton);
+    await waitFor(() => expect(getEntityProfile).toHaveBeenCalledWith(entry.entry_id));
+    fireEvent.click(await screen.findByRole("button", { name: "Edit entry" }));
+    fireEvent.change(screen.getByLabelText("Identity location type"), { target: { value: "planar region" } });
+    fireEvent.change(screen.getByLabelText("Identity status"), { target: { value: "sealed" } });
+    fireEvent.change(screen.getByLabelText("Identity parent location"), { target: { value: "cosmology" } });
+    fireEvent.change(screen.getByLabelText("Identity aliases"), { target: { value: "the Far Realm" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save identity profile" }));
+    await waitFor(() => expect(updateEntityProfile).toHaveBeenCalledWith(
+      entry.entry_id, expect.objectContaining({
+        location_type: "planar region", status: "sealed", parent_location: "cosmology",
+        aliases: ["the Far Realm"], version: 0,
+      })));
+    expect(await screen.findByText(/Saved with receipt a2000000/)).toBeInTheDocument();
+    expect(await screen.findByText(/added the Far Realm/)).toBeInTheDocument();
+    // After save, the entry re-renders with the profile's hero fields.
+    expect(await screen.findByText("planar region")).toBeInTheDocument();
+  });
+
+  it("shows faction members and corrects kind through the audited path", async () => {
+    const faction = {
+      entry_id: "b1000000-0000-0000-0000-0000000000f1", canonical_name: "Carpet Rollers",
+      entity_kind: "faction" as const, aliases: [], misspellings: [], tags: [],
+      members: [
+        { member_id: "b1000000-0000-0000-0000-0000000000m1", name: "Ruhrogue", role_title: null, is_leadership: false },
+        { member_id: "b1000000-0000-0000-0000-0000000000m2", name: "Coreferra", role_title: null, is_leadership: false },
+      ], current_claim_count: 9, source_count: 0,
+    };
+    const getEntityProfile = vi.fn().mockResolvedValue({
+      entity_id: faction.entry_id, version: 2, canonical_name: "Carpet Rollers",
+      status: "active", base_location: "The manor in Unity", aliases: [], summary: "",
+    });
+    const getLibraryEntry = vi.fn().mockResolvedValue({ ...faction, claims: [], claim_history: [], sources: [] });
+    const proposeEntityKind = vi.fn().mockResolvedValue({
+      proposal_id: "b2000000-0000-0000-0000-0000000000f2", version_number: 1,
+      content_hash: "c".repeat(64), item: { item_id: "b3000000-0000-0000-0000-0000000000f3", target_id: faction.entry_id, before: {}, after: {} },
+    });
+    const approveEntityMetadataProposal = vi.fn().mockResolvedValue({ approval_id: "b4000000-0000-0000-0000-0000000000f4",
+      proposal_id: "b2000000-0000-0000-0000-0000000000f2", proposal_version_id: "v1",
+      reviewed_version: 1, content_hash: "c".repeat(64), item_ids: ["b3000000-0000-0000-0000-0000000000f3"],
+      change_set_id: "b5000000-0000-0000-0000-0000000000f5", idempotency_key: "k", approved_at: "t", idempotent_replay: false });
+    const applyApproval = vi.fn().mockResolvedValue({ receipt_id: "b6000000-0000-0000-0000-0000000000f6" });
+    render(<App campaignClient={makeClient({
+      listLibraryEntries: vi.fn().mockResolvedValue([faction]),
+      getLibraryEntry, getEntityProfile, proposeEntityKind, approveEntityMetadataProposal, applyApproval,
+    })} jobPlatform={makeQuietJobs()} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Carpet Rollers" }));
+    await waitFor(() => expect(getEntityProfile).toHaveBeenCalledWith(faction.entry_id));
+    expect(await screen.findByText(/Ruhrogue/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Edit entry" }));
+    fireEvent.change(screen.getByLabelText("Identity kind correction"), { target: { value: "worldbuilding" } });
+    await waitFor(() => expect(proposeEntityKind).toHaveBeenCalledWith(faction.entry_id, "worldbuilding"));
+    await waitFor(() => expect(approveEntityMetadataProposal).toHaveBeenCalledWith(
+      "b2000000-0000-0000-0000-0000000000f2", "b3000000-0000-0000-0000-0000000000f3", 1, "c".repeat(64)));
+    await waitFor(() => expect(applyApproval).toHaveBeenCalled());
+    expect((await screen.findAllByText(/Kind corrected to worldbuilding/)).length).toBeGreaterThan(0);
+  });
+
+  it("refreshes the faction roster in place after removing a member", async () => {
+    const faction = {
+      entry_id: "b1000000-0000-0000-0000-0000000000f1", canonical_name: "Carpet Rollers",
+      entity_kind: "faction" as const, aliases: [], misspellings: [], tags: [],
+      members: [
+        { member_id: "b1000000-0000-0000-0000-0000000000m1", name: "Ruhrogue", role_title: null, is_leadership: false },
+        { member_id: "b1000000-0000-0000-0000-0000000000m2", name: "Coreferra", role_title: null, is_leadership: false },
+      ], current_claim_count: 9, source_count: 0,
+    };
+    const memberRow = (name: string, index: number, role_title: string | null = null, is_leadership = false) => ({ member_id: `b1000000-0000-0000-0000-0000000000m${index + 1}`, name, role_title, is_leadership });
+    const entryWithRoster = (members: string[]) => ({ ...faction, members: members.map((name, index) => memberRow(name, index)), claims: [], claim_history: [], sources: [] });
+    const getLibraryEntry = vi.fn()
+      .mockResolvedValueOnce(entryWithRoster(["Ruhrogue", "Coreferra"]))
+      .mockResolvedValue(entryWithRoster(["Ruhrogue"]));
+    const getEntityProfile = vi.fn().mockResolvedValue({
+      entity_id: faction.entry_id, version: 2, canonical_name: "Carpet Rollers",
+      status: "active", base_location: "The manor in Unity", aliases: [], summary: "",
+    });
+    const removeMembership = vi.fn().mockResolvedValue({
+      decision_id: "b7000000-0000-0000-0000-0000000000f7", kind: "membership",
+      surface: "Carpet Rollers", idempotent_replay: false,
+    });
+    render(<App campaignClient={makeClient({
+      listLibraryEntries: vi.fn().mockResolvedValue([faction]),
+      getLibraryEntry, getEntityProfile, removeMembership,
+    })} jobPlatform={makeQuietJobs()} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Carpet Rollers" }));
+    await waitFor(() => expect(getEntityProfile).toHaveBeenCalledWith(faction.entry_id));
+    fireEvent.click(screen.getByRole("button", { name: "Edit entry" }));
+    expect(screen.getAllByTitle("Remove membership")).toHaveLength(2);
+    fireEvent.click(screen.getAllByTitle("Remove membership")[1]);
+    await waitFor(() => expect(removeMembership).toHaveBeenCalledWith(
+      faction.entry_id, "b1000000-0000-0000-0000-0000000000m2"));
+    // The roster reloads in place: no loading flash, editor stays open.
+    expect(screen.queryByText("Loading document…")).not.toBeInTheDocument();
+    expect(getLibraryEntry).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(screen.getAllByTitle("Remove membership")).toHaveLength(1));
+    expect(screen.getByRole("button", { name: "Save identity profile" })).toBeInTheDocument();
+    expect(screen.getAllByText(/Removed Coreferra from Carpet Rollers/).length).toBeGreaterThan(0);
+  });
+
+  it("merges session events and audited decisions on the Log page, newest first", async () => {
+    const decisions = [
+      { decision_id: "c1000000-0000-0000-0000-0000000000d1", kind: "membership", surface: "Eustice in Inquisitors",
+        decided_at: "2026-09-13T20:05:00Z", details: { action: "assign_role", role_name: "Grand Inquisitor", member_name: "Eustice" } },
+      { decision_id: "c1000000-0000-0000-0000-0000000000d2", kind: "create_entity", surface: "Inquisitors",
+        decided_at: "2026-09-13T20:01:00Z", details: null },
+    ];
+    const listRecentDecisions = vi.fn().mockResolvedValue(decisions);
+    render(<App campaignClient={makeClient({ listRecentDecisions })} jobPlatform={makeQuietJobs()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Log" }));
+    // Audited decisions render with their structured summary and source.
+    expect(await screen.findByText(/Eustice in Inquisitors/)).toBeInTheDocument();
+    expect(screen.getByText(/assign role · role: Grand Inquisitor · member: Eustice/i)).toBeInTheDocument();
+    expect(screen.getAllByText("Campaign Core audit").length).toBeGreaterThan(0);
+    // Session events join the stream from the shared bus, newest first.
+    fireEvent.click(screen.getByRole("button", { name: "Identity" }));
+    fireEvent.click(screen.getByRole("button", { name: "Log" }));
+    expect(screen.getByText(/audited decisions/)).toBeInTheDocument();
+    // Errors filter narrows to failures only.
+    fireEvent.click(screen.getByRole("button", { name: "Errors only" }));
+    expect(screen.queryByText(/Eustice in Inquisitors/)).not.toBeInTheDocument();
+  });
+
+  it("shows derived co-mentions as read-only associations, never a removable roster", async () => {
+    const faction = {
+      entry_id: "b1000000-0000-0000-0000-0000000000f1", canonical_name: "Inquisitors",
+      entity_kind: "faction" as const, aliases: [], misspellings: [], tags: [],
+      members: [], related: ["Andice Thromius", "Romulus"],
+      current_claim_count: 9, source_count: 0,
+    };
+    const getLibraryEntry = vi.fn().mockResolvedValue({ ...faction, claims: [], claim_history: [], sources: [] });
+    const getEntityProfile = vi.fn().mockResolvedValue({
+      entity_id: faction.entry_id, version: 1, canonical_name: "Inquisitors",
+      status: "active", base_location: null, aliases: [], summary: "",
+    });
+    const removeMembership = vi.fn();
+    render(<App campaignClient={makeClient({
+      listLibraryEntries: vi.fn().mockResolvedValue([faction]),
+      getLibraryEntry, getEntityProfile, removeMembership,
+    })} jobPlatform={makeQuietJobs()} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Inquisitors" }));
+    await waitFor(() => expect(getEntityProfile).toHaveBeenCalledWith(faction.entry_id));
+    // The entry page presents the associations honestly labeled.
+    expect(await screen.findByText(/Co-mentioned in shared records; not an explicit roster/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Edit entry" }));
+    // The editor offers no removal for names that were never roster records.
+    expect(screen.getByText(/No explicit roster yet/)).toBeInTheDocument();
+    expect(screen.queryByTitle("Remove membership")).not.toBeInTheDocument();
+    expect(removeMembership).not.toHaveBeenCalled();
+  });
+
+  it("surfaces membership refusals in the editor instead of silently failing", async () => {
+    const faction = {
+      entry_id: "b1000000-0000-0000-0000-0000000000f1", canonical_name: "Carpet Rollers",
+      entity_kind: "faction" as const, aliases: [], misspellings: [], tags: [],
+      members: [{ member_id: "b1000000-0000-0000-0000-0000000000m1", name: "Ruhrogue", role_title: null, is_leadership: false }],
+      current_claim_count: 9, source_count: 0,
+    };
+    const addMembership = vi.fn().mockRejectedValue(new Error("Ruhrogue is already a member of Carpet Rollers; remove first to change"));
+    const getLibraryEntry = vi.fn().mockResolvedValue({ ...faction, claims: [], claim_history: [], sources: [] });
+    const getEntityProfile = vi.fn().mockResolvedValue({
+      entity_id: faction.entry_id, version: 1, canonical_name: "Carpet Rollers",
+      status: "active", base_location: null, aliases: [], summary: "",
+    });
+    const searchEntities = vi.fn().mockResolvedValue([
+      { entity_id: "b1000000-0000-0000-0000-0000000000m1", canonical_name: "Ruhrogue", entity_kind: "pc", match_kind: "canonical" },
+    ]);
+    render(<App campaignClient={makeClient({
+      listLibraryEntries: vi.fn().mockResolvedValue([faction]),
+      getLibraryEntry, getEntityProfile, addMembership, searchEntities,
+    })} jobPlatform={makeQuietJobs()} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Carpet Rollers" }));
+    await waitFor(() => expect(getEntityProfile).toHaveBeenCalledWith(faction.entry_id));
+    fireEvent.click(screen.getByRole("button", { name: "Edit entry" }));
+    fireEvent.change(screen.getByLabelText("Search identities to add as member"), { target: { value: "Ruhrog" } });
+    fireEvent.click(await screen.findByRole("button", { name: /Ruhrogue/ }));
+    const alerts = await screen.findAllByRole("alert");
+    expect(alerts.some((alert) => alert.textContent?.includes("already a member"))).toBe(true);
+    // The same refusal is mirrored globally, visible regardless of scroll.
+    const toasts = await screen.findAllByText(/already a member/);
+    expect(toasts.some((node) => node.closest(".toast") !== null)).toBe(true);
+    // The roster did not reload behind the refusal.
+    expect(getLibraryEntry).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows location template fields from the entity profile over document frontmatter", async () => {
+    const location = {
+      entry_id: "b1000000-0000-0000-0000-0000000000l1", canonical_name: "Faeroth Manor",
+      entity_kind: "location" as const, aliases: ["The Manor"], misspellings: [], tags: [],
+      members: [], current_claim_count: 2, source_count: 0,
+    };
+    const getLibraryEntry = vi.fn().mockResolvedValue({ ...location, claims: [], claim_history: [], sources: [] });
+    const getEntityProfile = vi.fn().mockResolvedValue({
+      entity_id: location.entry_id, version: 1, canonical_name: "Faeroth Manor",
+      status: "active", location_type: "estate", parent_location: "Unity", aliases: [], summary: "",
+    });
+    render(<App campaignClient={makeClient({
+      listLibraryEntries: vi.fn().mockResolvedValue([location]),
+      getLibraryEntry, getEntityProfile,
+    })} jobPlatform={makeQuietJobs()} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Faeroth Manor" }));
+    await waitFor(() => expect(getEntityProfile).toHaveBeenCalledWith(location.entry_id));
+    expect(await screen.findByText("Aliases")).toBeInTheDocument();
+    expect(screen.getByText("The Manor")).toBeInTheDocument();
+    expect(screen.getByText("estate")).toBeInTheDocument();
+    expect(screen.getByText("Unity")).toBeInTheDocument();
+  });
+
+  it("seats a member in an existing faction role and surfaces leadership refusals", async () => {
+    const memberRow = (name: string, id: string, role_title: string | null = null, is_leadership = false) =>
+      ({ member_id: id, name, role_title, is_leadership });
+    const faction = {
+      entry_id: "b1000000-0000-0000-0000-0000000000f1", canonical_name: "Inquisitors",
+      entity_kind: "faction" as const, aliases: [], misspellings: [], tags: [],
+      members: [
+        memberRow("Eustice", "b1000000-0000-0000-0000-0000000000m1", "Grand Inquisitor", true),
+        memberRow("Romulus", "b1000000-0000-0000-0000-0000000000m2"),
+      ], current_claim_count: 9, source_count: 0,
+    };
+    const roles = [
+      { name: "Grand Inquisitor", is_leadership: true, holder_names: ["Eustice"] },
+      { name: "Inquisitor", is_leadership: false, holder_names: [] },
+    ];
+    const entry = (members: typeof faction.members) => ({ ...faction, members, roles, claims: [], claim_history: [], sources: [] });
+    const getLibraryEntry = vi.fn()
+      .mockResolvedValueOnce(entry(faction.members))
+      .mockResolvedValue(entry([
+        memberRow("Eustice", "b1000000-0000-0000-0000-0000000000m1", "Grand Inquisitor", true),
+        memberRow("Romulus", "b1000000-0000-0000-0000-0000000000m2", "Inquisitor"),
+      ]));
+    const getEntityProfile = vi.fn().mockResolvedValue({
+      entity_id: faction.entry_id, version: 1, canonical_name: "Inquisitors",
+      status: "active", base_location: null, aliases: [], summary: "",
+    });
+    const refusal = "Grand Inquisitor is the unique leadership seat of Inquisitors and is currently held by Eustice; change or clear their role first";
+    const assignFactionRole = vi.fn()
+      .mockRejectedValueOnce(new Error(refusal))
+      .mockResolvedValue({ decision_id: "b8000000-0000-0000-0000-0000000000f8", kind: "membership", surface: "Romulus in Inquisitors", idempotent_replay: false });
+    render(<App campaignClient={makeClient({
+      listLibraryEntries: vi.fn().mockResolvedValue([faction]),
+      getLibraryEntry, getEntityProfile, assignFactionRole,
+    })} jobPlatform={makeQuietJobs()} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Inquisitors" }));
+    await waitFor(() => expect(getEntityProfile).toHaveBeenCalledWith(faction.entry_id));
+    fireEvent.click(screen.getByRole("button", { name: "Edit entry" }));
+    // The seated leader renders with the star; the roster legend explains it.
+    expect(screen.getAllByText("Grand Inquisitor ★").length).toBeGreaterThan(0);
+    expect(screen.getByText("★ unique leadership seat")).toBeInTheDocument();
+    // Selecting the occupied leadership seat is refused by Core, by name.
+    fireEvent.change(screen.getByRole("combobox", { name: "Role for Romulus" }), { target: { value: "Grand Inquisitor" } });
+    const refusalAlerts = await screen.findAllByRole("alert");
+    expect(refusalAlerts.some((alert) => alert.textContent?.includes("held by Eustice"))).toBe(true);
+    expect(assignFactionRole).toHaveBeenCalledWith(faction.entry_id, "b1000000-0000-0000-0000-0000000000m2", "Grand Inquisitor", false);
+    // Seating Romulus in the shared role succeeds and the chip appears after refresh.
+    fireEvent.change(screen.getByRole("combobox", { name: "Role for Romulus" }), { target: { value: "Inquisitor" } });
+    await waitFor(() => expect(assignFactionRole).toHaveBeenCalledWith(faction.entry_id, "b1000000-0000-0000-0000-0000000000m2", "Inquisitor", false));
+    expect((await screen.findAllByText(/Seated Romulus as Inquisitor/)).length).toBeGreaterThan(0);
+  });
+
+  it("creates a new leadership role from the roster control", async () => {
+    const faction = {
+      entry_id: "b1000000-0000-0000-0000-0000000000f1", canonical_name: "Inquisitors",
+      entity_kind: "faction" as const, aliases: [], misspellings: [], tags: [],
+      members: [{ member_id: "b1000000-0000-0000-0000-0000000000m1", name: "Eustice", role_title: null, is_leadership: false }],
+      current_claim_count: 9, source_count: 0,
+    };
+    const entry = (role_title: string | null, is_leadership: boolean) => ({
+      ...faction,
+      members: [{ member_id: "b1000000-0000-0000-0000-0000000000m1", name: "Eustice", role_title, is_leadership }],
+      roles: role_title ? [{ name: role_title, is_leadership, holder_names: ["Eustice"] }] : [],
+      claims: [], claim_history: [], sources: [],
+    });
+    const getLibraryEntry = vi.fn()
+      .mockResolvedValueOnce(entry(null, false))
+      .mockResolvedValue(entry("High Confessor", true));
+    const getEntityProfile = vi.fn().mockResolvedValue({
+      entity_id: faction.entry_id, version: 1, canonical_name: "Inquisitors",
+      status: "active", base_location: null, aliases: [], summary: "",
+    });
+    const assignFactionRole = vi.fn().mockResolvedValue({
+      decision_id: "b8000000-0000-0000-0000-0000000000f9", kind: "membership", surface: "Eustice in Inquisitors", idempotent_replay: false,
+    });
+    render(<App campaignClient={makeClient({
+      listLibraryEntries: vi.fn().mockResolvedValue([faction]),
+      getLibraryEntry, getEntityProfile, assignFactionRole,
+    })} jobPlatform={makeQuietJobs()} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Inquisitors" }));
+    await waitFor(() => expect(getEntityProfile).toHaveBeenCalledWith(faction.entry_id));
+    fireEvent.click(screen.getByRole("button", { name: "Edit entry" }));
+    fireEvent.change(screen.getByRole("combobox", { name: "Role for Eustice" }), { target: { value: "__new" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "New role name for Eustice" }), { target: { value: "High Confessor" } });
+    fireEvent.click(screen.getByLabelText("Leadership ★"));
+    fireEvent.click(screen.getByRole("button", { name: "Assign" }));
+    await waitFor(() => expect(assignFactionRole).toHaveBeenCalledWith(
+      faction.entry_id, "b1000000-0000-0000-0000-0000000000m1", "High Confessor", true));
+    expect((await screen.findAllByText(/Seated Eustice as High Confessor ★/)).length).toBeGreaterThan(0);
+    expect(screen.getAllByText("High Confessor ★").length).toBeGreaterThan(0);
+  });
+
+  it("auto-cancels a clean editor and forces save-or-discard on dirty edits when switching entries", async () => {
+    const faction = {
+      entry_id: "b1000000-0000-0000-0000-0000000000f1", canonical_name: "Inquisitors",
+      entity_kind: "faction" as const, aliases: [], misspellings: [], tags: [],
+      members: [], current_claim_count: 9, source_count: 0,
+    };
+    const other = {
+      entry_id: "b1000000-0000-0000-0000-0000000000f2", canonical_name: "White Cloaks",
+      entity_kind: "faction" as const, aliases: [], misspellings: [], tags: [],
+      members: [], current_claim_count: 3, source_count: 0,
+    };
+    const profile = { entity_id: faction.entry_id, version: 1, canonical_name: "Inquisitors", status: "active", base_location: null, aliases: [], summary: "" };
+    const getLibraryEntry = vi.fn().mockImplementation(async (entryId: string) => ({
+      ...(entryId === faction.entry_id ? faction : other), claims: [], claim_history: [], sources: [],
+    }));
+    const getEntityProfile = vi.fn().mockImplementation(async (entryId: string) =>
+      entryId === faction.entry_id ? profile : null);
+    const updateEntityProfile = vi.fn().mockResolvedValue({ receipt_id: "b9000000-0000-0000-0000-0000000000fa", entity_id: faction.entry_id, version: 2, idempotent_replay: false });
+    render(<App campaignClient={makeClient({
+      listLibraryEntries: vi.fn().mockResolvedValue([faction, other]),
+      getLibraryEntry, getEntityProfile, updateEntityProfile,
+    })} jobPlatform={makeQuietJobs()} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Inquisitors" }));
+    await waitFor(() => expect(getEntityProfile).toHaveBeenCalledWith(faction.entry_id));
+    fireEvent.click(screen.getByRole("button", { name: "Edit entry" }));
+
+    // Clean editor: switching entries auto-cancels — no error, editor gone.
+    fireEvent.click(screen.getByRole("button", { name: "White Cloaks" }));
+    await waitFor(() => expect(getEntityProfile).toHaveBeenCalledWith(other.entry_id));
+    expect(screen.queryByRole("button", { name: "Save identity profile" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Identity profile could not be loaded.")).not.toBeInTheDocument();
+
+    // Dirty editor: switching is blocked until the profile is saved or discarded.
+    fireEvent.click(screen.getByRole("button", { name: "Inquisitors" }));
+    await waitFor(() => expect(getEntityProfile).toHaveBeenCalledTimes(3));
+    fireEvent.click(screen.getByRole("button", { name: "Edit entry" }));
+    fireEvent.change(screen.getByLabelText("Identity status"), { target: { value: "disbanded" } });
+    fireEvent.click(screen.getByRole("button", { name: "White Cloaks" }));
+    const switchAlerts = await screen.findAllByRole("alert");
+    expect(switchAlerts.some((alert) => alert.textContent?.includes("Unsaved identity profile changes"))).toBe(true);
+    expect(screen.queryByRole("heading", { name: "White Cloaks" })).not.toBeInTheDocument();
+    // Saving through the prompt commits, then the switch proceeds.
+    fireEvent.click(screen.getByRole("button", { name: "Save profile" }));
+    await waitFor(() => expect(updateEntityProfile).toHaveBeenCalled());
+    expect(await screen.findByText(/Saved with receipt b9000000/)).toBeInTheDocument();
+  });
+
+  it("requires a document filename to carry the entity's whole distinctive name", () => {
+    const sources = [
+      { document_id: "d1", path: "locations/heart-of-unity.md" },
+    ];
+    // Partial overlap (Council of Unity vs heart-of-unity) must not borrow.
+    expect(selectEntrySource({ canonical_name: "Council of Unity", entity_kind: "faction" }, sources)).toBeUndefined();
+    // The sibling entity whose full name the file carries still borrows it.
+    expect(selectEntrySource({ canonical_name: "Heart of Unity", entity_kind: "location" }, sources)?.path).toBe("locations/heart-of-unity.md");
+    // Exact filename matches always win, apostrophes and all.
+    expect(selectEntrySource({ canonical_name: "Goodman's City", entity_kind: "location" }, [
+      { document_id: "d2", path: "lore/goodmans-city.md" },
+      { document_id: "d3", path: "locations/lore-doc.md" },
+    ])?.path).toBe("lore/goodmans-city.md");
+    // Lore writeups may append a generic suffix word to the entity's name.
+    expect(selectEntrySource({ canonical_name: "Thanore", entity_kind: "location" }, [
+      { document_id: "d4", path: "lore/thanore-history.md" },
+    ])?.path).toBe("lore/thanore-history.md");
+    expect(selectEntrySource({ canonical_name: "Vika Lana", entity_kind: "npc" }, [
+      { document_id: "d5", path: "handouts/vika-lana-journal.md" },
+    ])).toBeUndefined();
+    // A filename that is exactly another entity's name is that entity's page.
+    const names = ["Council of Unity", "Unity", "Unity People's Library"];
+    expect(selectEntrySource({ canonical_name: "Council of Unity", entity_kind: "faction" }, [
+      { document_id: "d6", path: "locations/argoth/ellish/unity/unity.md" },
+    ], names)).toBeUndefined();
+    expect(selectEntrySource({ canonical_name: "Unity", entity_kind: "location" }, [
+      { document_id: "d6", path: "locations/argoth/ellish/unity/unity.md" },
+    ], names)?.path).toBe("locations/argoth/ellish/unity/unity.md");
+  });
+
+  it("lists faction template fields on the entry hero", async () => {
+    const faction = {
+      entry_id: "b1000000-0000-0000-0000-0000000000f1", canonical_name: "Inquisitors",
+      entity_kind: "faction" as const, aliases: ["Inquisition"], misspellings: [], tags: [],
+      members: [{ member_id: "b1000000-0000-0000-0000-0000000000m1", name: "Eustice", role_title: "Grand Inquisitor", is_leadership: true }],
+      current_claim_count: 9, source_count: 0,
+    };
+    const getEntityProfile = vi.fn().mockResolvedValue({
+      entity_id: faction.entry_id, version: 1, canonical_name: "Inquisitors",
+      status: "active", base_location: "Goodman's City", aliases: [], summary: "",
+    });
+    render(<App campaignClient={makeClient({
+      listLibraryEntries: vi.fn().mockResolvedValue([faction]),
+      getLibraryEntry: vi.fn().mockResolvedValue({ ...faction, roles: [{ name: "Grand Inquisitor", is_leadership: true, holder_names: ["Eustice"] }], claims: [], claim_history: [], sources: [] }),
+      getEntityProfile,
+    })} jobPlatform={makeQuietJobs()} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Inquisitors" }));
+    await waitFor(() => expect(getEntityProfile).toHaveBeenCalledWith(faction.entry_id));
+    expect(await screen.findByText("Aliases")).toBeInTheDocument();
+    expect(screen.getByText("Inquisition")).toBeInTheDocument();
+    expect(screen.getByText("Goodman's City")).toBeInTheDocument();
+    expect(screen.getByText("Grand Inquisitor ★ — Eustice")).toBeInTheDocument();
+  });
+
+  it("defines and seats faction roles from the Roles page", async () => {
+    const faction = {
+      entry_id: "b1000000-0000-0000-0000-0000000000f1", canonical_name: "Inquisitors",
+      entity_kind: "faction" as const, aliases: [], misspellings: [], tags: [],
+      members: [{ member_id: "b1000000-0000-0000-0000-0000000000m1", name: "Eustice", role_title: null, is_leadership: false }],
+      current_claim_count: 9, source_count: 0,
+    };
+    const rolesAfterDefine = [{ faction_id: faction.entry_id, faction_name: "Inquisitors", name: "Grand Inquisitor", is_leadership: true, holders: [] as { id: string; name: string }[] }];
+    const rolesAfterSeat = [{ faction_id: faction.entry_id, faction_name: "Inquisitors", name: "Grand Inquisitor", is_leadership: true, holders: [{ id: "b1000000-0000-0000-0000-0000000000m1", name: "Eustice" }] }];
+    const listFactionRoles = vi.fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce(rolesAfterDefine)
+      .mockResolvedValue(rolesAfterSeat);
+    const defineFactionRole = vi.fn().mockResolvedValue({ decision_id: "ba000000-0000-0000-0000-0000000000fb", kind: "membership", surface: "Grand Inquisitor of Inquisitors", idempotent_replay: false });
+    const assignFactionRole = vi.fn().mockResolvedValue({ decision_id: "ba000000-0000-0000-0000-0000000000fc", kind: "membership", surface: "Eustice in Inquisitors", idempotent_replay: false });
+    render(<App campaignClient={makeClient({
+      listLibraryEntries: vi.fn().mockResolvedValue([faction]),
+      listFactionRoles, defineFactionRole, assignFactionRole,
+    })} jobPlatform={makeQuietJobs()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Roles" }));
+    expect(await screen.findByText("No roles defined yet. Define one above or seat a member from a faction's profile editor.")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Role faction"), { target: { value: faction.entry_id } });
+    fireEvent.change(screen.getByLabelText("New role definition name"), { target: { value: "Grand Inquisitor" } });
+    fireEvent.click(screen.getByLabelText("Leadership ★ (unique seat)"));
+    fireEvent.click(screen.getByRole("button", { name: "Define role" }));
+    await waitFor(() => expect(defineFactionRole).toHaveBeenCalledWith(faction.entry_id, "Grand Inquisitor", true));
+    expect((await screen.findAllByText(/Defined Grand Inquisitor ★ for Inquisitors/)).length).toBeGreaterThan(0);
+    expect(screen.getByText("Vacant")).toBeInTheDocument();
+    // Seat the member from the listing's dropdown.
+    fireEvent.change(screen.getByLabelText("Seat a member as Grand Inquisitor"), { target: { value: "b1000000-0000-0000-0000-0000000000m1" } });
+    await waitFor(() => expect(assignFactionRole).toHaveBeenCalledWith(faction.entry_id, "b1000000-0000-0000-0000-0000000000m1", "Grand Inquisitor", false));
+    expect((await screen.findAllByText(/Seated Eustice as Grand Inquisitor ★/)).length).toBeGreaterThan(0);
+    expect(screen.getByText("Vacate")).toBeInTheDocument();
+    expect(screen.queryByText("Vacant")).not.toBeInTheDocument();
+  });
+
+  it("links Identity Review role declarations to factions from the Roles page", async () => {
+    const faction = {
+      entry_id: "b1000000-0000-0000-0000-0000000000f1", canonical_name: "Inquisitors",
+      entity_kind: "faction" as const, aliases: [], misspellings: [], tags: [],
+      members: [], current_claim_count: 0, source_count: 0,
+    };
+    const listFactionRoles = vi.fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValue([{ faction_id: faction.entry_id, faction_name: "Inquisitors", name: "Grand Inquisitor", is_leadership: true, holders: [] }]);
+    const listRoleDeclarations = vi.fn()
+      .mockResolvedValueOnce([
+        { surface: "Grand Inquisitor", normalized_surface: "grand inquisitor" },
+        { surface: "Inquisitor", normalized_surface: "inquisitor" },
+      ])
+      .mockResolvedValue([{ surface: "Inquisitor", normalized_surface: "inquisitor" }]);
+    const defineFactionRole = vi.fn().mockResolvedValue({
+      decision_id: "bb000000-0000-0000-0000-0000000000fd", kind: "membership",
+      surface: "Grand Inquisitor of Inquisitors", idempotent_replay: false,
+    });
+    render(<App campaignClient={makeClient({
+      listLibraryEntries: vi.fn().mockResolvedValue([faction]),
+      listFactionRoles, listRoleDeclarations, defineFactionRole,
+    })} jobPlatform={makeQuietJobs()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Roles" }));
+    expect(await screen.findByText("Declared during Identity Review — unlinked")).toBeInTheDocument();
+    expect(screen.getByText("Grand Inquisitor")).toBeInTheDocument();
+    expect(screen.getByText("Inquisitor")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Link Grand Inquisitor to faction"), { target: { value: faction.entry_id } });
+    fireEvent.click(screen.getByLabelText("Leadership ★ for Grand Inquisitor"));
+    fireEvent.click(within(screen.getByLabelText("Link Grand Inquisitor to faction").closest("li")!).getByRole("button", { name: "Link" }));
+    await waitFor(() => expect(defineFactionRole).toHaveBeenCalledWith(faction.entry_id, "Grand Inquisitor", true));
+    expect((await screen.findAllByText(/Linked Grand Inquisitor ★ to Inquisitors/)).length).toBeGreaterThan(0);
+    // The linked seat now lives in the faction block; the sibling declaration stays unlinked.
+    expect(screen.getByText("Vacant")).toBeInTheDocument();
+    expect(screen.getByText("Declared during Identity Review — unlinked")).toBeInTheDocument();
+    expect(screen.getByText("Inquisitor")).toBeInTheDocument();
+  });
+
+  it("records a misspelling from the target search results", async () => {
+    const gap = {
+      surface: "Corefera", normalized_surface: "corefera",
+      claims_with_phrase: 4, total_mentions: 4, retrieval_demand: 0,
+      role_hint: false, suggested_canonical_name: null, suggested_kind: null,
+      related_surfaces: [],
+      evidence: [{ claim_id: "9a000000-0000-0000-0000-000000000001", excerpt: "Corefera feels the pull." }],
+      alias_candidates: [],
+    };
+    const searchEntities = vi.fn().mockResolvedValue([
+      { entity_id: "9b000000-0000-0000-0000-000000000001", canonical_name: "Coreferra", entity_kind: "npc", match_kind: "partial" },
+    ]);
+    const markIdentityMisspelling = vi.fn().mockResolvedValue({
+      decision_id: "96000000-0000-0000-0000-000000000005", kind: "mark_misspelling",
+      surface: "Corefera", linked_claims: 4, idempotent_replay: false,
+    });
+    const getIdentityGaps = vi.fn().mockResolvedValue({ gaps: [gap], total_candidates: 1 });
+    render(<App campaignClient={makeClient({ getIdentityGaps, searchEntities, markIdentityMisspelling })} jobPlatform={makeQuietJobs()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Identity" }));
+    await screen.findByText("Showing 1 of 1 unresolved surface");
+    fireEvent.change(screen.getByLabelText("Alias target search for Corefera"), { target: { value: "Coref" } });
+    const match = await screen.findByRole("option", { name: /Coreferra/ });
+    fireEvent.click(within(match).getByRole("button", { name: "Misspelling" }));
+    await waitFor(() => expect(markIdentityMisspelling).toHaveBeenCalledWith(
+      "Corefera", "9b000000-0000-0000-0000-000000000001", expect.stringMatching(/^identity-misspelling:/)));
+    expect(await screen.findByText(/Recorded “Corefera” as a misspelling of Coreferra with receipt 96000000/)).toBeInTheDocument();
+  });
+
+  it("aliases a surface to a searched identity target from the Identity page", async () => {
+    const gap = {
+      surface: "Zander", normalized_surface: "zander",
+      claims_with_phrase: 16, total_mentions: 16, retrieval_demand: 0,
+      role_hint: false, suggested_canonical_name: null, suggested_kind: "pc",
+      related_surfaces: [],
+      evidence: [{ claim_id: "98000000-0000-0000-0000-000000000001", excerpt: "Zander checks his compass." }],
+      alias_candidates: [],
+    };
+    const searchEntities = vi.fn().mockResolvedValue([
+      { entity_id: "99000000-0000-0000-0000-000000000001", canonical_name: "Zander Thromius", entity_kind: "pc", match_kind: "partial" },
+    ]);
+    const addIdentityAlias = vi.fn().mockResolvedValue({
+      decision_id: "96000000-0000-0000-0000-00000000000b", kind: "add_alias",
+      surface: "Zander", linked_claims: 16, idempotent_replay: false,
+    });
+    const getIdentityGaps = vi.fn().mockResolvedValue({ gaps: [gap], total_candidates: 1 });
+    render(<App campaignClient={makeClient({ getIdentityGaps, searchEntities, addIdentityAlias })} jobPlatform={makeQuietJobs()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Identity" }));
+    await screen.findByText("Showing 1 of 1 unresolved surface");
+    fireEvent.change(screen.getByLabelText("Alias target search for Zander"), { target: { value: "Zander Th" } });
+    const option = await screen.findByRole("option", { name: /Zander Thromius/ });
+    fireEvent.click(within(option).getByRole("button", { name: /Zander Thromius/ }));
+    await waitFor(() => expect(addIdentityAlias).toHaveBeenCalledWith(
+      "Zander", "99000000-0000-0000-0000-000000000001", expect.stringMatching(/^identity-alias:/)));
+    expect(await screen.findByText(/Aliased “Zander” to Zander Thromius with receipt 96000000/)).toBeInTheDocument();
   });
 });
 

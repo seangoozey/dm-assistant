@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import re
 from collections import Counter
+from datetime import datetime
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -25,6 +26,29 @@ COMMON_TAIL_WORDS = {
     "guard", "legion", "brigade", "company", "patrol", "sect", "temple",
     "kingdom", "king", "queen", "lord", "lady", "knights", "priests",
 }
+# Person-title prefixes: they mark a role, not the person's name. A surface
+# starting with one suggests a canonical name without it ("King Peter le
+# Fleur" → create as "Peter le Fleur", keeping the full form as an alias).
+TITLE_PREFIX_WORDS = {
+    "king", "queen", "lord", "lady", "prince", "princess", "duke", "duchess",
+    "count", "countess", "baron", "baroness", "earl", "sir", "dame",
+    "captain", "sergeant", "bishop", "archbishop", "father", "mother",
+    "brother", "sister", "magistrate", "inquisitor", "grand", "high",
+}
+KIND_TAIL_WORDS = {
+    "faction": COMMON_TAIL_WORDS - {"kingdom", "king", "queen", "lord", "lady"},
+    "location": {
+        "tower", "castle", "city", "camp", "isle", "island", "mountain",
+        "range", "temple", "monastery", "manor", "house", "keep", "forest",
+        "river", "bridge", "pass", "bay", "harbor", "library", "estate",
+        "tavern", "inn", "road", "channel", "village", "town", "hold",
+        "chamber", "corridor", "vault", "perch",
+    },
+    "worldbuilding": {
+        "plane", "realm", "leylines", "leyline", "magic", "twilight", "age",
+        "era", "pantheon", "calendar", "confluence", "summoning",
+    },
+}
 NON_NAMES = {
     "the", "a", "an", "he", "she", "it", "they", "we", "his", "her", "its",
     "their", "status", "location", "affiliation", "disposition", "appearance",
@@ -34,11 +58,17 @@ NON_NAMES = {
     "city", "camp", "key", "lessons", "running", "early", "life", "pre",
     "post", "party", "players", "first", "second", "third", "final", "initial",
     "each", "if", "when", "after", "before", "upon",
+    # Status-field values from promoted frontmatter blocks ("Status: Alive").
+    "alive", "deceased", "missing", "unknown", "active", "retired", "dead",
+    "recovering", "bound", "imprisoned", "free", "captured",
 }
 NAME_WORD = re.compile(r"[A-Z][a-zA-Z'’\-]*[a-z][a-zA-Z'’\-]*|[A-Z]{2,}")
+# Phrases never cross a line break: "Status: Alive\nLocation:" is a field
+# list, not the name "Alive Location". Single-word titles like "Alive" alone
+# are then handled by the noise filters.
 PHRASE = re.compile(
-    r"\b[A-Z][\w'’\-]*(?:(?:\s+(?:of|the|de|le|la|von|van))+\s+[A-Z][\w'’-]*"
-    r"|\s+[A-Z][\w'’-]*){0,3}")
+    r"\b[A-Z][\w'’\-]*(?:(?:[ \t]+(?:of|the|de|le|la|von|van))+[ \t]+[A-Z][\w'’-]*"
+    r"|[ \t]+[A-Z][\w'’-]*){0,3}")
 
 
 class GapEvidence(BaseModel):
@@ -51,6 +81,7 @@ class GapAliasCandidate(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     entity_id: UUID
     canonical_name: str
+    entity_kind: EntityKind | None = None
 
 
 class IdentityGap(BaseModel):
@@ -61,6 +92,8 @@ class IdentityGap(BaseModel):
     total_mentions: int
     retrieval_demand: int = 0
     role_hint: bool = False
+    suggested_canonical_name: str | None = None
+    suggested_kind: EntityKind | None = None
     related_surfaces: tuple[str, ...] = ()
     evidence: tuple[GapEvidence, ...] = ()
     alias_candidates: tuple[GapAliasCandidate, ...] = ()
@@ -90,6 +123,7 @@ class CreateEntityDecision(BaseModel):
     surface: str = Field(min_length=1)
     entity_kind: EntityKind
     alias_surfaces: tuple[str, ...] = ()
+    manual_aliases: tuple[str, ...] = ()
     idempotency_key: str = Field(min_length=1)
 
 
@@ -99,12 +133,114 @@ class SurfaceDecision(BaseModel):
     idempotency_key: str = Field(min_length=1)
 
 
+class MarkMisspellingDecision(BaseModel):
+    """Record a surface as a misspelling of an existing identity.
+
+    Resolvable for lookups and claim linking, but presented as a correction —
+    never as one of the identity's names.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    surface: str = Field(min_length=1)
+    entity_id: UUID
+    idempotency_key: str = Field(min_length=1)
+
+
+class MembershipDecision(BaseModel):
+    """Explicit faction membership: a roster record, not an alias.
+
+    add=True records membership (optionally a role title and evidence claim);
+    add=False removes the current record through supersession.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    faction_id: UUID
+    member_id: UUID
+    add: bool = True
+    role_title: str | None = None
+    source_claim_id: UUID | None = None
+    idempotency_key: str = Field(min_length=1)
+
+
+class RoleDecision(BaseModel):
+    """Seat a roster member in a faction role, or clear their seat.
+
+    role_name=None clears the member's role (membership survives). Assigning a
+    role the member already holds, or a leadership seat held by another member,
+    is refused by name — succession is two explicit decisions. is_leadership is
+    honored only when the assignment defines a brand-new role.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    faction_id: UUID
+    member_id: UUID
+    role_name: str | None = None
+    is_leadership: bool = False
+    source_claim_id: UUID | None = None
+    idempotency_key: str = Field(min_length=1)
+
+
+class RoleDefinitionDecision(BaseModel):
+    """Define a role for a faction without seating anyone (a vacant seat)."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    faction_id: UUID
+    role_name: str = Field(min_length=1)
+    is_leadership: bool = False
+    idempotency_key: str = Field(min_length=1)
+
+
+class FactionRoleSummary(BaseModel):
+    """One role definition in the cross-faction roles listing."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    faction_id: UUID
+    faction_name: str
+    name: str
+    is_leadership: bool = False
+    holders: tuple[tuple[UUID, str], ...] = ()
+
+
+class IdentityDecisionEntry(BaseModel):
+    """One recorded decision from the durable audit trail, newest first."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    decision_id: UUID
+    kind: str
+    surface: str
+    decided_at: datetime
+    details: dict | None = None
+
+
+class RoleDeclarationSummary(BaseModel):
+    """A role surface declared during Identity Review, not yet linked.
+
+    mark_role decisions record vocabulary ("Inquisitor is a role word"); they
+    carry no faction linkage. Linking one to a faction is the explicit
+    define-role decision, at which point it leaves this listing.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    surface: str
+    normalized_surface: str
+
+
+class RevertDecision(BaseModel):
+    """Reverse one prior decision by its receipt; both stay in audit history."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    decision_id: UUID
+    idempotency_key: str = Field(min_length=1)
+
+
 class IdentityDecisionReceipt(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     decision_id: UUID
     kind: str
     surface: str
     entity_id: UUID | None
+    linked_claims: int = 0
+    details: dict | None = None
     idempotent_replay: bool
 
 
@@ -113,20 +249,52 @@ class IdentityQueueError(ValueError):
 
 
 def normalize_surface(value: str) -> str:
-    """Casefold, collapse whitespace, and strip leading/trailing connector words.
+    """Casefold, collapse whitespace, strip possessives, and trim connectors.
 
-    Sentence-initial capitalization ("The Court of the Stars") must aggregate
-    with mid-sentence mentions ("... the Court of the Stars ..."). Known
-    limitation: a capitalized non-name word starting a mention ("Members of the
-    Court of the Stars") yields a distinct surface — the queue surfaces what it
-    finds; merging surfaces stays a human decision.
+    Possessive forms ("Romulus's") must resolve to their owner. A capitalized
+    article is stripped so sentence-initial mentions aggregate with embedded
+    ones. Known limitation: a capitalized non-name word starting a mention
+    ("Members of the Court of the Stars") yields a distinct surface — the
+    queue surfaces what it finds; merging surfaces stays a human decision.
     """
-    words = value.casefold().split()
+    stripped = re.sub(r"['’]s$", "", value.strip())
+    stripped = re.sub(r"['’]$", "", stripped).strip()
+    words = stripped.casefold().split()
     while words and words[0] in CONNECTORS:
         words = words[1:]
     while words and words[-1] in CONNECTORS:
         words = words[:-1]
     return " ".join(words)
+
+
+def strip_title_prefix(surface: str) -> str | None:
+    """Canonical name suggestion with person-title prefixes removed.
+
+    "King Peter le Fleur" → "Peter le Fleur": the title is a role, not the
+    name; the full form stays available as an alias.
+    """
+    words = surface.split()
+    index = 0
+    while index < len(words) and words[index].casefold() in TITLE_PREFIX_WORDS:
+        index += 1
+    remainder = " ".join(words[index:])
+    return remainder if remainder and remainder != surface else None
+
+
+def suggest_kind(normalized: str, alias_candidate_kinds: list[str]) -> str | None:
+    """Deterministic kind proposal: alias-target affinity first, then tail word.
+
+    A suggestion, never an assignment — the selector stays editable.
+    """
+    distinct = set(alias_candidate_kinds)
+    if len(distinct) == 1:
+        return next(iter(distinct))
+    content = [word for word in normalized.split() if word not in CONNECTORS]
+    for word in reversed(content):
+        for kind, tails in KIND_TAIL_WORDS.items():
+            if word in tails:
+                return kind
+    return None
 
 
 def _content_words(normalized: str) -> set[str]:
@@ -233,7 +401,9 @@ def mine_gaps(claims, known, *, evidence_limit: int = 3) -> list[IdentityGap]:
                     continue
                 seen.add(key)
                 mention_counts[key] += 1
-                display.setdefault(key, surface)
+                # Display keeps original casing but drops the possessive, so a
+                # key aggregated from "Inquisition's" is titled "Inquisition".
+                display.setdefault(key, re.sub(r"['’]s?$", "", surface))
                 if len(evidence.setdefault(key, [])) < evidence_limit:
                     start = max(0, match.start() - 60)
                     end = min(len(text), match.end() + 60)

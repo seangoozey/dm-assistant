@@ -95,3 +95,39 @@ def test_generated_event_label_does_not_replace_planning_context(tmp_path):
     assert "destroys" not in " ".join(evidence.graph_trace)
     assert evidence.graph_sources[0].assertion == r.assertion
     assert evidence.graph_sources[0].state == "intended"
+
+
+def test_roster_edges_traverse_without_shared_claims(tmp_path):
+    # An audited seat stands on its receipt: the member's claims surface for a
+    # faction question even when no claim co-mentions them together.
+    faction_claim = record(identity="f", evidence_binding="bound", assertion="The Inquisitors enforce doctrine.")
+    member_claim = record(identity="m", evidence_binding="bound", assertion="Eustice keeps the ledgers.")
+    documents = {
+        "doc-f": {"record_id": faction_claim.record_id, "text": faction_claim.assertion},
+        "doc-m": {"record_id": member_claim.record_id, "text": member_claim.assertion},
+    }
+    bundle = {"records": [faction_claim.model_dump(mode="json"), member_claim.model_dump(mode="json")],
+              "documents": documents,
+              "graph": [[["faction", {"type": "Entity", "name": "Inquisitors"}],
+                         ["member", {"type": "Entity", "name": "Eustice"}],
+                         ["chunk-f", {"type": "DocumentChunk", "document_id": "doc-f",
+                                       "text": faction_claim.assertion}],
+                         ["chunk-m", {"type": "DocumentChunk", "document_id": "doc-m",
+                                       "text": member_claim.assertion}]],
+                        [["chunk-f", "faction", "contains", {}],
+                         ["chunk-m", "member", "contains", {}],
+                         ["member", "faction", "member_of", {"role": "Inquisitor"}],
+                         ["leader", "faction", "leader_of", {"role": "Grand Inquisitor"}]]]}
+    path = tmp_path / "bundle.json"
+    path.write_text(json.dumps(bundle))
+    repository, fallback = MagicMock(), MagicMock()
+    repository.current_records.return_value = (faction_claim, member_claim)
+    fallback.query.return_value = evaluate_suggestions(query(), (), ())
+    service = GraphPilotRetrieval(fallback, repository, str(path))
+
+    result = service.query(query().model_copy(update={"question": "Inquisitors"}))
+    traced = {item.record_id: item for item in result.evidence if item.role == "context"}
+    assert member_claim.record_id in traced
+    trace_text = " ".join(traced[member_claim.record_id].graph_trace)
+    assert "Eustice" in trace_text and "Inquisitor" in trace_text
+    assert faction_claim.record_id in traced

@@ -302,12 +302,21 @@ def create_app(
     active_claim_reconciliation = claim_reconciliation or ClaimReconciliationService(
         PostgresClaimReconciliationRepository(PostgresDatabase(active_settings.database_dsn))
     )
+    from dm_assistant_core.adapters.postgres.entity_profiles import (
+        PostgresEntityProfileRepository,
+    )
     from dm_assistant_core.adapters.postgres.identity_gaps import (
         PostgresIdentityQueueRepository,
     )
     from dm_assistant_core.application.identity_gaps import IdentityQueueError
     active_identity_queue = PostgresIdentityQueueRepository(
         PostgresDatabase(active_settings.database_dsn)
+    )
+    from dm_assistant_core.application.entity_profiles import (
+        EntityProfileService, UpdateEntityProfileCommand, EntityProfile, EntityProfileReceipt,
+    )
+    active_entity_profiles = EntityProfileService(
+        PostgresEntityProfileRepository(PostgresDatabase(active_settings.database_dsn))
     )
     if candidate_extraction is not None:
         active_candidate_extraction = candidate_extraction
@@ -340,6 +349,7 @@ def create_app(
     app.state.session_runs = active_session_runs
     app.state.brainstorms = active_brainstorms
     app.state.identity_queue = active_identity_queue
+    app.state.entity_profiles = active_entity_profiles
 
     @app.get("/health", response_model=HealthResponse, tags=["operations"])
     def health() -> HealthResponse:
@@ -1110,11 +1120,47 @@ def create_app(
         except (PCProfileError, ValueError) as error:
             raise HTTPException(status_code=409, detail=str(error)) from error
 
+    @app.get("/entities/{entity_id}/profile",
+             response_model=EntityProfile | None, tags=["identity"])
+    def get_entity_profile(
+        entity_id: Annotated[UUID, Path()],
+        requester_role: Annotated[RequesterRole, Query()] = RequesterRole.DM,
+    ) -> EntityProfile | None:
+        try:
+            return active_entity_profiles.get(
+                entity_id, RequesterVisibility(role=requester_role))
+        except PermissionError as error:
+            raise HTTPException(status_code=403, detail=str(error)) from error
+
+    @app.put("/entities/{entity_id}/profile",
+             response_model=EntityProfileReceipt, tags=["identity"])
+    def update_entity_profile(
+        request: UpdateEntityProfileCommand,
+        entity_id: Annotated[UUID, Path()],
+        requester_role: Annotated[RequesterRole, Query()] = RequesterRole.DM,
+    ) -> EntityProfileReceipt:
+        try:
+            command = request.model_copy(update={"entity_id": entity_id})
+            return active_entity_profiles.update(
+                command, RequesterVisibility(role=requester_role))
+        except PermissionError as error:
+            raise HTTPException(status_code=403, detail=str(error)) from error
+        except ValueError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+
     from dm_assistant_core.application.identity_gaps import (  # noqa: E402
         AddAliasDecision,
         CreateEntityDecision,
         IdentityGapQueue,
         IdentityDecisionReceipt,
+        FactionRoleSummary,
+        IdentityDecisionEntry,
+        MarkMisspellingDecision,
+        RoleDeclarationSummary,
+        MembershipDecision,
+        RevertDecision,
+        RoleDecision,
+        RoleDefinitionDecision,
         SurfaceDecision,
     )
 
@@ -1160,6 +1206,91 @@ def create_app(
             raise HTTPException(status_code=403, detail=str(error)) from error
         except IdentityQueueError as error:
             raise HTTPException(status_code=409, detail=str(error)) from error
+
+    @app.post("/identity/decisions/revert",
+              response_model=IdentityDecisionReceipt, tags=["identity"])
+    def identity_revert(
+        request: RevertDecision,
+        requester_role: Annotated[RequesterRole, Query()] = RequesterRole.DM,
+    ) -> IdentityDecisionReceipt:
+        try:
+            _identity_dm(requester_role)
+            return active_identity_queue.revert(request)
+        except PermissionError as error:
+            raise HTTPException(status_code=403, detail=str(error)) from error
+        except IdentityQueueError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+
+    @app.post("/identity/decisions/mark-misspelling",
+              response_model=IdentityDecisionReceipt, tags=["identity"])
+    def identity_mark_misspelling(
+        request: MarkMisspellingDecision,
+        requester_role: Annotated[RequesterRole, Query()] = RequesterRole.DM,
+    ) -> IdentityDecisionReceipt:
+        try:
+            _identity_dm(requester_role)
+            return active_identity_queue.mark_misspelling(request)
+        except PermissionError as error:
+            raise HTTPException(status_code=403, detail=str(error)) from error
+        except IdentityQueueError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+
+    @app.post("/identity/decisions/membership",
+              response_model=IdentityDecisionReceipt, tags=["identity"])
+    def identity_membership(
+        request: MembershipDecision,
+        requester_role: Annotated[RequesterRole, Query()] = RequesterRole.DM,
+    ) -> IdentityDecisionReceipt:
+        try:
+            _identity_dm(requester_role)
+            return active_identity_queue.membership(request)
+        except PermissionError as error:
+            raise HTTPException(status_code=403, detail=str(error)) from error
+        except IdentityQueueError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+
+    @app.post("/identity/decisions/role",
+              response_model=IdentityDecisionReceipt, tags=["identity"])
+    def identity_role(
+        request: RoleDecision,
+        requester_role: Annotated[RequesterRole, Query()] = RequesterRole.DM,
+    ) -> IdentityDecisionReceipt:
+        try:
+            _identity_dm(requester_role)
+            return active_identity_queue.role(request)
+        except PermissionError as error:
+            raise HTTPException(status_code=403, detail=str(error)) from error
+        except IdentityQueueError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+
+    @app.post("/identity/decisions/define-role",
+              response_model=IdentityDecisionReceipt, tags=["identity"])
+    def identity_define_role(
+        request: RoleDefinitionDecision,
+        requester_role: Annotated[RequesterRole, Query()] = RequesterRole.DM,
+    ) -> IdentityDecisionReceipt:
+        try:
+            _identity_dm(requester_role)
+            return active_identity_queue.define_role(request)
+        except PermissionError as error:
+            raise HTTPException(status_code=403, detail=str(error)) from error
+        except IdentityQueueError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+
+    @app.get("/identity/roles",
+             response_model=list[FactionRoleSummary], tags=["identity"])
+    def identity_roles() -> list[FactionRoleSummary]:
+        return list(active_identity_queue.roles())
+
+    @app.get("/identity/role-declarations",
+             response_model=list[RoleDeclarationSummary], tags=["identity"])
+    def identity_role_declarations() -> list[RoleDeclarationSummary]:
+        return list(active_identity_queue.role_declarations())
+
+    @app.get("/identity/decisions/recent",
+             response_model=list[IdentityDecisionEntry], tags=["identity"])
+    def identity_recent_decisions(limit: int = 100) -> list[IdentityDecisionEntry]:
+        return list(active_identity_queue.recent_decisions(min(limit, 500)))
 
     @app.post("/identity/decisions/mark-role",
               response_model=IdentityDecisionReceipt, tags=["identity"])

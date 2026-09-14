@@ -12,6 +12,8 @@ from dm_assistant_core.application.library_entries import (
     LibraryEntry,
     LibraryEntryClaim,
     LibraryEntryClaimHistory,
+    LibraryEntryMember,
+    LibraryEntryRole,
     LibraryEntrySource,
     LibraryEntrySummary,
 )
@@ -19,7 +21,32 @@ from dm_assistant_core.domain import EntityKind
 
 _IDENTITY_SQL = """
 SELECT e.id, e.canonical_name, e.entity_type,
-       ARRAY(SELECT a.alias FROM entity_aliases a WHERE a.entity_id = e.id ORDER BY lower(a.alias)),
+       ARRAY(SELECT a.alias FROM entity_aliases a WHERE a.entity_id = e.id
+             AND coalesce(a.alias_kind, '') <> 'misspelling' ORDER BY lower(a.alias)),
+       ARRAY(SELECT a.alias FROM entity_aliases a WHERE a.entity_id = e.id
+             AND a.alias_kind = 'misspelling' ORDER BY lower(a.alias)),
+       CASE WHEN e.entity_type = 'faction' THEN COALESCE((
+         SELECT array_agg(jsonb_build_object(
+                  'member_id', mr.member_id, 'name', me.canonical_name,
+                  'role_title', mr.role_title,
+                  'is_leadership', coalesce(fr.is_leadership, false))
+                ORDER BY me.canonical_name)
+         FROM membership_records mr
+         JOIN entities me ON me.id = mr.member_id
+         LEFT JOIN faction_roles fr ON fr.faction_id = mr.faction_id AND fr.name = mr.role_title
+         WHERE mr.faction_id = e.id AND mr.superseded_by IS NULL),
+         ARRAY[]::jsonb[]) ELSE NULL END,
+       CASE WHEN e.entity_type = 'faction'
+             AND NOT EXISTS (SELECT 1 FROM membership_records mr0 WHERE mr0.faction_id = e.id)
+       THEN COALESCE((
+         SELECT array_agg(DISTINCT m.canonical_name ORDER BY m.canonical_name) FROM (
+           SELECT DISTINCT ON (me.id) me.canonical_name
+           FROM claim_related_entities cre
+           JOIN entities me ON me.id = cre.entity_id AND me.entity_type IN ('pc', 'npc')
+           WHERE cre.claim_id IN (SELECT claim_id FROM claim_related_entities
+                                  WHERE entity_id = e.id)
+             AND me.id <> e.id
+         ) m), ARRAY[]::text[]) ELSE NULL END,
        ARRAY(SELECT t.name FROM current_entity_tags t WHERE t.entity_id = e.id ORDER BY t.normalized_name),
        (SELECT count(*) FROM claims c WHERE (c.subject_entity_id = e.id OR EXISTS (
             SELECT 1 FROM claim_related_entities cre WHERE cre.claim_id = c.id AND cre.entity_id = e.id
@@ -50,9 +77,12 @@ def _summary(row: Any) -> LibraryEntrySummary:
         canonical_name=str(row[1]),
         entity_kind=EntityKind(str(row[2])),
         aliases=tuple(row[3] or ()),
-        tags=tuple(row[4] or ()),
-        current_claim_count=int(row[5]),
-        source_count=int(row[6]),
+        misspellings=tuple(row[4] or ()),
+        members=tuple(LibraryEntryMember.model_validate(item) for item in (row[5] or ())),
+        related=tuple(row[6] or ()),
+        tags=tuple(row[7] or ()),
+        current_claim_count=int(row[8]),
+        source_count=int(row[9]),
     )
 
 
@@ -156,9 +186,28 @@ class PostgresLibraryEntryRepository:
                 """,
                 (entry_id, entry_id, entry_id),
             ).fetchall()
+            role_rows = connection.execute(
+                """
+                SELECT fr.name, fr.is_leadership,
+                       (SELECT array_agg(me.canonical_name ORDER BY me.canonical_name)
+                        FROM membership_records mr
+                        JOIN entities me ON me.id = mr.member_id
+                        WHERE mr.faction_id = fr.faction_id AND mr.role_title = fr.name
+                          AND mr.superseded_by IS NULL)
+                FROM faction_roles fr
+                WHERE fr.faction_id = %s
+                ORDER BY fr.is_leadership DESC, lower(fr.name)
+                """,
+                (entry_id,),
+            ).fetchall()
         summary = _summary(row)
         sources = tuple(
             LibraryEntrySource(document_id=item[0], path=str(item[1])) for item in source_rows
+        )
+        roles = tuple(
+            LibraryEntryRole(name=str(item[0]), is_leadership=bool(item[1]),
+                             holder_names=tuple(item[2] or ()))
+            for item in role_rows
         )
         claims = []
         for claim in claim_rows:
@@ -201,4 +250,5 @@ class PostgresLibraryEntryRepository:
             claims=tuple(claims),
             claim_history=tuple(history),
             sources=sources,
+            roles=roles,
         )

@@ -2,6 +2,12 @@
 
 Update this file whenever a ticket moves or changes scope.
 
+## In progress
+
+- [TKT-0108: Faction roles with unique leadership seats](in-progress/TKT-0108-faction-roles.md) — role catalog + audited assign/clear + ★ UI on the Members block (design agreed 2026-09-13)
+- [TKT-0109: Roles page, editor navigation guard, faction template fields, document-link repairs](in-progress/TKT-0109-roles-page-and-link-repairs.md) — Roles page + define-role; editor auto-cancel/force-save; matcher fix drops 16 wrong-page borrows
+- [TKT-0111: Entity descriptions as documents, with gathered evidence and AI prose support](in-progress/TKT-0111-entity-descriptions-as-documents.md) — write-description flow files DM prose as entity documents; gathers claims/evidence; extends TKT-0099's draft-from-selected-evidence pattern
+
 ## Ready
 
 
@@ -11,10 +17,17 @@ None.
 
 ## Backlog
 
-- [TKT-0106: Identity review queue](in-progress/TKT-0106-identity-review-queue.md) — continuous gap detection/resolution; alias input space bug fixed, profile↔entity_aliases disconnect open; Phase-1 detector validated
 - [TKT-0103: Clean evidence-linked relationship indexing](backlog/TKT-0103-clean-weighted-relationship-index.md) — after 0102
 - [TKT-0104: Native Cognee ranked retrieval evaluation](backlog/TKT-0104-native-cognee-ranked-retrieval.md) — after 0102/0103; grouping deferred
 - [TKT-0105: Measured Cognee/Neo4j decision](backlog/TKT-0105-graph-backend-decision.md) — after 0104; no automatic migration
+
+- [TKT-0110: Standing in-app entity/document link audit](backlog/TKT-0110-standing-link-audit.md) — productize the one-off 2026-09-13 traversal into a review surface
+- [TKT-0115: Brainstorm truth state — findable prior brainstorm thinking without granting canon](backlog/TKT-0115-brainstorm-truth-state.md) — exploration ticket; sub-canonical 'considered' layer for retrieval, design questions enumerated
+- [TKT-0116: Domain glossary with in-app help and definition tooltips](backlog/TKT-0116-domain-glossary-and-tooltips.md) — maintained definitions page + `<Term>` tooltips wherever vocabulary appears
+- [TKT-0112: App activity log page](in-progress/TKT-0112-log-page.md) — STARTED 2026-09-13: session bus + identity decision audit merged; other durable sources remain
+- [TKT-0113: Global toast notifications with one app-wide event bus](in-progress/TKT-0113-global-toasts.md) — transient outcomes everywhere; scrapes all message/error surfaces; STARTED 2026-09-13 (bus + stack + major surface wiring)
+- [TKT-0114: DM settings page on the user menu](backlog/TKT-0114-settings-page.md) — toast/log configurability first, inventory other candidates
+- [TKT-0107: In-app graph view of identities and evidence associations](backlog/TKT-0107-in-app-graph-view.md) — deferred by request ("not yet"); renders from Campaign Core canonical data, not Cognee stores; offline live-pilot-v3/graph.html is the visual precedent
 
 - [TKT-0101: Mention and navigate to any library entry](backlog/TKT-0101-mentions-for-all-library-entries.md) — deferred; includes encounters, with reference-only semantics
 
@@ -50,6 +63,8 @@ None.
 None.
 
 ## Done
+
+- [TKT-0106: Identity review queue](done/TKT-0106-identity-review-queue.md) — COMPLETE 2026-09-13: 281 audited decisions, 118 identities, 91% claim coverage, queue empty
 
 - [TKT-0089: Design the shared campaign relationship and retrieval layer](done/TKT-0089-shared-knowledge-design.md)
 - [TKT-0088: Pin all Brainstorm search evidence](done/TKT-0088-pin-all-brainstorm-search-results.md)

@@ -46,8 +46,8 @@ class PostgresRetrievalRepository:
         Import candidates cannot enter through this reader. Derived suggestions are
         not authorization; visibility is checked again before returning records.
         """
-        if len(record_ids) > 100:
-            raise ValueError("at most 100 record IDs allowed")
+        if len(record_ids) > 2000:
+            raise ValueError("at most 2000 record IDs allowed")
         for identity in record_ids:
             UUID(identity)
         if not record_ids:
@@ -63,8 +63,8 @@ class PostgresRetrievalRepository:
         Both endpoints cite the exact same immutable span. This only establishes
         an evidence association. No lexical or model-generated edges enter here.
         """
-        if len(record_ids) > 100:
-            raise ValueError("at most 100 record IDs allowed")
+        if len(record_ids) > 2000:
+            raise ValueError("at most 2000 record IDs allowed")
         ids = list(dict.fromkeys(UUID(identity) for identity in record_ids))
         if not ids:
             return (), ()
@@ -86,8 +86,8 @@ class PostgresRetrievalRepository:
     def _current_records(
         self, query: RetrievalQuery, record_ids: tuple[str, ...], connection: Any,
     ) -> tuple[RetrievalRecord, ...]:
-        if len(record_ids) > 100:
-            raise ValueError("at most 100 record IDs allowed")
+        if len(record_ids) > 2000:
+            raise ValueError("at most 2000 record IDs allowed")
         ids = list(dict.fromkeys(UUID(identity) for identity in record_ids))
         if not ids:
             return ()

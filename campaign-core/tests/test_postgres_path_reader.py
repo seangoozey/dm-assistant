@@ -33,7 +33,7 @@ def test_links_and_records_share_read_only_repeatable_snapshot(monkeypatch):
     assert "ANY(%s::uuid[])" in connection.execute.call_args.args[0]
 
 
-@pytest.mark.parametrize("ids", [(), ("bad",), (str(uuid4()),) * 101])
+@pytest.mark.parametrize("ids", [(), ("bad",), (str(uuid4()),) * 2001])
 def test_invalid_or_empty_path_request_never_connects(ids):
     database = MagicMock()
     repository = PostgresRetrievalRepository(database)

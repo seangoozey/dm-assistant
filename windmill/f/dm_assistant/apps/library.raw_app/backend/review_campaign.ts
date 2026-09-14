@@ -39,6 +39,18 @@ interface ReviewBackendRequest {
     | "create_identity_entity"
     | "mark_identity_role"
     | "dismiss_identity_gap"
+    | "revert_identity_decision"
+    | "mark_identity_misspelling"
+    | "get_entity_profile"
+    | "update_entity_profile"
+    | "create_entity_metadata_proposal"
+    | "membership_decision"
+    | "role_decision"
+    | "define_role_decision"
+    | "list_faction_roles"
+    | "list_role_declarations"
+    | "list_recent_decisions"
+    | "approve_entity_metadata_proposal"
     | "create_proposal"
     | "revise_proposal"
     | "get_proposal"
@@ -56,8 +68,11 @@ interface ReviewBackendRequest {
     | "replace_claim";
   candidate_id?: string;
   proposal_id?: string;
+  version_number?: number;
+  content_hash?: string;
   plan_id?: string;
   document_id?: string;
+  path_id?: string;
   change_set_id?: string;
   claim_id?: string;
   entry_id?: string;
@@ -177,6 +192,18 @@ function route(input: ReviewBackendRequest): { method: "GET" | "POST" | "PUT" | 
     case "create_identity_entity": return { method: "POST", path: "identity/decisions/create-entity" };
     case "mark_identity_role": return { method: "POST", path: "identity/decisions/mark-role" };
     case "dismiss_identity_gap": return { method: "POST", path: "identity/decisions/dismiss" };
+    case "revert_identity_decision": return { method: "POST", path: "identity/decisions/revert" };
+    case "mark_identity_misspelling": return { method: "POST", path: "identity/decisions/mark-misspelling" };
+    case "get_entity_profile": return { method: "GET", path: `entities/${required(input.path_id, "path_id")}/profile` };
+    case "update_entity_profile": return { method: "PUT", path: `entities/${required(input.path_id, "path_id")}/profile` };
+    case "create_entity_metadata_proposal": return { method: "POST", path: `entities/${required(input.path_id, "path_id")}/metadata-proposals` };
+    case "membership_decision": return { method: "POST", path: "identity/decisions/membership" };
+    case "role_decision": return { method: "POST", path: "identity/decisions/role" };
+    case "define_role_decision": return { method: "POST", path: "identity/decisions/define-role" };
+    case "list_faction_roles": return { method: "GET", path: "identity/roles" };
+    case "list_role_declarations": return { method: "GET", path: "identity/role-declarations" };
+    case "list_recent_decisions": return { method: "GET", path: `identity/decisions/recent?limit=${input.query?.limit ?? 100}` };
+    case "approve_entity_metadata_proposal": return { method: "POST", path: `entities/metadata-proposals/${required(input.proposal_id, "proposal_id")}/approvals` };
     case "create_proposal":
       return { method: "POST", path: "imports/proposals" };
     case "revise_proposal":

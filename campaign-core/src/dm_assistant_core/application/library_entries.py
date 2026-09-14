@@ -11,6 +11,29 @@ from dm_assistant_core.domain import EntityKind
 ClaimProjection = Literal["real_play", "player_plan", "npc_plan", "dm_plan", "lore_fact"]
 
 
+class LibraryEntryMember(BaseModel):
+    """One faction roster seat: the member identity and the role they hold.
+
+    Only explicit roster rows appear here; the derived co-mention list is
+    `related` (display context, never a roster — nothing to remove or seat).
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    member_id: UUID
+    name: str
+    role_title: str | None = None
+    is_leadership: bool = False
+
+
+class LibraryEntryRole(BaseModel):
+    """A faction's role definition; empty holders means a vacant seat."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    name: str
+    is_leadership: bool = False
+    holder_names: tuple[str, ...] = ()
+
+
 class LibraryEntrySummary(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -18,6 +41,9 @@ class LibraryEntrySummary(BaseModel):
     canonical_name: str
     entity_kind: EntityKind
     aliases: tuple[str, ...] = ()
+    misspellings: tuple[str, ...] = ()
+    members: tuple[LibraryEntryMember, ...] = ()
+    related: tuple[str, ...] = ()
     tags: tuple[str, ...] = ()
     current_claim_count: int = 0
     source_count: int = 0
@@ -54,6 +80,7 @@ class LibraryEntry(LibraryEntrySummary):
     claims: tuple[LibraryEntryClaim, ...] = ()
     claim_history: tuple[LibraryEntryClaimHistory, ...] = ()
     sources: tuple[LibraryEntrySource, ...] = ()
+    roles: tuple[LibraryEntryRole, ...] = ()
 
 
 class LibraryEntryRepository(Protocol):

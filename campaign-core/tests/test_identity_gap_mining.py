@@ -6,6 +6,8 @@ from dm_assistant_core.application.identity_gaps import (
     normalize_surface,
     related_surfaces,
     role_hint_surfaces,
+    strip_title_prefix,
+    suggest_kind,
 )
 
 
@@ -86,3 +88,54 @@ def test_role_hint_surfaces_collect_final_content_words():
     finals = role_hint_surfaces(["Grand Inquisitor", "The Shadow King"])
     assert finals == {"inquisitor", "king"}
     assert role_hint_surfaces(["the"]) == set()
+
+
+def test_possessive_surfaces_resolve_to_their_owner():
+    result = mine_gaps(claims(
+        "Romulus's decree arrives. Romulus's decree is read.",
+        "Ishi'go'dan's winds rise. Ishi'go'dan's winds fall.",
+    ), known={"romulus", "ishi'go'dan"})
+    assert result == []
+
+
+def test_phrases_do_not_cross_line_breaks():
+    text = "Status: Alive\nLocation: Exile Camp\nAffiliation: Fleurite Exiles"
+    result = mine_gaps(claims(text, text), known={"exile camp"})
+    surfaces = {gap.normalized_surface for gap in result}
+    assert "alive location" not in surfaces
+    assert "fleurite exiles" in surfaces
+
+
+def test_title_prefix_suggests_canonical_name_without_the_title():
+    assert strip_title_prefix("King Peter le Fleur") == "Peter le Fleur"
+    assert strip_title_prefix("Captain Vale") == "Vale"
+    assert strip_title_prefix("Silver Cloaks") is None
+    assert strip_title_prefix("Lady") is None
+
+
+def test_suggest_kind_prefers_affinity_then_tail_word():
+    assert suggest_kind("king peter le fleur", ["npc"]) == "npc"
+    assert suggest_kind("king peter le fleur", ["npc", "location"]) is None  # mixed affinity yields nothing; no tail-word match
+    assert suggest_kind("silver cloaks", []) == "faction"
+    assert suggest_kind("chamber of echoes", []) == "location"
+    assert suggest_kind("the leylines", []) == "worldbuilding"
+    assert suggest_kind("the splint", []) is None
+
+
+def test_status_field_values_never_surface():
+    text = "Status: Alive\nLocation: Exile Camp\nAffiliation: Fleurite Exiles"
+    result = mine_gaps(claims(text, text), known={"exile camp"})
+    assert {gap.normalized_surface for gap in result} == {"fleurite exiles"}
+
+
+def test_possessive_display_titles_are_stripped():
+    result = mine_gaps(claims(
+        "Inquisition's decrees arrive.",
+        "Inquisition's decrees are read.",
+        "The Inquisitors' hall stands.",
+        "The Inquisitors' hall echoes.",
+        "Castle Fleurite's gates open.",
+        "Castle Fleurite's gates close.",
+    ), known=set())
+    titles = {gap.surface for gap in result}
+    assert titles == {"Inquisition", "Inquisitors", "Castle Fleurite"}

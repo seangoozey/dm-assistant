@@ -48,12 +48,28 @@ export interface EntityIdentity {
 }
 
 export interface LibraryEntrySource { document_id: string; path: string; }
+export interface LibraryMember {
+  member_id: string; name: string; role_title: string | null; is_leadership: boolean;
+}
+export interface FactionRole {
+  name: string; is_leadership: boolean; holder_names: string[];
+}
+export interface FactionRoleSummary {
+  faction_id: string; faction_name: string; name: string; is_leadership: boolean;
+  holders: { id: string; name: string }[];
+}
+export interface RoleDeclarationSummary {
+  surface: string; normalized_surface: string;
+}
+export interface IdentityDecisionEntry {
+  decision_id: string; kind: string; surface: string; decided_at: string; details?: Record<string, unknown> | null;
+}
 export interface LibraryEntrySummary {
-  entry_id: string; canonical_name: string; entity_kind: EntityKind; aliases: string[]; tags: string[];
+  entry_id: string; canonical_name: string; entity_kind: EntityKind; aliases: string[]; misspellings?: string[]; tags: string[]; members?: LibraryMember[]; related?: string[];
   current_claim_count: number; source_count: number;
 }
 export interface LibraryEntryClaim extends Omit<SourceDocumentClaim, "source_excerpt"> { sources: LibraryEntrySource[]; }
-export interface LibraryEntry extends LibraryEntrySummary { claims: LibraryEntryClaim[]; claim_history: SourceDocumentClaimHistory[]; sources: LibraryEntrySource[]; }
+export interface LibraryEntry extends LibraryEntrySummary { claims: LibraryEntryClaim[]; claim_history: SourceDocumentClaimHistory[]; sources: LibraryEntrySource[]; roles?: FactionRole[]; }
 
 export type PlanKind = "campaign_direction" | "in_world_plan" | "player_plan";
 export type PlanLifecycle = "active" | "completed" | "failed" | "abandoned" | "superseded";
@@ -241,10 +257,14 @@ export interface PCProfile { document_id: string; source_revision_id: string; ve
 export interface ProfileAliasSync { entity_id: string; entity_name: string; applied: string[]; removed: string[]; skipped_conflicting: string[]; }
 export interface PCProfileReceipt { receipt_id: string; document_id: string; version: number; idempotent_replay: boolean; alias_sync?: ProfileAliasSync; }
 export interface IdentityGapEvidence { claim_id: string; excerpt: string; }
-export interface IdentityGapAliasCandidate { entity_id: string; canonical_name: string; }
-export interface IdentityGap { surface: string; normalized_surface: string; claims_with_phrase: number; total_mentions: number; retrieval_demand: number; role_hint: boolean; related_surfaces: string[]; evidence: IdentityGapEvidence[]; alias_candidates: IdentityGapAliasCandidate[]; }
+export interface IdentityGapAliasCandidate { entity_id: string; canonical_name: string; entity_kind?: string | null; }
+export interface IdentityGap { surface: string; normalized_surface: string; claims_with_phrase: number; total_mentions: number; retrieval_demand: number; role_hint: boolean; suggested_canonical_name?: string | null; suggested_kind?: string | null; related_surfaces: string[]; evidence: IdentityGapEvidence[]; alias_candidates: IdentityGapAliasCandidate[]; }
 export interface IdentityGapQueue { gaps: IdentityGap[]; total_candidates: number; }
-export interface IdentityDecisionReceipt { decision_id: string; kind: string; surface: string; entity_id?: string; idempotent_replay: boolean; }
+export interface IdentityDecisionReceipt { decision_id: string; kind: string; surface: string; entity_id?: string; linked_claims?: number; idempotent_replay: boolean; }
+export interface EntityProfile { entity_id: string; version: number; canonical_name: string; status?: string | null; location_type?: string | null; parent_location?: string | null; base_location?: string | null; player?: string | null; race?: string | null; sex?: string | null; aliases: string[]; summary: string; }
+export interface EntityProfileAliasSync { entity_name: string; applied: string[]; removed: string[]; skipped_conflicting: string[]; }
+export interface EntityProfileReceipt { receipt_id: string; entity_id: string; version: number; idempotent_replay: boolean; alias_sync?: EntityProfileAliasSync | null; }
+export interface EntityKindProposalVersion { proposal_id: string; workflow_session_id: string; status: string; version_id: string; version_number: number; content_hash: string; created_at: string; item: { item_id: string; target_id: string; before: Record<string, unknown>; after: Record<string, unknown> }; }
 export interface CampaignDate { calendar_id: string; year: number; month: number; day: number; }
 export interface DirectInputMention { entity_id: string; display_name: string; start_offset: number; end_offset: number; }
 export interface SessionNoteCaptureInput { session_date: string; in_game_date: CampaignDate; title: string; text: string; visibility: "dm_only" | "party" | "character"; mentions: DirectInputMention[]; idempotency_key: string; capture_id?: string; }
@@ -252,7 +272,9 @@ export interface SessionNoteCaptureReceipt { capture_id: string; source_document
 export interface BrainstormPin { entity_id: string; canonical_name: string; entity_kind: EntityKind; position: number; pinned_at: string; }
 export interface BrainstormEvidencePin { record_id: string; assertion: string; citation: string; entity_id?: string; position: number; pinned_at: string; }
 export interface BrainstormThought { thought_id: string; sequence: number; text: string; source_document_id: string; source_revision_id: string; candidate_id: string; captured_at: string; evidence: RetrievalResult; mentions: DirectInputMention[]; }
-export interface BrainstormSession { session_id: string; title: string; status: "open" | "closed"; started_at: string; closed_at?: string; proposal_id?: string; thoughts: BrainstormThought[]; pins: BrainstormPin[]; evidence_pins?: BrainstormEvidencePin[]; }
+export interface BrainstormSession { session_id: string; title: string; status: "open" | "closed"; started_at: string; closed_at?: string; proposal_id?: string;
+  version_number?: number;
+  content_hash?: string; thoughts: BrainstormThought[]; pins: BrainstormPin[]; evidence_pins?: BrainstormEvidencePin[]; }
 export interface SessionRunNote { note_id: string; run_id: string; source_document_id?: string; source_path: string; context_kind: "general" | "encounter"; encounter_name?: string; section_key?: string; section_title?: string; text: string; captured_at: string; updated_at: string; }
 export interface SessionRunEncounter { source_document_id?: string; source_path: string; encounter_name: string; first_activity_at: string; last_activity_at: string; last_section_key?: string; last_section_title?: string; note_count: number; }
 export type EncounterLifecycle = "not_started" | "in_progress" | "completed" | "abandoned";
@@ -432,9 +454,22 @@ export interface CampaignClient {
   updatePCProfile(documentId: string, profile: Omit<PCProfile, "document_id"> & { idempotency_key: string }): Promise<PCProfileReceipt>;
   getIdentityGaps(limit?: number): Promise<IdentityGapQueue>;
   addIdentityAlias(surface: string, entityId: string, idempotencyKey: string): Promise<IdentityDecisionReceipt>;
-  createIdentityEntity(surface: string, entityKind: string, idempotencyKey: string, aliasSurfaces?: string[]): Promise<IdentityDecisionReceipt>;
+  createIdentityEntity(surface: string, entityKind: string, idempotencyKey: string, aliasSurfaces?: string[], manualAliases?: string[]): Promise<IdentityDecisionReceipt>;
   markIdentityRole(surface: string, idempotencyKey: string): Promise<IdentityDecisionReceipt>;
   dismissIdentityGap(surface: string, idempotencyKey: string): Promise<IdentityDecisionReceipt>;
+  revertIdentityDecision(decisionId: string, idempotencyKey: string): Promise<IdentityDecisionReceipt>;
+  markIdentityMisspelling(surface: string, entityId: string, idempotencyKey: string): Promise<IdentityDecisionReceipt>;
+  getEntityProfile(entityId: string): Promise<EntityProfile | null>;
+  updateEntityProfile(entityId: string, profile: Omit<EntityProfile, "entity_id"> & { idempotency_key: string }): Promise<EntityProfileReceipt>;
+  proposeEntityKind(entityId: string, entityKind: string): Promise<EntityKindProposalVersion>;
+  addMembership(factionId: string, memberId: string, roleTitle?: string): Promise<IdentityDecisionReceipt>;
+  removeMembership(factionId: string, memberId: string): Promise<IdentityDecisionReceipt>;
+  assignFactionRole(factionId: string, memberId: string, roleName: string | null, isLeadership: boolean): Promise<IdentityDecisionReceipt>;
+  defineFactionRole(factionId: string, roleName: string, isLeadership: boolean): Promise<IdentityDecisionReceipt>;
+  listFactionRoles(): Promise<FactionRoleSummary[]>;
+  listRoleDeclarations(): Promise<RoleDeclarationSummary[]>;
+  listRecentDecisions(limit?: number): Promise<IdentityDecisionEntry[]>;
+  approveEntityMetadataProposal(proposalId: string, itemId: string, versionNumber: number, contentHash: string): Promise<CandidateProposalApproval>;
   discoverClaimOverlaps(): Promise<ClaimOverlap[]>;
   reconcileClaims(overlap: ClaimOverlap, decision: ReconciliationDecision, reason: string): Promise<ClaimReconciliationReceipt>;
   getClaimSnapshot(claimId: string): Promise<ClaimSnapshot>;
@@ -506,6 +541,18 @@ export interface ReviewBackendRequest {
     | "create_identity_entity"
     | "mark_identity_role"
     | "dismiss_identity_gap"
+    | "revert_identity_decision"
+    | "mark_identity_misspelling"
+    | "get_entity_profile"
+    | "update_entity_profile"
+    | "create_entity_metadata_proposal"
+    | "membership_decision"
+    | "role_decision"
+    | "define_role_decision"
+    | "list_faction_roles"
+    | "list_role_declarations"
+    | "list_recent_decisions"
+    | "approve_entity_metadata_proposal"
     | "create_proposal"
     | "revise_proposal"
     | "get_proposal"
@@ -528,6 +575,7 @@ export interface ReviewBackendRequest {
   change_set_id?: string;
   claim_id?: string;
   entry_id?: string;
+  path_id?: string;
   run_id?: string;
   session_id?: string;
   entity_id?: string;
@@ -705,9 +753,22 @@ export class HttpCampaignClient implements CampaignClient {
   updatePCProfile(documentId: string, profile: Omit<PCProfile, "document_id"> & { idempotency_key: string }): Promise<PCProfileReceipt> { return this.core(`/imports/source-documents/${documentId}/pc-profile?requester_role=dm`, "PUT", profile); }
   getIdentityGaps(limit = 50): Promise<IdentityGapQueue> { return this.core(`/identity/gaps?requester_role=dm&limit=${limit}`); }
   addIdentityAlias(surface: string, entityId: string, idempotencyKey: string): Promise<IdentityDecisionReceipt> { return this.core("/identity/decisions/add-alias?requester_role=dm", "POST", { surface, entity_id: entityId, idempotency_key: idempotencyKey }); }
-  createIdentityEntity(surface: string, entityKind: string, idempotencyKey: string, aliasSurfaces: string[] = []): Promise<IdentityDecisionReceipt> { return this.core("/identity/decisions/create-entity?requester_role=dm", "POST", { surface, entity_kind: entityKind, alias_surfaces: aliasSurfaces, idempotency_key: idempotencyKey }); }
+  createIdentityEntity(surface: string, entityKind: string, idempotencyKey: string, aliasSurfaces: string[] = [], manualAliases: string[] = []): Promise<IdentityDecisionReceipt> { return this.core("/identity/decisions/create-entity?requester_role=dm", "POST", { surface, entity_kind: entityKind, alias_surfaces: aliasSurfaces, manual_aliases: manualAliases, idempotency_key: idempotencyKey }); }
   markIdentityRole(surface: string, idempotencyKey: string): Promise<IdentityDecisionReceipt> { return this.core("/identity/decisions/mark-role?requester_role=dm", "POST", { surface, idempotency_key: idempotencyKey }); }
   dismissIdentityGap(surface: string, idempotencyKey: string): Promise<IdentityDecisionReceipt> { return this.core("/identity/decisions/dismiss?requester_role=dm", "POST", { surface, idempotency_key: idempotencyKey }); }
+  revertIdentityDecision(decisionId: string, idempotencyKey: string): Promise<IdentityDecisionReceipt> { return this.core("/identity/decisions/revert?requester_role=dm", "POST", { decision_id: decisionId, idempotency_key: idempotencyKey }); }
+  markIdentityMisspelling(surface: string, entityId: string, idempotencyKey: string): Promise<IdentityDecisionReceipt> { return this.core("/identity/decisions/mark-misspelling?requester_role=dm", "POST", { surface, entity_id: entityId, idempotency_key: idempotencyKey }); }
+  getEntityProfile(entityId: string): Promise<EntityProfile | null> { return this.core(`/entities/${entityId}/profile?requester_role=dm`); }
+  updateEntityProfile(entityId: string, profile: Omit<EntityProfile, "entity_id"> & { idempotency_key: string }): Promise<EntityProfileReceipt> { return this.core(`/entities/${entityId}/profile?requester_role=dm`, "PUT", profile); }
+  proposeEntityKind(entityId: string, entityKind: string): Promise<EntityKindProposalVersion> { return this.core(`/entities/${entityId}/metadata-proposals?requester_role=dm`, "POST", { entity_kind: entityKind, tags: [] }); }
+  addMembership(factionId: string, memberId: string, roleTitle?: string): Promise<IdentityDecisionReceipt> { return this.core("/identity/decisions/membership?requester_role=dm", "POST", { faction_id: factionId, member_id: memberId, add: true, role_title: roleTitle ?? null, idempotency_key: `membership-add:${factionId}:${memberId}:${Date.now()}` }); }
+  removeMembership(factionId: string, memberId: string): Promise<IdentityDecisionReceipt> { return this.core("/identity/decisions/membership?requester_role=dm", "POST", { faction_id: factionId, member_id: memberId, add: false, idempotency_key: `membership-remove:${factionId}:${memberId}:${Date.now()}` }); }
+  assignFactionRole(factionId: string, memberId: string, roleName: string | null, isLeadership: boolean): Promise<IdentityDecisionReceipt> { return this.core("/identity/decisions/role?requester_role=dm", "POST", { faction_id: factionId, member_id: memberId, role_name: roleName, is_leadership: roleName ? isLeadership : false, idempotency_key: `role-${roleName ? "assign" : "clear"}:${factionId}:${memberId}:${Date.now()}` }); }
+  defineFactionRole(factionId: string, roleName: string, isLeadership: boolean): Promise<IdentityDecisionReceipt> { return this.core("/identity/decisions/define-role?requester_role=dm", "POST", { faction_id: factionId, role_name: roleName, is_leadership: isLeadership, idempotency_key: `role-define:${factionId}:${roleName.toLocaleLowerCase()}:${Date.now()}` }); }
+  listFactionRoles(): Promise<FactionRoleSummary[]> { return this.core("/identity/roles"); }
+  listRoleDeclarations(): Promise<RoleDeclarationSummary[]> { return this.core("/identity/role-declarations"); }
+  listRecentDecisions(limit?: number): Promise<IdentityDecisionEntry[]> { return this.core(`/identity/decisions/recent?limit=${limit ?? 100}`); }
+  approveEntityMetadataProposal(proposalId: string, itemId: string, versionNumber: number, contentHash: string): Promise<CandidateProposalApproval> { return this.core(`/entities/metadata-proposals/${proposalId}/approvals?requester_role=dm`, "POST", { reviewed_version: versionNumber, content_hash: contentHash, item_ids: [itemId], idempotency_key: `entity-kind-approval:${proposalId}:${versionNumber}` }); }
   discoverClaimOverlaps(): Promise<ClaimOverlap[]> { return this.core("/claims/reconciliation-candidates?requester_role=dm&limit=100"); }
   reconcileClaims(overlap: ClaimOverlap, decision: ReconciliationDecision, reason: string): Promise<ClaimReconciliationReceipt> {
     return this.core("/claims/reconciliations?requester_role=dm", "POST", {
@@ -895,9 +956,22 @@ export class WindmillCampaignClient implements CampaignClient {
   updatePCProfile(documentId: string, profile: Omit<PCProfile, "document_id"> & { idempotency_key: string }): Promise<PCProfileReceipt> { return this.review({ operation: "update_pc_profile", document_id: documentId, body: profile }); }
   getIdentityGaps(limit = 50): Promise<IdentityGapQueue> { return this.review({ operation: "list_identity_gaps", query: { limit } }); }
   addIdentityAlias(surface: string, entityId: string, idempotencyKey: string): Promise<IdentityDecisionReceipt> { return this.review({ operation: "add_identity_alias", body: { surface, entity_id: entityId, idempotency_key: idempotencyKey } }); }
-  createIdentityEntity(surface: string, entityKind: string, idempotencyKey: string, aliasSurfaces: string[] = []): Promise<IdentityDecisionReceipt> { return this.review({ operation: "create_identity_entity", body: { surface, entity_kind: entityKind, alias_surfaces: aliasSurfaces, idempotency_key: idempotencyKey } }); }
+  createIdentityEntity(surface: string, entityKind: string, idempotencyKey: string, aliasSurfaces: string[] = [], manualAliases: string[] = []): Promise<IdentityDecisionReceipt> { return this.review({ operation: "create_identity_entity", body: { surface, entity_kind: entityKind, alias_surfaces: aliasSurfaces, manual_aliases: manualAliases, idempotency_key: idempotencyKey } }); }
   markIdentityRole(surface: string, idempotencyKey: string): Promise<IdentityDecisionReceipt> { return this.review({ operation: "mark_identity_role", body: { surface, idempotency_key: idempotencyKey } }); }
   dismissIdentityGap(surface: string, idempotencyKey: string): Promise<IdentityDecisionReceipt> { return this.review({ operation: "dismiss_identity_gap", body: { surface, idempotency_key: idempotencyKey } }); }
+  revertIdentityDecision(decisionId: string, idempotencyKey: string): Promise<IdentityDecisionReceipt> { return this.review({ operation: "revert_identity_decision", body: { decision_id: decisionId, idempotency_key: idempotencyKey } }); }
+  markIdentityMisspelling(surface: string, entityId: string, idempotencyKey: string): Promise<IdentityDecisionReceipt> { return this.review({ operation: "mark_identity_misspelling", body: { surface, entity_id: entityId, idempotency_key: idempotencyKey } }); }
+  getEntityProfile(entityId: string): Promise<EntityProfile | null> { return this.review({ operation: "get_entity_profile", path_id: entityId }); }
+  updateEntityProfile(entityId: string, profile: Omit<EntityProfile, "entity_id"> & { idempotency_key: string }): Promise<EntityProfileReceipt> { return this.review({ operation: "update_entity_profile", path_id: entityId, body: profile }); }
+  proposeEntityKind(entityId: string, entityKind: string): Promise<EntityKindProposalVersion> { return this.review({ operation: "create_entity_metadata_proposal", path_id: entityId, body: { entity_kind: entityKind, tags: [] } }); }
+  addMembership(factionId: string, memberId: string, roleTitle?: string): Promise<IdentityDecisionReceipt> { return this.review({ operation: "membership_decision", body: { faction_id: factionId, member_id: memberId, add: true, role_title: roleTitle ?? null, idempotency_key: `membership-add:${factionId}:${memberId}:${Date.now()}` } }); }
+  removeMembership(factionId: string, memberId: string): Promise<IdentityDecisionReceipt> { return this.review({ operation: "membership_decision", body: { faction_id: factionId, member_id: memberId, add: false, idempotency_key: `membership-remove:${factionId}:${memberId}:${Date.now()}` } }); }
+  assignFactionRole(factionId: string, memberId: string, roleName: string | null, isLeadership: boolean): Promise<IdentityDecisionReceipt> { return this.review({ operation: "role_decision", body: { faction_id: factionId, member_id: memberId, role_name: roleName, is_leadership: roleName ? isLeadership : false, idempotency_key: `role-${roleName ? "assign" : "clear"}:${factionId}:${memberId}:${Date.now()}` } }); }
+  defineFactionRole(factionId: string, roleName: string, isLeadership: boolean): Promise<IdentityDecisionReceipt> { return this.review({ operation: "define_role_decision", body: { faction_id: factionId, role_name: roleName, is_leadership: isLeadership, idempotency_key: `role-define:${factionId}:${roleName.toLocaleLowerCase()}:${Date.now()}` } }); }
+  listFactionRoles(): Promise<FactionRoleSummary[]> { return this.review<FactionRoleSummary[]>({ operation: "list_faction_roles" }); }
+  listRoleDeclarations(): Promise<RoleDeclarationSummary[]> { return this.review<RoleDeclarationSummary[]>({ operation: "list_role_declarations" }); }
+  listRecentDecisions(limit?: number): Promise<IdentityDecisionEntry[]> { return this.review<IdentityDecisionEntry[]>({ operation: "list_recent_decisions", query: { limit } }); }
+  approveEntityMetadataProposal(proposalId: string, itemId: string, versionNumber: number, contentHash: string): Promise<CandidateProposalApproval> { return this.review({ operation: "approve_entity_metadata_proposal", proposal_id: proposalId, body: { reviewed_version: versionNumber, content_hash: contentHash, item_ids: [itemId], idempotency_key: `entity-kind-approval:${proposalId}:${versionNumber}` } }); }
   discoverClaimOverlaps(): Promise<ClaimOverlap[]> { return this.review({ operation: "discover_claim_overlaps" }); }
   reconcileClaims(overlap: ClaimOverlap, decision: ReconciliationDecision, reason: string): Promise<ClaimReconciliationReceipt> {
     return this.review({ operation: "reconcile_claims", body: {

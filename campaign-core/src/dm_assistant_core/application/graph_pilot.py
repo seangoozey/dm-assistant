@@ -40,7 +40,10 @@ class GraphPilotRetrieval(RetrievalService):
                 return result
             bundle = json.loads(self._bundle_path.read_text(encoding="utf-8"))
             expected = tuple(RetrievalRecord.model_validate(r) for r in bundle["records"])
-            if not 1 <= len(expected) <= 64:
+            # The v3 pilot capped at 64 records; canonical bundles (live-pilot-v4+)
+            # carry the whole current claim set and every record is still
+            # fingerprint-revalidated against Core before any trace is trusted.
+            if not 1 <= len(expected) <= 2000:
                 return result
             current = self._current.current_records(
                 query.model_copy(update={"tags": (), "entity_kinds": ()}),
@@ -79,10 +82,15 @@ def graph_targets(bundle: dict[str, Any], question: str,
                   ) -> dict[str, tuple[str, ...]]:
     """Bounded associations, not asserted relations; retain shared source context."""
     nodes = dict(bundle["graph"][0])
-    query_text = f" {normalized(question)} "
+    # Possessives must still seed: "Romulus's organization" seeds Romulus.
+    stripped = question.replace("'s", " ").replace("’s", " ")
+    query_text = f" {normalized(stripped)} "
+    def _in_query(value: str) -> bool:
+        return len(normalized(value)) >= 3 and f" {normalized(value)} " in query_text
+
     seeds = {identity for identity, node in nodes.items() if node.get("type") == "Entity"
-             and len(normalized(node.get("name", ""))) >= 3
-             and f" {normalized(node.get('name', ''))} " in query_text}
+             and (_in_query(node.get("name", ""))
+                  or any(_in_query(alias) for alias in node.get("aliases", [])))}
     paths = {s: (f"Matched graph entity: {nodes[s].get('name', s)}",) for s in seeds}
     associations: dict[str, set[str]] = {}
     for chunk, entity, label, _ in bundle["graph"][1]:
@@ -93,9 +101,20 @@ def graph_targets(bundle: dict[str, Any], question: str,
             associations.setdefault(entity, set()).add(source["record_id"])
     path_sources: dict[str, tuple[str, ...]] = {s: () for s in seeds}
     adjacency: dict[str, list[tuple[str, str, tuple[str, ...]]]] = {}
-    for left, right, _label, _ in bundle["graph"][1]:
+    for left, right, label, attrs in bundle["graph"][1]:
         if (nodes.get(left, {}).get("type") != "Entity"
                 or nodes.get(right, {}).get("type") != "Entity"):
+            continue
+        if label in ("member_of", "leader_of"):
+            # Audited roster seats stand on their DM decision receipt, not on
+            # shared claim text — they traverse even when no claim co-mentions
+            # the member with the faction.
+            role = attrs.get("role")
+            hint = (f"{nodes[left].get('name', left)} holds {role} in {nodes[right].get('name', right)}"
+                    if role
+                    else f"{nodes[left].get('name', left)} is a member of {nodes[right].get('name', right)}")
+            adjacency.setdefault(left, []).append((right, hint, ()))
+            adjacency.setdefault(right, []).append((left, hint, ()))
             continue
         shared = tuple(sorted(associations.get(left, set()) & associations.get(right, set())))
         if not shared:
