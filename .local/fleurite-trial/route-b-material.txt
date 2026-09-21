@@ -1,0 +1,337 @@
+SUBJECT: Fleurite (location) — campaign library entry
+
+LINKED CLAIMS (the only permitted factual material):
+
+[b3c64e47] (state: established; projection: lore_fact)
+Fleurite is a region and city-state within Illisan. The region, kingdom, and its sole surviving settlement all use the name Fleurite and are treated as one location record.
+
+Outsiders who do not know its proper name call Fleurite the White Kingdom, a mythic exonym rather than its formal name. The native people of Fleurite are High Elves.
+(sources: locations/illisan/fleurite/fleurite.md)
+
+[cc4e45a5] (state: established; projection: lore_fact)
+The walled settlement of Fleurite is the only surviving settlement in the region.
+The broader Fleurite valley contains farms and estates formerly associated with surrounding settlements.
+Ishaeal lies north of Fleurite and south of the Shandriz Channel.
+(sources: locations/illisan/fleurite/fleurite.md)
+
+[b73ed504] (state: established; projection: lore_fact)
+Fleurite is ostensibly a monarchy under King Peter le Fleur.
+Romulus corrupted Fleurite's nobility, mentally dominated King Peter after Ruh's death, and now controls the kingdom through the Inquisition.
+Goodman's City and the other surrounding settlements have been destroyed. Their former territory has been rolled into the Kingdom of Fleurite.
+Fleurite Castle is a major seat of power.
+(sources: locations/illisan/fleurite/fleurite.md)
+
+[f5aec94c] (state: established; projection: lore_fact)
+King Peter created the original White Cloaks to protect Fleurite from Goodman's aggression.
+After Ruh died during the mission against Goodman, Romulus moved from subtle influence to total domination of King Peter.
+Romulus purged dissenters and transformed the White Cloaks' legacy into the authoritarian Inquisition.
+(sources: locations/illisan/fleurite/fleurite.md)
+
+[c1733095] (state: established; projection: lore_fact)
+Fleurite is within Illisan.
+(sources: locations/illisan/fleurite/fleurite.md)
+
+[3c4f5c0d] (state: established; projection: lore_fact)
+City proper: approximately 24,000 people inside the walls.
+Broader valley: approximately 32,000 people total, including farms, estates, and villages.
+Military and guard: approximately 700 total.
+City guards: approximately 360 assigned to streets, gates, and walls.
+Castle guards and professional soldiers: approximately 160.
+White Cloaks, Outriders, and Inquisitorial forces: approximately 120.
+Scouts, couriers, and rural patrols: approximately 60.
+Approximately 450 personnel could be concentrated for a major battle without abandoning the walls, gates, and castle.
+(sources: locations/illisan/fleurite/fleurite.md)
+
+[7602e08c] (state: established; projection: lore_fact)
+Fleurite contains Fleurite Castle, Goodman's City, Grey House, Exile Camp, Ishi'ra'la, Monastery, Ishaeal, Dirty Duckling.
+(sources: locations/illisan/fleurite/fleurite.md)
+
+[e68ae1f1] (state: established; projection: lore_fact)
+Goodman's City was a rival city-state near Fleurite. It and the other surrounding settlements have been destroyed, and its former territory is now incorporated into the Kingdom of Fleurite.
+(sources: locations/illisan/fleurite/goodmans-city.md)
+
+[4712d8d6] (state: established; projection: lore_fact)
+The Shandriz Channel is a navigable stretch of water within Illisan, known for calm passage. The Merry Bilge spent two days crossing it while approaching the White Kingdom; the waters and winds were calm, but expected merchant, fishing, and patrol traffic was absent.
+(sources: locations/illisan/shandriz-channel.md)
+
+[3dab9ece] (state: established; projection: lore_fact)
+Dariferra was a hero of his village before leaving to seek his fortune. He was eventually captured by the rising Inquisition and taken to the White Kingdom. He was used as a test subject for Romulus's experimental aberrant psionics, surviving only because of his inherent mental resilience and the eventual intervention of the party and Arkin.
+(sources: npcs/Dariferra.md)
+
+[20506bef] (state: established; projection: lore_fact)
+Roccid is from the noble House Drusus. Their standing amongst the other noble houses had remained high for centuries. They were known as merchants and traders, responsible for much of the goods imported from Phyro and Bastok.
+
+Two years ago, the climate of the city started to change. The King decreed that Fleurite was a Kingdom alone — no more trade with outside nations would be permitted. House Drusus could have stood on its substantial wealth, but rumors started to circulate that they weren't just tolerant of outsiders — they actively supported them. Members of House Drusus were said to have even married outsider peoples. It wasn't long before House Drusus was stripped of its nobility.
+
+In an attempt to get back into the graces of the Kingdom, Roccid's parents sent him to the castle to train with the Assassins Guild. There he was indoctrinated into believing the many evils of outsiders and the wrongdoings of the past peoples of Fleurite. One such individual was Ruhrogue — a beloved disciple of the master Ruh, who viciously betrayed and murdered his master, then fled the city to live amongst the outsiders he was supporting.
+
+Roccid was eventually sent to assassinate Ruhrogue. He failed and was mortally wounded by Ruhrogue in the encounter. Penelope, a member of Ruhrogue's party, found Roccid dying in an alley and healed him. Since then, Roccid sought out Ruhrogue and became his apprentice. He has grown disillusioned by Fleurite's current state and sees Ruhrogue as a possible solution to the corruption.
+
+Roccid spent several days alone at the Monastery with Sorin while the party ascended Ishi'ra'la. They did not know each other much before, but have grown close. Both raised on stories of their people's good deeds, both disillusioned by Fleurite. They made a pact to support Ruhrogue in any attempt to repair the corruption in Fleurite.
+(sources: npcs/Roccid.md)
+
+[55d166e3] (state: established; projection: lore_fact)
+Born in Karinth village, a small settlement in the wilds to the south. His village was spared the brutality of the fighting, but the devastation left the area unstable. His family moved to Fleurite so his father could find more reliable work as a carpenter. They gained some level of comfort over the years in Fleurite.
+
+Sorin's father Carylle took him to see King Peter's speeches on many occasions, and Sorin became enamored with the elegance and humanity of the King.
+
+Last year, when he came of age, the King's men appeared at his house and told his father that Sorin was required to appear at the castle for conscription service. Sorin felt this was a good thing — he could do his part to protect the Kingdom for the fair and noble King. He had been hearing of horrific acts in the region caused by the King, but he always defended his King to anyone.
+
+The first few months of conscription were hard, but Sorin believed it was just a training style for his commanders to be cruel. His aptitude for the bow led him to be put with the Outriders. He followed Inquisitor Eustice's direction at every village they came across. Being told of the heresy of the village and their people's hatred of the King, Sorin believed they were doing the right thing.
+
+All until the fall of Veram. Veram was mostly women and children, and the Inquisitor slaughtered them all. If the party had not found him at Veram, Sorin was planning on fleeing the city, though he feared retribution against his family if he did. They must have been told of his death by now.
+
+Sorin spent several days alone at the Monastery with Roccid while the party ascended Ishi'ra'la. They did not know each other much before, but have grown close. Both raised on stories of their people's good deeds, both disillusioned by Fleurite's current state. They made a pact to support Ruhrogue in any attempt to repair the corruption in Fleurite.
+(sources: npcs/sorin-tarkohv.md)
+
+[2fb55c4d] (state: prepared; projection: dm_plan)
+Provide a runnable operations sheet for a dungeon rescue/incursion under Fluerite Castle.
+(sources: encounters/fleurite-castle-dungeon.md)
+
+[5259b0a1] (state: prepared; projection: dm_plan)
+This file covers: The Fluerite castle dungeon incursion, including dungeon layout, prisoner state, guard response, special threats, and post-incursion consequences.
+
+This file does not cover: Session prep logistics, exterior castle infiltration, broader Fleurite politics, or the final record of what happened at the table.
+(sources: encounters/fleurite-castle-dungeon.md)
+
+[cf93a446] (state: prepared; projection: dm_plan)
+Ishi'ra'la is an immensely tall tower projecting from mountaintops north of Fluerite. It consists of multiple floors, each with unique challenges and revelations about Ishi'go'dan's enslavement.
+
+Floor Numbers:
+Floor 0 (Basement): Summoning circle, initial chamber, corruption spreading upward
+Floor 1 (Ground): Entry hallway, multiple rooms (formerly zombie/ogre areas)
+Floor 2: The Breaking Winds (colossal wind tunnel, turbine room)
+Floor 3: The Chamber of Echoes (introspective mirror tests, orb interrogation)
+Floor 4: The Guard Room (Ceal'tus & Fulmen'ra)
+Floors 5–10: Not yet designed
+(sources: encounters/Ishirala/ishirala-upper-floors.md)
+
+[caa17205] (state: prepared; projection: dm_plan)
+1. Story Time — The Descent:
+
+As the party walks the mountain trail, Sorin, Roccid, and Dariferra each share stories. This section is ambiance — the last moment of relative peace before the crisis hits. The GM can draw from the NPCs' backgrounds to prompt conversation.
+
+Ambiance — intersperse between stories:
+
+The trail winds through patches of wild mint and thyme. Every step crushes a little more fragrance into the air — sweet, green, alive.
+
+A hawk circles lazily overhead, riding a thermal. It doesn't seem to have a care in the world. Neither does the marmot that watches you from a rock, then vanishes with a whistle.
+
+The wind carries the sound of a distant waterfall — steady, soft, like the mountain breathing.
+
+A cluster of blue flowers grows from a crack in the stone, swaying. You can't name them. They don't seem to need you to.
+
+Somewhere below, a bird calls — three notes, then silence. Then three notes again. Another answers from the other side of the valley.
+
+The light filters through the pines in long, dusty beams. For a moment, the whole world feels slow and golden.
+
+Sorin — Growing up in Fleurite, the King's speeches
+
+If prompted, Sorin tells his story in his own words. Read or paraphrase:
+
+"I was born in Karinth. Little village south of here. My da — Carylle — he's a carpenter. We moved to Fleurite when I was small because the wilds went bad after the fighting. Too many wolves, too many desperate people. Da said Fleurite had walls and work. He was right about the work."
+
+"He built things. Cabinets, shutters, a roof for the tannery. Good hands. Honest work. We weren't rich, but we had enough. Ma kept a garden. I had a spot by the window where I'd carve little birds out of scrap wood. It was a good life."
+
+"Da took me to see the King speak. First time, I was maybe ten. King Peter stood on the balcony and talked about building a kingdom where people didn't have to be afraid. His voice carried — not loud, but like he was talking to each person alone. I believed him. I believed everything he said."
+
+"We went every time after that. I'd stand on my toes to see over the crowd. Da would lift me up on his shoulders when I was little. The King was... elegant. Kind. He seemed like he cared. I thought that's what a king should be."
+
+"Last year they came for me. The King's men. They told Da I had to report for conscription. I didn't want to leave, but I thought — this is my duty. This is how I serve the King who gave us a home. I told Da it would be fine. I told Ma I'd be back before they knew it."
+
+"I was wrong."
+
+"The training was hard. They broke men who couldn't keep up. I thought it was just the way of things — make you hard so you don't break when it matters. But it wasn't hardening. It was cruelty. I see that now."
+
+"I was good with a bow. That's the only reason I survived. They put me with the Outriders. Under Inquisitor Eustice. He told us we were rooting out heresy. That every village we visited had turned against the King. That they hated us. That they would kill us if we didn't kill them first."
+
+"I believed him. I wanted to believe him. Because if I didn't, then what was I doing there?"
+
+"Then Veram."
+
+"Veram was mostly women and children. There was no fighting. There was no resistance. Eustice gave the order and they just... died. I didn't draw my bow. I stood there and watched. I couldn't stop it. I couldn't even move."
+
+"I wanted to run. I had my hand on my pack before the bodies were cold. But if I ran, they'd go after my family. Da. Ma. They'd say I was a traitor, and they'd hurt the people I love to make an example. So I stayed. I stayed and I followed and I hated every step."
+
+"If you hadn't found me at Veram, I would have run anyway. Somewhere. Anywhere. I don't know if I would have made it. But I couldn't stay. Not after that."
+
+"They probably think I'm dead now. Told Da that his son died serving the King. Maybe they even gave him a medal. I just need to get word to him. Let him know I'm alive. Let him know I'm sorry."
+
+Roccid — House Drusus, the Assassins Guild, and Ruhrogue
+
+If prompted, Roccid tells his story in his own words. Read or paraphrase:
+
+"You want to know how I ended up following a man I was sent to kill?"
+
+"I was born into House Drusus. You've probably never heard of us — not anymore. But once, we were the biggest merchants in Fleurite. Everything that came in from Phyro and Bastok? That was us. Silks, spices, steel. My family built half the warehouses on the east side."
+
+"Then the King decided Fleurite didn't need the outside world anymore. No more trade. No more foreign goods. We could have weathered it — we had coin enough. But the rumors started. House Drusus doesn't just tolerate outsiders. House Drusus supports them. House Drusus marries them. Next thing you know, we're stripped. Titles gone. Lands seized. Name ruined."
+
+"My parents panicked. They needed to get back in the King's good graces, and they had only one thing left to offer — me. So they sent me to the castle. To the Assassins Guild."
+
+"They told me the Guild would make me useful. And they did. They filled my head with everything the King wanted me to believe. That outsiders are corrupt. That the old houses who traded with them were traitors. That the worst of them was a man named Ruhrogue — a beloved disciple who murdered his own master, Master Ruh, and fled to live with the very outsiders he'd been supporting."
+
+"I believed it. I was ready to kill him. I trained for months, and when they gave me the mark, I went."
+
+"I failed. He beat me. I was bleeding out in an alley, and I thought — this is it. This is how a Drusus dies. A disposable son, sent to die for a family that already lost everything."
+
+"But I didn't die. Penelope found me. Healed me. And when I woke up, I sought Ruhrogue out again. For a week I studied him and his friends. I learned who he was. Not the monster I'd been told about. Just a man. A man doing his part to save the world."
+
+"He taught me everything after that. Not assassin work — real things. How the world works. What loyalty actually means. And somewhere along the way, I stopped being the son my parents sent to die and started being someone else."
+
+"I don't know if my family is still alive. I don't know if they'd even want to see me. But I know this — everything their Kingdom told me about Ruhrogue was a lie. And if they lied about him, they lied about everything."
+
+Dariferra — Before the awakening, what he's losing
+
+Dariferra talks about who he was before the psychic link to Romulus. A person with ordinary memories, ordinary wants. The link is taking pieces of him. He may share a memory he's afraid of losing — a face, a place, a feeling.
+
+GM guidance: Let the players guide the conversation. Offer a prompt for each NPC if the party engages, but don't force all three. The goal is texture — connection before the storm.
+
+2. The Warning:
+
+Dariferra stops mid-stride, or slows. The psychic leak from Romulus sharpens — not words but emotional tone: smug satisfaction, vindictive pleasure, a sense of moves being made.
+
+Read-aloud:
+
+Dariferra stops walking. He's staring at nothing — or rather, through it.
+
+"Something's wrong," he says slowly. "The future is changing. I can feel it — like a current shifting underground. Romulus is moving pieces. Multiple pieces, all at once."
+
+"He's pleased with himself. That's the worst part. He thinks he's winning."
+
+3. The Overlook:
+
+The party continues until the trail opens onto a broad stone shelf — the last high vantage before the switchbacks drop into the foothills. The full valley of Illisan spreads below.
+
+Read-aloud:
+
+The trail widens and the trees fall away. You step onto a stone shelf that overlooks the entire valley — the last high view before the road descends into the foothills.
+
+Below, the valley of Illisan stretches like a map: the walled city of Fleurite to the southwest, the dark line of the central river, the patchwork of farms and estates between.
+
+But three things pull your eye immediately — three wrong things in the landscape.
+
+To the east, over the sea, a massive winged silhouette flies against the clouds. Too large to be a bird. Too purposeful to be a cloud formation. It's heading out over the ocean, toward the volcanic island on the horizon.
+
+To the southwest, smoke rises from Fleurite — not the ordinary smoke of a hundred hearths, but thick black columns in the outer districts. Something is burning.
+
+And below, too far to make out details but unmistakable — dust and movement along the roads leading toward the exile camp. Columns of soldiers, marching.
+
+4. The Assessment:
+
+The party discusses. Provide natural information from what they see:
+
+Ishi'go'dan: That wing shape, that scale — there's only one thing it can be. He's flying east.
+Fleurite smoke: Multiple columns, outer districts. Not an accident. This is a purge.
+Troop movement: Heading toward where the exile camp is. Not a random patrol — purposeful columns.
+
+Dariferra may get additional fragments from Romulus's surface mind:
+
+"He's not just doing one thing. He's doing all of it. He wants to hurt everyone at once."
+
+If pressed, Dariferra can sense:
+Ishi'go'dan was commanded east — ordered to destroy something.
+The smoke from Fleurite is punishment — vindictive, not strategic.
+The troops are preemptive — Romulus doesn't know exactly where the camp is, but he knows the general area and is sending forces to sweep.
+
+He cannot sense:
+Exact destination, timeframes, or strategic detail
+That Ishi'go'dan is heading to Tsunadis
+That Ragga'na'ken is being summoned
+The camp's internal divisions
+
+5. The Decision:
+
+The party must decide where to go. This is the climax of the scene — everything before it has led here. Reinforce that they can only respond to one — by the time they deal with one, the others will have resolved.
+
+Possible questions from Sorin/Roccid:
+
+"How far to the camp from here?"
+"What could we even do against something that size?"
+"Are there people in those burning districts?"
+"How long before those troops reach the camp?"
+
+Answers (from general knowledge):
+Camp: ~half a day's forced march, slightly longer normal pace
+Fleurite: ~a day's travel
+Ishi'go'dan: already airborne, heading away — they'd need a ship or flight to intercept
+(sources: encounters/the-descent.md)
+
+[822a0f72] (state: established; projection: lore_fact)
+The Kingdom of Fleurite (The White Kingdom) is established as a major power in the southern continent. Vika Lana visits the kingdom during her travels.
+(sources: lore/timeline.md)
+
+GRAPH RELATIONS for Fleurite (from the campaign knowledge graph; audited membership/leadership edges + ranked co-mention proximity). These are discovery aids pointing at canonical records — they may inform background but are NOT independent proof of anything not also grounded above.
+
+== Audited faction structure (canonical membership/leadership records) ==
+- Jace Valamacke (npc): member_of Fleurite Exiles, leader_of Fleurite Exiles (faction leadership seat)
+- Lily Valamacke (npc): member_of Fleurite Exiles
+- Ruh (npc): member_of White Cloaks
+- Ruhrogue (pc): member_of White Cloaks
+- Roccid (npc): member_of Assassins Guild
+- Romulus (npc): member_of + leader_of Inquisitors; also member_of Court of the Stars, Church of Malygos
+- Goodman City Exiles members: Aris Placidia, Marcus Leondis, Maxis Fontides, Tichon Darelius (npcs)
+- Eustice (npc): member_of Inquisitors
+
+== Entities most frequently co-mentioned with Fleurite (ranked) ==
+- Peter le Fleur (npc): 4 shared documents
+- Ruh (npc): 3 shared documents
+- Sorin Tarkohv (npc): 3 shared documents
+- Roccid (npc): 3 shared documents
+- Romulus (npc): 3 shared documents
+- Illisan (location): 3 shared documents
+- Phyro (location): 2 shared documents
+- Penelope Clinkhammer (pc): 2 shared documents
+- Assassins Guild (faction): 2 shared documents
+- Bastok (location): 2 shared documents
+- Monastery of Arkin (location): 2 shared documents
+- Veram (location): 2 shared documents
+- Eustice (npc): 2 shared documents
+- Outriders (faction): 2 shared documents
+- Inquisitors (faction): 2 shared documents
+- Dariferra (npc): 2 shared documents
+- Vika Lana (npc): 1 shared documents
+- Ragga'na'ken (npc): 1 shared documents
+- Tsunadis (location): 1 shared documents
+- Chamber of Echoes (location): 1 shared documents
+- Fulmen'ra (npc): 1 shared documents
+- Ceal'tus (npc): 1 shared documents
+- Merry Bilge (location): 1 shared documents
+- Shandriz Channel (location): 1 shared documents
+
+== Fleurite Castle (sub-location) strongest associations ==
+- Exile Camp (location): 5 shared documents
+- Romulus (npc): 5 shared documents
+- Dariferra (npc): 4 shared documents
+- Grey House (location): 4 shared documents
+- Jace Valamacke (npc): 4 shared documents
+- Lily Valamacke (npc): 3 shared documents
+- Goodman's City (location): 3 shared documents
+- Vika Lana (npc): 2 shared documents
+- Lucindus Arellius (npc): 2 shared documents
+- Inquisitors (faction): 2 shared documents
+- White Cloaks (faction): 2 shared documents
+- Maxis Fontides (npc): 1 shared documents
+- Far Realm Entity (npc): 1 shared documents
+- Order of the Golden Dawn (faction): 1 shared documents
+- Tichon Darelius (npc): 1 shared documents
+- Infinite Twilight (worldbuilding): 1 shared documents
+- Marcus Leondis (npc): 1 shared documents
+- Far Realm (location): 1 shared documents
+- Gren (npc): 1 shared documents
+- Carpet Rollers (faction): 1 shared documents
+- Perch (location): 1 shared documents
+- Ishi'go'dan (npc): 1 shared documents
+- Council of Unity (faction): 1 shared documents
+- Malygos (npc): 1 shared documents
+- Ladir (pc): 1 shared documents
+- Aris Placidia (npc): 1 shared documents
+- Vael'ka'noth (npc): 1 shared documents
+- Ishi'ra'la (location): 1 shared documents
+- Golden Dawn (worldbuilding): 1 shared documents
+- Leggiat Maneau (npc): 1 shared documents
+- Peter le Fleur (npc): 1 shared documents
+- Dirty Duckling (location): 1 shared documents
+
+== Fleurite Exiles (faction) associations ==
+- Strong ties: Exile Camp (location, 6 shared docs), Goodman's City / Goodman City Exiles, Jace Valamacke, Inquisitors, Order of the Golden Dawn, Circle of Dreams
