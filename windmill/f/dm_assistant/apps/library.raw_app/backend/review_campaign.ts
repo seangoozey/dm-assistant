@@ -20,6 +20,18 @@ interface ReviewBackendRequest {
     | "close_brainstorm"
     | "capture_session_note"
     | "get_current_campaign_date"
+    | "set_current_campaign_date"
+    | "get_campaign_date_history"
+    | "get_session_dating_walk"
+    | "set_session_document_date"
+    | "inherit_claim_dates"
+    | "get_undated_claims"
+    | "get_conflict_queue"
+    | "decide_conflict"
+    | "write_entity_description"
+    | "get_life_status_proposals"
+    | "set_life_status"
+    | "get_dead_seats"
     | "get_open_session_run"
     | "open_session_run"
     | "save_session_run_note"
@@ -61,6 +73,19 @@ interface ReviewBackendRequest {
     | "apply_approval"
     | "get_ai_configuration"
     | "activate_ai_profile"
+    | "draft_prose"
+    | "get_entity_graph_neighborhood"
+    | "get_ai_prompts"
+    | "get_template_vocabulary"
+    | "get_link_audit"
+    | "reattribute_claim"
+    | "get_moved_assertions"
+    | "change_template_vocabulary"
+    | "get_entity_dossier"
+    | "promote_to_dossier"
+    | "demote_from_dossier"
+    | "set_ai_prompt"
+    | "reset_ai_prompt"
     | "discover_claim_overlaps"
     | "reconcile_claims"
     | "get_claim_snapshot"
@@ -78,7 +103,9 @@ interface ReviewBackendRequest {
   entry_id?: string;
   run_id?: string;
   session_id?: string;
-  entity_id?: string;
+    entity_id?: string;
+  purpose?: string;
+  vocabulary?: string;
   record_id?: string;
   note_id?: string;
   query?: Record<string, string | number | undefined>;
@@ -105,6 +132,32 @@ function route(input: ReviewBackendRequest): { method: "GET" | "POST" | "PUT" | 
       return { method: "GET", path: "ai/configuration" };
     case "activate_ai_profile":
       return { method: "POST", path: "ai/configuration/activate" };
+    case "draft_prose":
+      return { method: "POST", path: "prose/draft" };
+    case "get_entity_graph_neighborhood":
+      return { method: "GET", path: `entities/${required(input.entity_id, "entity_id")}/graph-neighborhood` };
+    case "get_ai_prompts":
+      return { method: "GET", path: "ai/prompts" };
+    case "reattribute_claim":
+      return { method: "POST", path: `claims/${required(input.claim_id, "claim_id")}/reattribute` };
+    case "get_moved_assertions":
+      return { method: "GET", path: `entities/${required(input.entity_id, "entity_id")}/moved-assertions` };
+    case "get_link_audit":
+      return { method: "GET", path: "campaign/link-audit" };
+    case "get_template_vocabulary":
+      return { method: "GET", path: `template-vocabularies/${required(input.vocabulary, "vocabulary")}` };
+    case "change_template_vocabulary":
+      return { method: "POST", path: `template-vocabularies/${required(input.vocabulary, "vocabulary")}` };
+    case "get_entity_dossier":
+      return { method: "GET", path: `entities/${required(input.entity_id, "entity_id")}/dossier` };
+    case "promote_to_dossier":
+      return { method: "POST", path: `entities/${required(input.entity_id, "entity_id")}/dossier/${required(input.claim_id, "claim_id")}/promote` };
+    case "demote_from_dossier":
+      return { method: "POST", path: `entities/${required(input.entity_id, "entity_id")}/dossier/${required(input.claim_id, "claim_id")}/demote` };
+    case "set_ai_prompt":
+      return { method: "PUT", path: `ai/prompts/${required(input.purpose, "purpose")}` };
+    case "reset_ai_prompt":
+      return { method: "DELETE", path: `ai/prompts/${required(input.purpose, "purpose")}` };
     case "discover_claim_overlaps":
       return { method: "GET", path: "claims/reconciliation-candidates" };
     case "reconcile_claims":
@@ -153,8 +206,19 @@ function route(input: ReviewBackendRequest): { method: "GET" | "POST" | "PUT" | 
       return { method: "POST", path: `brainstorms/${required(input.session_id, "session_id")}/close` };
     case "capture_session_note":
       return { method: "POST", path: "capture/session-notes" };
-    case "get_current_campaign_date":
-      return { method: "GET", path: "campaign/current-date" };
+    case "get_current_campaign_date": return { method: "GET", path: "campaign/current-date" };
+    case "set_current_campaign_date": return { method: "PUT", path: "campaign/current-date?requester_role=dm" };
+    case "get_campaign_date_history": return { method: "GET", path: `campaign/current-date/history?limit=${input.query?.limit ?? 10}` };
+    case "get_session_dating_walk": return { method: "GET", path: "campaign/session-dating" };
+    case "set_session_document_date": return { method: "PUT", path: `campaign/session-dating/${required(input.path_id, "path_id")}?requester_role=dm` };
+    case "inherit_claim_dates": return { method: "POST", path: "campaign/claim-dates/inherit?requester_role=dm" };
+    case "get_undated_claims": return { method: "GET", path: `campaign/undated-claims?limit=${input.query?.limit ?? 50}` };
+    case "get_conflict_queue": return { method: "GET", path: "campaign/conflicts" };
+    case "decide_conflict": return { method: "POST", path: "campaign/conflicts/decisions?requester_role=dm" };
+    case "write_entity_description": return { method: "POST", path: `entities/${required(input.entity_id, "entity_id")}/description?requester_role=dm` };
+    case "get_life_status_proposals": return { method: "GET", path: "campaign/life-status/proposals" };
+    case "set_life_status": return { method: "POST", path: `campaign/life-status/${required(input.entity_id, "entity_id")}?requester_role=dm` };
+    case "get_dead_seats": return { method: "GET", path: "campaign/dead-seats" };
     case "get_open_session_run":
       return { method: "GET", path: "campaign/session-runs/open" };
     case "open_session_run":
@@ -261,8 +325,15 @@ export async function reviewCampaign(
   if (!response.ok) {
     let detail = `Campaign Core returned ${response.status}`;
     try {
-      const payload = (await response.json()) as { detail?: string };
-      if (payload.detail) detail = payload.detail;
+      const payload = (await response.json()) as { detail?: string | Array<{ msg?: string; loc?: string[] }> };
+      if (typeof payload.detail === "string") {
+        detail = payload.detail;
+      } else if (Array.isArray(payload.detail)) {
+        // FastAPI 422 returns an array of field-level validation errors.
+        detail = payload.detail
+          .map((error) => `${(error.loc ?? []).join(".")}: ${error.msg ?? "invalid"}`)
+          .join("; ");
+      }
     } catch {
       // Preserve the status-only failure when no structured error is available.
     }

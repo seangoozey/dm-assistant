@@ -48,15 +48,31 @@ def test_hidden_conflicts_do_not_expose_issue_counts_or_scope():
                                (coordinate(), coordinate("b"))) == ((), False)
 
 
-def test_legacy_alert_is_explicitly_unverified():
+def test_count_mixed_states_no_longer_raise_conflicts():
+    # The legacy count heuristic is gone: mixed observed/established records
+    # about a person answer normally instead of raising possible_retcon noise.
     result = RetrievalPolicy().evaluate(
         RetrievalQuery(question="Tell me about this person", requester_visibility=DM),
-        (record(), record("b", assertion="This person wears a blue cloak.")),
+        (record(), record("b", assertion="This person wears a blue cloak.", state="observed",
+                          authority="real_play")),
+    )
+    assert result.conflicts == ()
+    assert result.answer_mode is not None
+
+
+def test_verified_death_conflict_replaces_the_legacy_alert():
+    result = RetrievalPolicy().evaluate(
+        RetrievalQuery(question="Tell me about this person", requester_visibility=DM),
+        (record(assertion="This person died at the gates.", state="observed",
+                authority="real_play", effective_from="505-11-05"),
+         record("b", assertion="This person greets visitors today.",
+                effective_from="505-11-11")),
     )
     issue, = result.conflicts
-    assert issue.verification == "unverified"
-    assert issue.classification == "suspected_conflict"
-    assert issue.reason == "legacy_alert_requires_explicit_comparison"
+    assert issue.verification == "verified_comparison"
+    assert issue.classification == "possible_retcon"
+    assert issue.policy_version == "verified-death-temporal-v1"
+    assert result.answer_mode.value == "possible_retcon"
 
 
 def test_clients_cannot_submit_verified_coordinates():

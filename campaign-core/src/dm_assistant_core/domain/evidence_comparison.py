@@ -164,18 +164,3 @@ def retrieval_conflicts(
             return tuple(issues[:50]), True
     return tuple(issues), False
 
-
-def legacy_review_issue(records: tuple[RetrievalRecord, ...]) -> tuple[RetrievalConflict, ...]:
-    """Compatibility exposure only: a legacy alert cannot assert factual contradiction."""
-    snapshots = tuple(_snapshot(record) for record in sorted(records, key=lambda r: r.record_id))
-    if len(snapshots) < 2:
-        return ()
-    payload: dict[str, object] = {
-        "version": "legacy-count-review-v1",
-        "evidence": [item.model_dump(mode="json") for item in snapshots],
-    }
-    return (RetrievalConflict(
-        issue_id=_issue_id(payload), policy_version="legacy-count-review-v1",
-        classification="suspected_conflict", verification="unverified",
-        reason="legacy_alert_requires_explicit_comparison", evidence=snapshots,
-    ),)

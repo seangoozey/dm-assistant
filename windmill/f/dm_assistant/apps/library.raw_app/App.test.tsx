@@ -20,6 +20,7 @@ import { REVIEW_STATE_KEY } from "./reviewState";
 afterEach(() => {
   cleanup();
   toast.resetForTest();
+  resetSettingsForTest();
   window.sessionStorage.clear();
   window.localStorage.clear();
   vi.restoreAllMocks();
@@ -28,6 +29,7 @@ afterEach(() => {
 function makeQuietJobs(): JobPlatform { return {
   startHealthCheck: vi.fn(),
   cancel: vi.fn(),
+  startProseDraft: vi.fn().mockRejectedValue(new Error("drafts are not configured in this test")),
   startCandidateExtraction: vi.fn().mockResolvedValue({
     jobId: "extraction-job-1", state: "queued", progress: 5, updatedAt: "2026-08-01T12:00:00Z",
   }),
@@ -153,9 +155,14 @@ const approval: CandidateProposalApproval = {
 function makeClient(overrides: Partial<CampaignClient> = {}): CampaignClient {
   return {
     getAIConfiguration: vi.fn().mockResolvedValue({
+      purposes: [
+        { key: "extraction", label: "Claim extraction", description: "Reads reviewed documents and proposes candidate claims.", prompt_version: "extraction/8", prompt_text: "Extract grounded claims." },
+        { key: "prose", label: "Prose writing", description: "Drafts evidence-class prose from selected material.", prompt_version: null, prompt_text: null },
+      ],
       profiles: [
         {
           key: "deepseek-chat",
+          purpose: "extraction",
           provider: "openrouter",
           model_slug: "deepseek/deepseek-chat",
           description: "Proven non-reasoning extraction profile.",
@@ -166,18 +173,56 @@ function makeClient(overrides: Partial<CampaignClient> = {}): CampaignClient {
           selectable: true,
           suitability: "recommended",
         },
+        {
+          key: "gpt5-nano-evaluated",
+          purpose: "extraction",
+          provider: "openrouter",
+          model_slug: "openai/gpt-5-nano",
+          description: "Retained for audit after repeated representative extraction failures.",
+          reasoning_effort: "minimal",
+          max_tokens: 8192,
+          timeout_seconds: 90,
+          retry_limit: 1,
+          selectable: false,
+          suitability: "unsuitable",
+        },
+        {
+          key: "deepseek-v4-flash",
+          purpose: "prose",
+          provider: "openrouter",
+          model_slug: "deepseek/deepseek-v4-flash-0731",
+          description: "Sean's first prose pick: cheap, fast, non-reasoning flash tier.",
+          reasoning_effort: null,
+          max_tokens: 8192,
+          timeout_seconds: 90,
+          retry_limit: 1,
+          selectable: true,
+          suitability: "candidate",
+        },
       ],
-      active_profile_key: "deepseek-chat",
-      prompt_version: "extraction/7",
-      prompt_text: "Extract grounded claims.",
-      last_activation: null,
+      active_profile_by_purpose: { extraction: "deepseek-chat" },
+      last_activation_by_purpose: {},
     }),
     activateAIProfile: vi.fn().mockResolvedValue({
       receipt_id: "94000000-0000-0000-0000-000000000001",
+      purpose: "extraction",
       profile_key: "deepseek-chat",
-      prompt_version: "extraction/7",
+      prompt_version: "extraction/8",
       activated_at: "2026-08-10T12:00:00Z",
     }),
+    draftProse: vi.fn().mockRejectedValue(new Error("no prose model is active — activate one in Settings (AI models) first")),
+    getEntityGraphNeighborhood: vi.fn().mockRejectedValue(new Error("graph neighborhood is not configured (pilot bundle inactive)")),
+    getAIPrompts: vi.fn().mockResolvedValue([]),
+    setAIPrompt: vi.fn().mockRejectedValue(new Error("not in this test")),
+    resetAIPrompt: vi.fn().mockRejectedValue(new Error("not in this test")),
+    getEntityDossier: vi.fn().mockResolvedValue({ entity_id: "e0", promoted_claim_ids: [] }),
+    getTemplateVocabulary: vi.fn().mockResolvedValue([]),
+    getLinkAudit: vi.fn().mockResolvedValue({ audited_at: "2026-09-19T12:00:00Z", findings: [] }),
+    reattributeClaim: vi.fn().mockRejectedValue(new Error("not in this test")),
+    getMovedAssertions: vi.fn().mockResolvedValue([]),
+    changeTemplateVocabulary: vi.fn().mockRejectedValue(new Error("not in this test")),
+    promoteToDossier: vi.fn().mockResolvedValue({ receipt_id: "96000000-0000-0000-0000-000000000001", entity_id: "e0", claim_id: "c0", action: "promote", decided_at: "2026-09-19T12:00:00Z" }),
+    demoteFromDossier: vi.fn().mockResolvedValue({ receipt_id: "96000000-0000-0000-0000-000000000002", entity_id: "e0", claim_id: "c0", action: "demote", decided_at: "2026-09-19T12:00:00Z" }),
     getTaxonomy: vi.fn().mockResolvedValue({
       entity_kinds: [
         { kind: "npc", label: "NPC", description: "A DM-controlled character." },
@@ -305,6 +350,18 @@ function makeClient(overrides: Partial<CampaignClient> = {}): CampaignClient {
     listFactionRoles: vi.fn().mockResolvedValue([]),
     listRoleDeclarations: vi.fn().mockResolvedValue([]),
     listRecentDecisions: vi.fn().mockResolvedValue([]),
+    setCurrentCampaignDate: vi.fn(),
+    getCampaignDateHistory: vi.fn().mockResolvedValue([]),
+    getSessionDatingWalk: vi.fn().mockResolvedValue([]),
+    getConflictQueue: vi.fn().mockResolvedValue([]),
+    decideConflict: vi.fn(),
+    writeEntityDescription: vi.fn(),
+    getLifeStatusProposals: vi.fn().mockResolvedValue([]),
+    setLifeStatus: vi.fn(),
+    getDeadSeats: vi.fn().mockResolvedValue([]),
+    setSessionDate: vi.fn(),
+    inheritClaimDates: vi.fn(),
+    getUndatedClaims: vi.fn().mockResolvedValue([]),
     discoverClaimOverlaps: vi.fn().mockResolvedValue([]),
     reconcileClaims: vi.fn(),
     getClaimSnapshot: vi.fn(),
@@ -352,8 +409,10 @@ function renderTools(client: CampaignClient, platform: JobPlatform = makeQuietJo
   return view;
 }
 
-import { selectEntrySource, synthesizedEntryDocument } from "./App";
+import { cleanImportedAssertion, selectEntrySource, supersededReferenceCount, synthesizedEntryDocument } from "./App";
 import { toast } from "./toasts";
+import { resetSettingsForTest, updateSettings } from "./settings";
+import { resetLoreQueueForTest } from "./loreQueue";
 
 describe("entry source selection", () => {
   it("prefers the document whose name matches the entity over an alphabetically earlier one", () => {
@@ -387,6 +446,17 @@ describe("entry source selection", () => {
     // "type: location---" fence made these entries render as bare sources.
     const bare = synthesizedEntryDocument({ canonical_name: "Far Realm", entity_kind: "location", aliases: [] });
     expect(bare.startsWith("---\ntype: location\n---\n")).toBe(true);
+  });
+
+  it("counts only referenced claims whose history row marks them superseded", () => {
+    const history = [
+      { claim_id: "c0000000-0000-0000-0000-000000000001" },
+      { claim_id: "c0000000-0000-0000-0000-000000000002" },
+    ];
+    expect(supersededReferenceCount(
+      ["c0000000-0000-0000-0000-000000000001", "c0000000-0000-0000-0000-000000000003"], history)).toBe(1);
+    expect(supersededReferenceCount([], history)).toBe(0);
+    expect(supersededReferenceCount(["c0000000-0000-0000-0000-000000000001"], [])).toBe(0);
   });
 
   it("never borrows an unrelated document for an identity with no file of its own", () => {
@@ -582,7 +652,7 @@ describe("DM Assistant shell", () => {
     expect(screen.getByText("Cosmology")).toBeInTheDocument();
     expect(screen.getAllByText("Infinite Twilight")).toHaveLength(1);
     // The page-less entity is the one called out as uncompleted (dashed-page icon).
-    expect(screen.getByTitle(/No document backs this entry yet/)).toBeInTheDocument();
+    expect(screen.getByTitle(/No authored page yet/)).toBeInTheDocument();
     expect(document.querySelector(".tree-doc-flag svg")).toBeInTheDocument();
   });
 
@@ -714,7 +784,7 @@ describe("DM Assistant shell", () => {
     render(<App campaignClient={campaignClient} jobPlatform={makeQuietJobs()} />);
     fireEvent.click(await screen.findByRole("button", { name: "Meeting" }));
     const encounterArticle = (await screen.findByRole("heading", { name: "Meeting" })).closest("article")!;
-    const contentPanel = screen.getByLabelText("Document content");
+    const contentPanel = screen.getByLabelText("Source content");
     contentPanel.scrollTop = 420;
     fireEvent.click(within(encounterArticle).getByRole("button", { name: "Aris" }));
     expect(await screen.findByRole("complementary", { name: "Aris dossier" })).toBeInTheDocument();
@@ -760,6 +830,7 @@ describe("DM Assistant shell", () => {
   });
 
   it("assembles Romulus as one canonical NPC dossier with facts, plans, relationships, history, and all sources", async () => {
+    updateSettings({ recordsVisibility: { sources: true, earlierVersions: true } });
     const npcSource = { document_id: "61000000-0000-0000-0000-000000000181", path: "npcs/romulus.md" };
     const bibleSource = { document_id: "61000000-0000-0000-0000-000000000182", path: "gm/campaign-bible.md" };
     const romulus = { entry_id: "62000000-0000-0000-0000-000000000181", canonical_name: "Romulus", entity_kind: "npc" as const, aliases: [], tags: [], current_claim_count: 3, source_count: 2 };
@@ -783,11 +854,12 @@ describe("DM Assistant shell", () => {
     expect(screen.getByText("Dariferra may warn the party about Romulus.")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Relationships" })).toBeInTheDocument();
     expect(screen.getByText("Earlier versions (1)")).toBeInTheDocument();
-    expect(screen.getByText("gm/campaign-bible.md")).toBeInTheDocument();
-    expect(screen.getByText("npcs/romulus.md")).toBeInTheDocument();
+    expect(screen.getAllByText("gm/campaign-bible.md").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("npcs/romulus.md").length).toBeGreaterThan(0);
   });
 
   it("presents a multi-source location as one entry with grouped current information and hidden provenance", async () => {
+    updateSettings({ recordsVisibility: { sources: true, earlierVersions: true } });
     const primary = { document_id: "61000000-0000-0000-0000-000000000191", path: "locations/exile-camp.md" };
     const nested = { document_id: "61000000-0000-0000-0000-000000000192", path: "locations/illisan/fleurite/exile-camp.md" };
     const exileCamp = { entry_id: "62000000-0000-0000-0000-000000000191", canonical_name: "Exile Camp", entity_kind: "location" as const, aliases: [], tags: [], current_claim_count: 2, source_count: 2 };
@@ -874,7 +946,7 @@ describe("DM Assistant shell", () => {
     fireEvent.click(await screen.findByRole("button", { name: /pcs.*1/i }));
     fireEvent.click(await screen.findByRole("button", { name: /coreferra\.md/i }));
     fireEvent.click(await screen.findByRole("button", { name: "Edit claim" }));
-    fireEvent.change(await screen.findByLabelText("Replacement 1 assertion"), { target: { value: "Coreferra restores magic." } });
+    fireEvent.change(await screen.findByLabelText("Replacement 1 claim"), { target: { value: "Coreferra restores magic." } });
     fireEvent.change(screen.getByLabelText("Claim correction reason"), { target: { value: "Remove provenance markup from assertion text." } });
     fireEvent.click(screen.getByRole("button", { name: "Save replacement claim" }));
     await waitFor(() => expect(replaceClaim).toHaveBeenCalledWith(claim, [expect.objectContaining({ assertion_text: "Coreferra restores magic.", state: "possible", authority: "brainstorm", visibility: "dm_only" })], "Remove provenance markup from assertion text."));
@@ -896,7 +968,7 @@ describe("DM Assistant shell", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Split into another claim" }));
     const second = screen.getByText("Replacement 2").closest("fieldset");
     expect(second).not.toBeNull();
-    fireEvent.change(within(second!).getByLabelText("Replacement 2 assertion"), { target: { value: "The outcome occurred." } });
+    fireEvent.change(within(second!).getByLabelText("Replacement 2 claim"), { target: { value: "The outcome occurred." } });
     fireEvent.change(within(second!).getByLabelText("State"), { target: { value: "observed" } });
     fireEvent.change(screen.getByLabelText("Claim correction reason"), { target: { value: "Separate plan from outcome." } });
     expect(screen.getByRole("button", { name: "Save split claims" })).toBeDisabled();
@@ -1019,6 +1091,7 @@ describe("DM Assistant shell", () => {
       approvePlanProposal: vi.fn().mockResolvedValue(planApproval),
     });
     renderTools(campaignClient);
+    fireEvent.click(screen.getByRole("button", { name: "Ask the archive" }));
     fireEvent.change(screen.getByLabelText("Plan name"), { target: { value: "Sanitized arc pressure" } });
     fireEvent.change(screen.getByLabelText("Plan summary"), { target: { value: "Develop pressure without prescribing a PC response." } });
     fireEvent.click(screen.getByRole("button", { name: "Create exact plan proposal" }));
@@ -1048,6 +1121,7 @@ describe("DM Assistant shell", () => {
       }),
     });
     renderTools(campaignClient);
+    fireEvent.click(screen.getByRole("button", { name: "Ask the archive" }));
 
     fireEvent.change(screen.getByLabelText("Campaign question"), {
       target: { value: "What signature does Jace bear?" },
@@ -1075,7 +1149,7 @@ describe("DM Assistant shell", () => {
     expect(screen.getByText("inbox/sanitized-unknown.md")).toBeInTheDocument();
     expect(screen.getByText("2 open · 1 quarantined")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Migration" }));
-    expect(screen.getAllByText((_content, element) => Boolean(element?.textContent?.includes("17 files") && element?.classList?.contains("run-summary-compact"))).length).toBeGreaterThan(0);
+    expect(screen.getAllByText((_content, element) => Boolean(element?.textContent?.includes("17 sources") && element?.classList?.contains("run-summary-compact"))).length).toBeGreaterThan(0);
     expect(screen.getAllByText((_content, element) => Boolean(element?.textContent?.includes("15 candidates") && element?.classList?.contains("run-summary-compact"))).length).toBeGreaterThan(0);
 
     expect(screen.getByLabelText("Editable extraction review")).toBeInTheDocument();
@@ -1083,7 +1157,7 @@ describe("DM Assistant shell", () => {
     fireEvent.change(screen.getByLabelText("Extraction 1 state"), { target: { value: "prepared" } });
     fireEvent.change(screen.getByLabelText("Extraction 1 authority"), { target: { value: "preparation" } });
     fireEvent.change(screen.getByLabelText("Extraction 1 visibility"), { target: { value: "party" } });
-    fireEvent.click(screen.getByRole("button", { name: "Continue with selected claims" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Continue with selected claims" }).at(-1)!);
     fireEvent.change(screen.getByRole("textbox", { name: "Canonical name" }), {
       target: { value: "Sanitized Keeper" },
     });
@@ -1172,7 +1246,7 @@ describe("DM Assistant shell", () => {
     const createdItem = vi.mocked(campaignClient.createProposal).mock.calls[0][0][0];
     expect(createdItem).not.toHaveProperty("subject_entity_id");
     expect(createdItem).not.toHaveProperty("predicate");
-    expect(screen.getByText("Source-backed assertion is ready for exact approval.")).toBeInTheDocument();
+    expect(screen.getByText("Source-backed claim is ready for exact approval.")).toBeInTheDocument();
   });
 
   it("prefills a direct session claim date and commits the confirmed claim in one action", async () => {
@@ -1200,7 +1274,7 @@ describe("DM Assistant shell", () => {
     const candidateButton = await screen.findByRole("button", { name: /Coreferra became the Herald/ });
     await waitFor(() => expect(candidateButton).toBeEnabled());
     fireEvent.click(candidateButton);
-    expect(await screen.findByLabelText("Canonical assertion")).toHaveValue("Coreferra became the Herald of Arkin.");
+    expect(await screen.findByLabelText("Canonical claim")).toHaveValue("Coreferra became the Herald of Arkin.");
     expect(screen.getByLabelText("Observed campaign date")).toHaveValue("0505-07-12");
     expect(screen.getByText("@Coreferra")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Commit .*claim.* and continue/ }));
@@ -1250,10 +1324,10 @@ describe("DM Assistant shell", () => {
     const firstButton = await screen.findByRole("button", { name: /A table aside/ });
     await waitFor(() => expect(firstButton).toBeEnabled());
     fireEvent.click(firstButton);
-    await screen.findByLabelText("Canonical assertion");
+    await screen.findByLabelText("Canonical claim");
     fireEvent.change(screen.getByLabelText("Skip reason"), { target: { value: "Table chatter" } });
     fireEvent.click(screen.getByRole("button", { name: "Skip with reason" }));
-    expect(await screen.findByLabelText("Canonical assertion")).toHaveValue("The party entered the camp.");
+    expect(await screen.findByLabelText("Canonical claim")).toHaveValue("The party entered the camp.");
     expect(dispositionCandidate).toHaveBeenCalledWith(first.candidate_id, "deferred", "Table chatter");
   });
 
@@ -1270,7 +1344,7 @@ describe("DM Assistant shell", () => {
     });
     renderApp(campaignClient);
     fireEvent.click(await screen.findByRole("button", { name: /The sanitized archive names/ }));
-    fireEvent.change(await screen.findByLabelText("Canonical assertion"), { target: { value: "Corrected session truth." } });
+    fireEvent.change(await screen.findByLabelText("Canonical claim"), { target: { value: "Corrected session truth." } });
     fireEvent.click(screen.getByRole("button", { name: /Commit .*claim.* and continue/ }));
     await waitFor(() => expect(reviseProposal).toHaveBeenCalledTimes(1));
   });
@@ -1341,7 +1415,7 @@ describe("DM Assistant shell", () => {
     const planningButton = await screen.findByRole("button", { name: /longer-term foreshadowing/ });
     await waitFor(() => expect(planningButton).toBeEnabled());
     fireEvent.click(planningButton);
-    expect(await screen.findByLabelText("Canonical assertion")).toHaveValue("The tattoo should remain longer-term foreshadowing.");
+    expect(await screen.findByLabelText("Canonical claim")).toHaveValue("The tattoo should remain longer-term foreshadowing.");
     const prerequisite = await screen.findByRole("checkbox", { name: "Has a concrete prerequisite" });
     expect(prerequisite).not.toBeChecked();
     expect(screen.queryByLabelText("Condition trigger")).not.toBeInTheDocument();
@@ -1368,7 +1442,7 @@ describe("DM Assistant shell", () => {
     fireEvent.click(await screen.findByRole("button", { name: /The sanitized archive names a careful keeper/ }));
     fireEvent.click(await screen.findByRole("button", { name: "Create source-backed proposal" }));
     fireEvent.click(await screen.findByRole("button", { name: "Correct claim before approval" }));
-    fireEvent.change(screen.getByLabelText("Corrected assertion"), { target: { value: "Ruhrogue may help unite Myrin against Starfall." } });
+    fireEvent.change(screen.getByLabelText("Corrected claim"), { target: { value: "Ruhrogue may help unite Myrin against Starfall." } });
     fireEvent.change(screen.getByLabelText("Corrected state"), { target: { value: "possible" } });
     expect(screen.queryByRole("button", { name: /Approve and apply/ })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Save as new version" }));
@@ -1665,6 +1739,7 @@ describe("DM Assistant shell", () => {
     const jobs: JobPlatform = {
       startHealthCheck: vi.fn(),
       cancel: vi.fn(),
+      startProseDraft: vi.fn(),
       startCandidateExtraction: vi.fn(),
       inspect: vi.fn().mockResolvedValue({
         jobId: persistedJobId,
@@ -1686,6 +1761,7 @@ describe("DM Assistant shell", () => {
     const jobs: JobPlatform = {
       startHealthCheck: vi.fn().mockRejectedValue(new Error("No worker is available")),
       cancel: vi.fn(),
+      startProseDraft: vi.fn(),
       startCandidateExtraction: vi.fn(),
       inspect: vi.fn(),
     };
@@ -1694,14 +1770,66 @@ describe("DM Assistant shell", () => {
     expect(await screen.findByText(/No worker is available/)).toBeInTheDocument();
   });
 
-  it("shows the controlled AI extraction profile and prompt", async () => {
-    const campaignClient = makeClient();
-    renderTools(campaignClient, makeQuietJobs());
+  it("keeps AI model configuration out of Tools (it lives in Settings)", async () => {
+    renderTools(makeClient(), makeQuietJobs());
+    expect(screen.getByRole("button", { name: "Ask the archive" })).toBeInTheDocument();
+    expect(screen.queryByText("AI model")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Activate profile" })).toBeNull();
+  });
 
-    expect(await screen.findByText("AI model")).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: /deepseek\/deepseek-chat/ })).toBeInTheDocument();
-    expect(screen.getByText("extraction/7")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Activate profile" })).toBeDisabled();
+  it("manages per-purpose AI model profiles in Settings", async () => {
+    const extractionProfile = {
+      key: "deepseek-chat", purpose: "extraction", provider: "openrouter",
+      model_slug: "deepseek/deepseek-chat", description: "Proven non-reasoning extraction profile.",
+      reasoning_effort: null, max_tokens: 8192, timeout_seconds: 90, retry_limit: 1,
+      selectable: true, suitability: "recommended",
+    };
+    const candidateProfile = {
+      key: "mistral-candidate", purpose: "extraction", provider: "openrouter",
+      model_slug: "mistralai/mistral-small", description: "Candidate under evaluation.",
+      reasoning_effort: null, max_tokens: 8192, timeout_seconds: 90, retry_limit: 1,
+      selectable: true, suitability: "candidate",
+    };
+    const activateAIProfile = vi.fn().mockResolvedValue({
+      receipt_id: "94000000-0000-0000-0000-000000000002", purpose: "extraction",
+      profile_key: "mistral-candidate", prompt_version: "extraction/8",
+      activated_at: "2026-09-16T12:00:00Z",
+    });
+    render(<App campaignClient={makeClient({
+      getAIConfiguration: vi.fn().mockResolvedValue({
+        purposes: [
+          { key: "extraction", label: "Claim extraction", description: "Proposes candidate claims.", prompt_version: "extraction/8", prompt_text: "Extract grounded claims." },
+          { key: "prose", label: "Prose writing", description: "Drafts prose from selected material.", prompt_version: null, prompt_text: null },
+        ],
+        profiles: [
+          extractionProfile,
+          candidateProfile,
+          {
+            key: "deepseek-v4-flash", purpose: "prose", provider: "openrouter",
+            model_slug: "deepseek/deepseek-v4-flash-0731", description: "First prose pick: cheap, fast, non-reasoning flash tier.",
+            reasoning_effort: null, max_tokens: 8192, timeout_seconds: 90, retry_limit: 1,
+            selectable: true, suitability: "candidate",
+          },
+        ],
+        active_profile_by_purpose: { extraction: "deepseek-chat" },
+        last_activation_by_purpose: {},
+      }),
+      activateAIProfile,
+    })} jobPlatform={makeQuietJobs()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Open settings" }));
+    const extractionPanel = await screen.findByRole("article", { name: "Claim extraction model" });
+    expect(within(extractionPanel).getByText("deepseek/deepseek-chat")).toBeInTheDocument();
+    expect(within(extractionPanel).getByText(/Prompt \(extraction\/8\)/)).toBeInTheDocument();
+    // The prose purpose is visible with its candidate listed but not yet active.
+    const prosePanel = screen.getByRole("article", { name: "Prose writing model" });
+    expect(within(prosePanel).getByText(/No prose writing model active yet/)).toBeInTheDocument();
+    expect(within(prosePanel).getByRole("option", { name: /deepseek\/deepseek-v4-flash-0731/ })).toBeInTheDocument();
+    // Switching the extraction model activates through Core with the purpose.
+    fireEvent.change(within(extractionPanel).getByRole("combobox", { name: "Claim extraction model profile" }), { target: { value: "mistral-candidate" } });
+    fireEvent.click(within(extractionPanel).getByRole("button", { name: "Activate" }));
+    await waitFor(() => expect(activateAIProfile).toHaveBeenCalledWith("mistral-candidate", "extraction"));
+    expect(await screen.findByText(/Claim extraction model activated/)).toBeInTheDocument();
   });
 
   it("reviews and applies an overlapping claim decision with an audit reason", async () => {
@@ -1953,7 +2081,7 @@ describe("DM Assistant shell", () => {
     };
     const savedProfile = {
       entity_id: entry.entry_id, version: 1, canonical_name: "Far Realm",
-      status: "sealed", location_type: "planar region", parent_location: "cosmology",
+      status: "sealed", location_type: "planar region", parent_location: "Cosmology",
       player: null, race: null, sex: null, aliases: ["the Far Realm"], summary: "It presses.",
     };
     const getEntityProfile = vi.fn()
@@ -1968,23 +2096,30 @@ describe("DM Assistant shell", () => {
       ...entry, claims: [], claim_history: [], sources: [],
     });
     const getIdentityGaps = vi.fn().mockResolvedValue({ gaps: [], total_candidates: 0 });
+    const cosmology = { ...entry, entry_id: "a1000000-0000-0000-0000-0000000000c9", canonical_name: "Cosmology" };
     render(<App campaignClient={makeClient({
-      listLibraryEntries: vi.fn().mockResolvedValue([entry]),
+      listLibraryEntries: vi.fn().mockResolvedValue([entry, cosmology]),
       getLibraryEntry, getEntityProfile, updateEntityProfile, getIdentityGaps,
+      getTemplateVocabulary: vi.fn((vocabulary: string) => Promise.resolve(
+        vocabulary === "location_type" ? [{ vocabulary, value: "planar region", retired: false }, { vocabulary, value: "region", retired: false }]
+        : vocabulary === "status" ? [{ vocabulary, value: "sealed", retired: false }, { vocabulary, value: "active", retired: false }]
+        : [])),
     })} jobPlatform={makeQuietJobs()} />);
 
     const entryButton = await screen.findByRole("button", { name: "Far Realm" });
     fireEvent.click(entryButton);
     await waitFor(() => expect(getEntityProfile).toHaveBeenCalledWith(entry.entry_id));
     fireEvent.click(await screen.findByRole("button", { name: "Edit entry" }));
+    // Vocabulary selects: values come from the template vocabulary, not free text.
     fireEvent.change(screen.getByLabelText("Identity location type"), { target: { value: "planar region" } });
     fireEvent.change(screen.getByLabelText("Identity status"), { target: { value: "sealed" } });
-    fireEvent.change(screen.getByLabelText("Identity parent location"), { target: { value: "cosmology" } });
+    // Parent location is an entity reference — picked from location entries.
+    fireEvent.change(screen.getByLabelText("Identity parent location"), { target: { value: "Cosmology" } });
     fireEvent.change(screen.getByLabelText("Identity aliases"), { target: { value: "the Far Realm" } });
     fireEvent.click(screen.getByRole("button", { name: "Save identity profile" }));
     await waitFor(() => expect(updateEntityProfile).toHaveBeenCalledWith(
       entry.entry_id, expect.objectContaining({
-        location_type: "planar region", status: "sealed", parent_location: "cosmology",
+        location_type: "planar region", status: "sealed", parent_location: "Cosmology",
         aliases: ["the Far Realm"], version: 0,
       })));
     expect(await screen.findByText(/Saved with receipt a2000000/)).toBeInTheDocument();
@@ -2068,7 +2203,7 @@ describe("DM Assistant shell", () => {
     await waitFor(() => expect(removeMembership).toHaveBeenCalledWith(
       faction.entry_id, "b1000000-0000-0000-0000-0000000000m2"));
     // The roster reloads in place: no loading flash, editor stays open.
-    expect(screen.queryByText("Loading document…")).not.toBeInTheDocument();
+    expect(screen.queryByText("Loading source…")).not.toBeInTheDocument();
     expect(getLibraryEntry).toHaveBeenCalledTimes(2);
     await waitFor(() => expect(screen.getAllByTitle("Remove membership")).toHaveLength(1));
     expect(screen.getByRole("button", { name: "Save identity profile" })).toBeInTheDocument();
@@ -2097,6 +2232,881 @@ describe("DM Assistant shell", () => {
     // Errors filter narrows to failures only.
     fireEvent.click(screen.getByRole("button", { name: "Errors only" }));
     expect(screen.queryByText(/Eustice in Inquisitors/)).not.toBeInTheDocument();
+  });
+
+  it("writes a description that files as the entry's page and takes claims under the hood", async () => {
+    const entity = {
+      entry_id: "e1000000-0000-0000-0000-000000000001", canonical_name: "Ruh",
+      entity_kind: "location" as const, aliases: [], misspellings: [], tags: [],
+      members: [], current_claim_count: 2, source_count: 0,
+    };
+    const claims = [
+      { claim_id: "c1000000-0000-0000-0000-000000000001", assertion_text: "Ruh kept watch after the fall.", state: "observed", authority: "real_play", visibility: "dm_only", conditional: false, recorded_at: "2026-01-01T00:00:00Z", projection: "real_play", sources: [] },
+      { claim_id: "c1000000-0000-0000-0000-000000000002", assertion_text: "Ruh speaks rarely.", state: "established", authority: "explicit_lore", visibility: "dm_only", conditional: false, recorded_at: "2026-01-01T00:00:00Z", projection: "lore_fact", sources: [] },
+    ];
+    const writeEntityDescription = vi.fn().mockResolvedValue({
+      entity_id: entity.entry_id, document_id: "d1000000-0000-0000-0000-000000000003",
+      revision_id: "r1000000-0000-0000-0000-000000000004", path: "entities/ruh.md", idempotent_replay: false });
+    const getLibraryEntry = vi.fn()
+      .mockResolvedValueOnce({ ...entity, claims, claim_history: [], sources: [] })
+      .mockResolvedValue({ ...entity, claims, claim_history: [], sources: [] });
+    const getEntityProfile = vi.fn().mockResolvedValue(null);
+    const content = ["---", "type: entity-description", "---", "", "# Ruh", "", "A quiet presence.", "", "## Background", "", "Kept watch."].join("\n");
+    const getSourceDocument = vi.fn().mockResolvedValue({
+      document_id: "d1000000-0000-0000-0000-000000000003",
+      source_revision_id: "r1000000-0000-0000-0000-000000000004",
+      path: "entities/ruh.md", content, canonical_claims: [], claim_history: [] });
+    render(<App campaignClient={makeClient({
+      listLibraryEntries: vi.fn().mockResolvedValue([entity]),
+      getLibraryEntry, getEntityProfile, getSourceDocument, writeEntityDescription,
+      listSourceDocuments: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 500, offset: 0 }),
+    })} jobPlatform={makeQuietJobs()} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Ruh" }));
+    await waitFor(() => expect(getEntityProfile).toHaveBeenCalledWith(entity.entry_id));
+    const hood = screen.getAllByText(/Records —/)[0].closest("details.records-hood");
+    expect(hood).not.toBeNull();
+    expect(hood!.querySelector(".canonical-claim-list")).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Write description for Ruh" }));
+    fireEvent.change(await screen.findByLabelText("Entity description"), { target: { value: "A quiet presence at the camp's edge." } });
+    fireEvent.click(screen.getByRole("button", { name: "File description" }));
+    await waitFor(() => expect(writeEntityDescription).toHaveBeenCalledWith(
+      entity.entry_id, "A quiet presence at the camp's edge.",
+      ["c1000000-0000-0000-0000-000000000001", "c1000000-0000-0000-0000-000000000002"],
+      expect.stringMatching(/^entity-description:/), undefined));
+    expect(await screen.findByText(/Description filed — Ruh has its page/)).toBeInTheDocument();
+  });
+  it("flags a stale authored page and revises it as a new revision of the same document", async () => {
+    const entity = {
+      entry_id: "e3000000-0000-0000-0000-000000000001", canonical_name: "Ruh",
+      entity_kind: "location" as const, aliases: [], misspellings: [], tags: [],
+      members: [], current_claim_count: 2, source_count: 1,
+    };
+    const claim = (id: string, text: string) => ({
+      claim_id: id, assertion_text: text, state: "observed", authority: "real_play",
+      visibility: "dm_only", conditional: false, recorded_at: "2026-01-01T00:00:00Z",
+      projection: "real_play" as const, sources: [],
+    });
+    const claims = [
+      claim("c3000000-0000-0000-0000-000000000001", "Ruh kept watch after the fall."),
+      claim("c3000000-0000-0000-0000-000000000002", "Ruh speaks rarely."),
+    ];
+    const claimHistory = [{
+      ...claims[0],
+      superseded_by_claim_id: "c3000000-0000-0000-0000-000000000009",
+      supersession_reason: "corrected at the table",
+    }];
+    const pageContent = "# Ruh\n\nA quiet presence at the camp's edge.";
+    const writeEntityDescription = vi.fn().mockResolvedValue({
+      entity_id: entity.entry_id, document_id: "d3000000-0000-0000-0000-000000000003",
+      revision_id: "r3000000-0000-0000-0000-000000000005", path: "entities/ruh.md", idempotent_replay: false });
+    const getSourceDocument = vi.fn().mockResolvedValue({
+      document_id: "d3000000-0000-0000-0000-000000000003",
+      source_revision_id: "r3000000-0000-0000-0000-000000000004",
+      path: "entities/ruh.md", content: pageContent,
+      document_type: "entity-description",
+      referenced_claims: ["c3000000-0000-0000-0000-000000000001", "c3000000-0000-0000-0000-000000000002"],
+      canonical_claims: [], claim_history: claimHistory });
+    render(<App campaignClient={makeClient({
+      listLibraryEntries: vi.fn().mockResolvedValue([entity]),
+      getLibraryEntry: vi.fn().mockResolvedValue({ ...entity, claims, claim_history: claimHistory, sources: [{ document_id: "d3000000-0000-0000-0000-000000000003", path: "entities/ruh.md" }] }),
+      getEntityProfile: vi.fn().mockResolvedValue(null),
+      getSourceDocument, writeEntityDescription,
+      listSourceDocuments: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 500, offset: 0 }),
+    })} jobPlatform={makeQuietJobs()} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Ruh" }));
+    const banner = await screen.findByRole("alert");
+    expect(banner).toHaveTextContent("1 of 2 referenced records changed");
+    fireEvent.click(within(banner).getByRole("button", { name: "Revise description" }));
+    const textarea = await screen.findByLabelText("Entity description");
+    expect(textarea).toHaveValue(pageContent);
+    fireEvent.click(screen.getByRole("button", { name: "File description" }));
+    await waitFor(() => expect(writeEntityDescription).toHaveBeenCalledWith(
+      entity.entry_id, pageContent,
+      ["c3000000-0000-0000-0000-000000000001", "c3000000-0000-0000-0000-000000000002"],
+      expect.stringMatching(/^entity-description:/),
+      "d3000000-0000-0000-0000-000000000003"));
+    expect(await screen.findByText(/Description revised — Ruh/)).toBeInTheDocument();
+  });
+  it("runs drafting as a background job through the drafts pen and claims the result", async () => {
+    const entity = {
+      entry_id: "e6000000-0000-0000-0000-000000000001", canonical_name: "Fleurite",
+      entity_kind: "location" as const, aliases: [], misspellings: [], tags: [],
+      members: [], current_claim_count: 2, source_count: 0,
+    };
+    const claims = [
+      { claim_id: "c6000000-0000-0000-0000-000000000001", assertion_text: "Fleurite is a region and city-state within Illisan.", state: "established", authority: "explicit_lore", visibility: "dm_only", conditional: false, recorded_at: "2026-01-01T00:00:00Z", projection: "lore_fact" as const, sources: [] },
+      { claim_id: "c6000000-0000-0000-0000-000000000002", assertion_text: "The walled settlement is the only survivor in the region.", state: "established", authority: "explicit_lore", visibility: "dm_only", conditional: false, recorded_at: "2026-01-01T00:00:00Z", projection: "lore_fact" as const, sources: [] },
+    ];
+    const proseJobId = "019fe949-209f-0980-4374-96fed322a59b";
+    const startProseDraft = vi.fn().mockResolvedValue({ jobId: proseJobId, state: "queued", progress: 5, updatedAt: "2026-09-17T12:00:00Z" });
+    const inspect = vi.fn().mockResolvedValue({
+      jobId: proseJobId, state: "succeeded", progress: 100,
+      result: {
+        draft_text: "Fleurite is a region and city-state within Illisan [1].",
+        cited_keys: ["claim:c6000000-0000-0000-0000-000000000001"],
+        model_slug: "deepseek/deepseek-v4-flash-0731", prompt_version: "prose/3",
+        prompt_tokens: 120, completion_tokens: 340,
+      },
+      updatedAt: "2026-09-17T12:00:20Z",
+    });
+    const jobs: JobPlatform = { ...makeQuietJobs(), startProseDraft, inspect };
+    render(<App campaignClient={makeClient({
+      listLibraryEntries: vi.fn().mockResolvedValue([entity]),
+      getLibraryEntry: vi.fn().mockResolvedValue({ ...entity, claims, claim_history: [], sources: [] }),
+      getAIConfiguration: vi.fn().mockResolvedValue({
+        purposes: [
+          { key: "extraction", label: "Claim extraction", description: "Proposes claims.", prompt_version: "extraction/8", prompt_text: "Extract." },
+          { key: "prose", label: "Prose writing", description: "Drafts prose.", prompt_version: null, prompt_text: null },
+        ],
+        profiles: [{ key: "deepseek-v4-flash", purpose: "prose", provider: "openrouter", model_slug: "deepseek/deepseek-v4-flash-0731", description: "First prose pick.", reasoning_effort: null, max_tokens: 8192, timeout_seconds: 90, retry_limit: 1, selectable: true, suitability: "candidate" }],
+        active_profile_by_purpose: { extraction: "deepseek-chat", prose: "deepseek-v4-flash" },
+        last_activation_by_purpose: {},
+      }),
+    })} jobPlatform={jobs} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Fleurite" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Write description for Fleurite" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Draft from selected" }));
+    // The composer is released immediately — the job runs in the background.
+    await waitFor(() => expect(startProseDraft).toHaveBeenCalledWith(expect.objectContaining({
+      subject: "Fleurite",
+      subject_kind: "location",
+      material: [
+        { key: "claim:c6000000-0000-0000-0000-000000000001", kind: "claim", text: "Fleurite is a region and city-state within Illisan.", state: "established" },
+        { key: "claim:c6000000-0000-0000-0000-000000000002", kind: "claim", text: "The walled settlement is the only survivor in the region.", state: "established" },
+      ],
+    })), { timeout: 4000 });
+    expect(await screen.findAllByText(/Draft queued/).then((found) => found.length > 0)).toBe(true);
+    // The pen holds the finished draft with its support line.
+    expect(await screen.findByRole("button", { name: "Return to draft" }, { timeout: 4000 })).toBeInTheDocument();
+    expect(screen.getByText(/machine-drafted · deepseek\/deepseek-v4-flash-0731/)).toBeInTheDocument();
+    // Claiming loads the prose into the guarded composer, markers stripped,
+    // with the citations mirrored into the claim selection (1 of 2, not all).
+    fireEvent.click(screen.getByRole("button", { name: "Return to draft" }));
+    expect(await screen.findByLabelText("Entity description", {}, { timeout: 4000 })).toHaveValue(
+      "Fleurite is a region and city-state within Illisan.");
+    expect(screen.getByText("Gathered claims (1 of 2 referenced)")).toBeInTheDocument();
+  });
+  it("files a claimed draft on an imported-paged entry as a NEW page, not a revision of the imported doc", async () => {
+    const paged = {
+      entry_id: "ea000000-0000-0000-0000-000000000001", canonical_name: "Bastok",
+      entity_kind: "location" as const, aliases: [], misspellings: [], tags: [],
+      members: [], current_claim_count: 1, source_count: 1,
+    };
+    const claims = [
+      { claim_id: "ca000000-0000-0000-0000-000000000001", assertion_text: "Bastok trades ore.", state: "established", authority: "explicit_lore", visibility: "dm_only", conditional: false, recorded_at: "2026-01-01T00:00:00Z", projection: "lore_fact" as const, sources: [] },
+    ];
+    const proseJobId = "019fe949-209f-0980-4374-96fed322a59f";
+    const startProseDraft = vi.fn().mockResolvedValue({ jobId: proseJobId, state: "queued", progress: 5, updatedAt: "2026-09-18T12:00:00Z" });
+    const inspect = vi.fn().mockResolvedValue({
+      jobId: proseJobId, state: "succeeded", progress: 100,
+      result: {
+        draft_text: "Bastok trades ore [1].",
+        cited_keys: ["claim:ca000000-0000-0000-0000-000000000001"],
+        model_slug: "deepseek/deepseek-v4-flash-0731", prompt_version: "prose/3",
+        prompt_tokens: 80, completion_tokens: 150,
+      },
+      updatedAt: "2026-09-18T12:00:12Z",
+    });
+    // The authored page joins the document list only once it is filed.
+    let authoredFiled = false;
+    const writeEntityDescription = vi.fn(async (...args: unknown[]) => {
+      const receipt = await Promise.resolve({
+        entity_id: paged.entry_id, document_id: "da000000-0000-0000-0000-000000000003",
+        revision_id: "ra000000-0000-0000-0000-000000000004", path: "entities/bastok.md", idempotent_replay: false,
+      });
+      authoredFiled = true;
+      void args;
+      return receipt;
+    });
+    const jobs: JobPlatform = { ...makeQuietJobs(), startProseDraft, inspect };
+    render(<App campaignClient={makeClient({
+      listLibraryEntries: vi.fn().mockResolvedValue([paged]),
+      getLibraryEntry: vi.fn().mockResolvedValue({ ...paged, claims, claim_history: [], sources: [{ document_id: "da000000-0000-0000-0000-000000000002", path: "locations/bastok.md" }] }),
+      getSourceDocument: vi.fn((documentId: string) => Promise.resolve(documentId === "da000000-0000-0000-0000-000000000003"
+        ? { document_id: "da000000-0000-0000-0000-000000000003", source_revision_id: "ra000000-0000-0000-0000-000000000006", path: "entities/bastok.md", content: "Bastok trades ore and always has.", document_type: "entity-description", referenced_claims: ["ca000000-0000-0000-0000-000000000001"], canonical_claims: [], claim_history: [] }
+        : { document_id: "da000000-0000-0000-0000-000000000002",
+        source_revision_id: "ra000000-0000-0000-0000-000000000005",
+        path: "locations/bastok.md",
+        content: "---\ntype: location\n---\n\n# Bastok\n\nA trade city.", canonical_claims: [], claim_history: [] })),
+      getAIConfiguration: vi.fn().mockResolvedValue({
+        purposes: [
+          { key: "extraction", label: "Claim extraction", description: "Proposes claims.", prompt_version: "extraction/8", prompt_text: "Extract." },
+          { key: "prose", label: "Prose writing", description: "Drafts prose.", prompt_version: null, prompt_text: null },
+        ],
+        profiles: [{ key: "deepseek-v4-flash", purpose: "prose", provider: "openrouter", model_slug: "deepseek/deepseek-v4-flash-0731", description: "First prose pick.", reasoning_effort: null, max_tokens: 8192, timeout_seconds: 90, retry_limit: 1, selectable: true, suitability: "candidate" }],
+        active_profile_by_purpose: { extraction: "deepseek-chat", prose: "deepseek-v4-flash" },
+        last_activation_by_purpose: {},
+      }),
+      writeEntityDescription,
+      listSourceDocuments: vi.fn(() => Promise.resolve(authoredFiled
+        ? { items: [
+          { document_id: "da000000-0000-0000-0000-000000000003", path: "entities/bastok.md", classification: "durable_evidence", candidate_count: 0, extraction_count: 0, open_review_count: 0, missing_source: false },
+        ], total: 1, limit: 500, offset: 0 }
+        : { items: [], total: 0, limit: 500, offset: 0 })),
+    })} jobPlatform={jobs} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Bastok" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Write description for Bastok" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Draft from selected" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Return to draft" }, { timeout: 4000 }));
+    fireEvent.click(await screen.findByRole("button", { name: "File description" }));
+    await waitFor(() => expect(writeEntityDescription).toHaveBeenCalled());
+    // The imported page document is NOT the revision target — the claimed
+    // draft files fresh (no document id), beside the imported evidence.
+    const call = writeEntityDescription.mock.calls[0];
+    expect(call[4]).toBeUndefined();
+    expect(await screen.findByText(/Description filed — Bastok has its page/)).toBeInTheDocument();
+    // The authored page becomes the entry's page: prose rendered under the
+    // canonical name and kind, the authored-page banner with its Revise
+    // action, and no write-description button (the page exists).
+    expect(await screen.findByText("Bastok trades ore and always has.")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Bastok" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Revise description for Bastok" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Write description for Bastok" })).toBeNull();
+  });
+  it("manages floating trays from Settings — sides move, hidden trays show no launcher", async () => {
+    const entity = {
+      entry_id: "e9000000-0000-0000-0000-000000000001", canonical_name: "Ruh",
+      entity_kind: "location" as const, aliases: [], misspellings: [], tags: [],
+      members: [], current_claim_count: 1, source_count: 0,
+    };
+    const claims = [
+      { claim_id: "c9000000-0000-0000-0000-000000000001", assertion_text: "Ruh kept watch.", state: "established", authority: "explicit_lore", visibility: "dm_only", conditional: false, recorded_at: "2026-01-01T00:00:00Z", projection: "lore_fact" as const, sources: [] },
+    ];
+    const startProseDraft = vi.fn().mockResolvedValue({ jobId: "019fe949-209f-0980-4374-96fed322a59e", state: "queued", progress: 5, updatedAt: "2026-09-17T12:00:00Z" });
+    // Keep the prose job running — this test exercises the launcher, not the result.
+    const inspect = vi.fn().mockResolvedValue({ jobId: "019fe949-209f-0980-4374-96fed322a59e", state: "running", progress: 40, updatedAt: "2026-09-17T12:00:02Z" });
+    const jobs: JobPlatform = { ...makeQuietJobs(), startProseDraft, inspect };
+    render(<App campaignClient={makeClient({
+      listLibraryEntries: vi.fn().mockResolvedValue([entity]),
+      getLibraryEntry: vi.fn().mockResolvedValue({ ...entity, claims, claim_history: [], sources: [] }),
+      getAIConfiguration: vi.fn().mockResolvedValue({
+        purposes: [
+          { key: "extraction", label: "Claim extraction", description: "Proposes claims.", prompt_version: "extraction/8", prompt_text: "Extract." },
+          { key: "prose", label: "Prose writing", description: "Drafts prose.", prompt_version: null, prompt_text: null },
+        ],
+        profiles: [{ key: "deepseek-v4-flash", purpose: "prose", provider: "openrouter", model_slug: "deepseek/deepseek-v4-flash-0731", description: "First prose pick.", reasoning_effort: null, max_tokens: 8192, timeout_seconds: 90, retry_limit: 1, selectable: true, suitability: "candidate" }],
+        active_profile_by_purpose: { extraction: "deepseek-chat", prose: "deepseek-v4-flash" },
+        last_activation_by_purpose: {},
+      }),
+    })} jobPlatform={jobs} />);
+
+    // Queue a draft so the Drafts tray launcher exists (the array anchors right by default).
+    fireEvent.click(await screen.findByRole("button", { name: "Ruh" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Write description for Ruh" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Draft from selected" }));
+    await waitFor(() => expect(startProseDraft).toHaveBeenCalled(), { timeout: 4000 });
+    // Queueing opens the tray; close it so its launcher is the surface under test.
+    fireEvent.click(screen.getByRole("button", { name: "Close Drafts tray" }));
+    const launcher = await screen.findByRole("button", { name: /^Drafts/ });
+    expect(launcher.closest(".tray-dock")).toHaveClass("right");
+    // The manager moves the ARRAY to the left anchor; hiding a tray drops its launcher.
+    fireEvent.click(screen.getByRole("button", { name: "Open settings" }));
+    fireEvent.change(await screen.findByLabelText("Tray array anchor"), { target: { value: "left" } });
+    fireEvent.click(screen.getAllByRole("button", { name: "Library" })[0]);
+    await waitFor(() => expect(screen.getByRole("button", { name: /^Drafts/ }).closest(".tray-dock")).toHaveClass("left"));
+    fireEvent.click(screen.getByRole("button", { name: "Open settings" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /Show Drafts tray launcher/ }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Library" })[0]);
+    await waitFor(() => expect(screen.queryByRole("button", { name: /^Drafts/ })).toBeNull());
+  });
+  it("queues a name for Lore, gathers evidence, and creates the entry", async () => {
+    const createIdentityEntity = vi.fn().mockResolvedValue({
+      decision_id: "99000000-0000-0000-0000-000000000001",
+      kind: "create_entity",
+      surface: "Tsunadis",
+      entity_id: "99000000-0000-0000-0000-000000000002",
+      linked_claims: 0,
+      idempotent_replay: false,
+    });
+    const writeEntityDescription = vi.fn().mockResolvedValue({
+      entity_id: "99000000-0000-0000-0000-000000000002",
+      document_id: "99000000-0000-0000-0000-000000000003",
+      revision_id: "99000000-0000-0000-0000-000000000004",
+      path: "entities/tsunadis.md", idempotent_replay: false,
+    });
+    render(<App campaignClient={makeClient({
+      createIdentityEntity, writeEntityDescription,
+      searchEntities: vi.fn().mockResolvedValue([]),
+      listSourceDocuments: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 500, offset: 0 }),
+    })} jobPlatform={makeQuietJobs()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Lore" }));
+    // Queue a name
+    fireEvent.change(await screen.findByLabelText("Lore queue name"), { target: { value: "Tsunadis" } });
+    fireEvent.click(screen.getByRole("button", { name: "Queue for Lore" }));
+    expect(await screen.findByText("Tsunadis")).toBeInTheDocument();
+    // Pick it up
+    fireEvent.click(screen.getByRole("button", { name: "Work this" }));
+    expect(await screen.findByText(/Creating: Tsunadis/)).toBeInTheDocument();
+    expect(await screen.findByText(/No claims mention this name yet/)).toBeInTheDocument();
+    // Write the description and create
+    fireEvent.change(screen.getByLabelText("Lore description"), { target: { value: "A coastal city on the Shandriz Channel." } });
+    fireEvent.click(screen.getByRole("button", { name: /Create Tsunadis as location/ }));
+    await waitFor(() => expect(createIdentityEntity).toHaveBeenCalledWith("Tsunadis", "location", expect.stringMatching(/^lore-create:/)));
+    await waitFor(() => expect(writeEntityDescription).toHaveBeenCalled());
+    expect(await screen.findByText(/Created Tsunadis as a location/)).toBeInTheDocument();
+  });
+  it("runs the link audit from Tools and navigates to findings", async () => {
+    const entity = {
+      entry_id: "ed000000-0000-0000-0000-000000000001", canonical_name: "Romulus",
+      entity_kind: "npc" as const, aliases: [], misspellings: [], tags: [],
+      members: [], current_claim_count: 5, source_count: 2,
+    };
+    const getLinkAudit = vi.fn().mockResolvedValue({
+      audited_at: "2026-09-19T12:00:00Z",
+      findings: [
+        { kind: "wrong_page_borrow", entity_id: entity.entry_id, entity_name: "Romulus", entity_kind: "npc", document_id: "dd000000-0000-0000-0000-000000000002", document_path: "lore/the-wrath-of-romulus.md", detail: "'lore/the-wrath-of-romulus.md' carries tokens belonging to other entities: The Wrath of Romulus" },
+      ],
+    });
+    const getLibraryEntry = vi.fn().mockResolvedValue({ ...entity, claims: [], claim_history: [], sources: [] });
+    render(<App campaignClient={makeClient({
+      getLinkAudit,
+      listLibraryEntries: vi.fn().mockResolvedValue([entity]),
+      getLibraryEntry,
+    })} jobPlatform={makeQuietJobs()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Tools" }));
+    fireEvent.click(screen.getByRole("button", { name: "Run audit" }));
+    await waitFor(() => expect(getLinkAudit).toHaveBeenCalled());
+    expect(await screen.findByText(/1 finding/)).toBeInTheDocument();
+    expect(screen.getByText(/the-wrath-of-romulus/)).toBeInTheDocument();
+    // Navigate to the finding's entity.
+    fireEvent.click(screen.getByRole("button", { name: "Open Romulus" }));
+    await waitFor(() => expect(getLibraryEntry).toHaveBeenCalledWith(entity.entry_id));
+  });
+  it("opens Ask-the-archive from the topbar magnifier as a tray, off the Tools page", async () => {
+    render(<App campaignClient={makeClient()} jobPlatform={makeQuietJobs()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Tools" }));
+    // The hero is gone from the page body; the magnifier opens the tray.
+    expect(screen.queryByRole("heading", { name: /Ask the archive/ })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Ask the archive" }));
+    expect(await screen.findByLabelText("Campaign question")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Close Ask the archive" }));
+    await waitFor(() => expect(screen.queryByLabelText("Campaign question")).toBeNull());
+  });
+  it("gathers relations in two layers and drafts from claims plus selected relations", async () => {
+    const faction = {
+      entry_id: "e8000000-0000-0000-0000-000000000001", canonical_name: "Fleurite Exiles",
+      entity_kind: "faction" as const, aliases: [], misspellings: [], tags: [],
+      members: [{ member_id: "m1", name: "Jace Valamacke", role_title: "Leader of the Rebellion", is_leadership: true }],
+      related: ["Goodman's City"], current_claim_count: 1, source_count: 0,
+    };
+    const claims = [
+      { claim_id: "c8000000-0000-0000-0000-000000000001", assertion_text: "The Exiles camp outside the walls.", state: "established", authority: "explicit_lore", visibility: "dm_only", conditional: false, recorded_at: "2026-01-01T00:00:00Z", projection: "lore_fact" as const, sources: [] },
+    ];
+    const getEntityGraphNeighborhood = vi.fn().mockResolvedValue([
+      { key: "graph:0", text: "Ruh is a member of the White Cloaks", backing: "audited membership record" },
+      { key: "graph:1", text: "Frequently appears with Peter le Fleur (4 shared documents)", backing: "derived co-mention association" },
+    ]);
+    const startProseDraft = vi.fn().mockResolvedValue({ jobId: "019fe949-209f-0980-4374-96fed322a59d", state: "queued", progress: 5, updatedAt: "2026-09-17T12:00:00Z" });
+    const jobs: JobPlatform = { ...makeQuietJobs(), startProseDraft };
+    render(<App campaignClient={makeClient({
+      listLibraryEntries: vi.fn().mockResolvedValue([faction]),
+      getLibraryEntry: vi.fn().mockResolvedValue({
+        ...faction, claims, claim_history: [], sources: [],
+        roles: [{ name: "Leader of the Rebellion", is_leadership: true, holder_names: ["Jace Valamacke"] }],
+      }),
+      getAIConfiguration: vi.fn().mockResolvedValue({
+        purposes: [
+          { key: "extraction", label: "Claim extraction", description: "Proposes claims.", prompt_version: "extraction/8", prompt_text: "Extract." },
+          { key: "prose", label: "Prose writing", description: "Drafts prose.", prompt_version: null, prompt_text: null },
+        ],
+        profiles: [{ key: "deepseek-v4-flash", purpose: "prose", provider: "openrouter", model_slug: "deepseek/deepseek-v4-flash-0731", description: "First prose pick.", reasoning_effort: null, max_tokens: 8192, timeout_seconds: 90, retry_limit: 1, selectable: true, suitability: "candidate" }],
+        active_profile_by_purpose: { extraction: "deepseek-chat", prose: "deepseek-v4-flash" },
+        last_activation_by_purpose: {},
+      }),
+      getEntityGraphNeighborhood,
+    })} jobPlatform={jobs} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Fleurite Exiles" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Write description for Fleurite Exiles" }));
+    // Base layer: canonical roles/members show as selectable relation rows,
+    // and the relations panel is present for every entry (grey, graph off).
+    expect(await screen.findByText(/Role Leader of the Rebellion \(unique leadership seat ★\)/)).toBeInTheDocument();
+    expect(screen.getByText(/Jace Valamacke is a member/)).toBeInTheDocument();
+    const panel = screen.getByText(/Gathered relations/).closest("details.relations-panel") as HTMLElement;
+    expect(panel).not.toHaveClass("graph-enabled");
+    // Expansion layer: the checkbox enables the panel and loads the
+    // neighborhood, which arrives pre-selected.
+    fireEvent.click(within(panel).getByRole("checkbox", { name: /Include graph neighborhood/ }));
+    await waitFor(() => expect(getEntityGraphNeighborhood).toHaveBeenCalledWith(faction.entry_id));
+    expect(panel).toHaveClass("graph-enabled");
+    expect(await screen.findByText(/Ruh is a member of the White Cloaks/)).toBeInTheDocument();
+    // Drafting queues both layers as background job material.
+    fireEvent.click(screen.getByRole("button", { name: "Draft from selected" }));
+    await waitFor(() => expect(startProseDraft).toHaveBeenCalledWith(expect.objectContaining({
+      material: expect.arrayContaining([
+        expect.objectContaining({ kind: "claim", text: "The Exiles camp outside the walls." }),
+        expect.objectContaining({ kind: "relation", key: "relation:role:Leader of the Rebellion" }),
+        expect.objectContaining({ kind: "relation", key: "relation:graph:0" }),
+      ]),
+    })));
+    // AI actions carry the wand mark.
+    expect(screen.getByRole("button", { name: "Draft from selected" }).querySelector("svg.wand-icon")).not.toBeNull();
+  });
+  it("keeps a failed draft job in the pen and records it in the toast and persisted log", async () => {
+    const entity = {
+      entry_id: "e7000000-0000-0000-0000-000000000001", canonical_name: "Ruh",
+      entity_kind: "location" as const, aliases: [], misspellings: [], tags: [],
+      members: [], current_claim_count: 1, source_count: 0,
+    };
+    const claims = [
+      { claim_id: "c7000000-0000-0000-0000-000000000001", assertion_text: "Ruh kept watch.", state: "established", authority: "explicit_lore", visibility: "dm_only", conditional: false, recorded_at: "2026-01-01T00:00:00Z", projection: "lore_fact" as const, sources: [] },
+    ];
+    const proseJobId = "019fe949-209f-0980-4374-96fed322a59c";
+    const startProseDraft = vi.fn().mockResolvedValue({ jobId: proseJobId, state: "queued", progress: 5, updatedAt: "2026-09-17T12:00:00Z" });
+    const inspect = vi.fn().mockResolvedValue({
+      jobId: proseJobId, state: "failed", progress: 0,
+      error: "Campaign Core rejected the draft: the model could not satisfy the drafting contract",
+      updatedAt: "2026-09-17T12:00:09Z",
+    });
+    const jobs: JobPlatform = { ...makeQuietJobs(), startProseDraft, inspect };
+    render(<App campaignClient={makeClient({
+      listLibraryEntries: vi.fn().mockResolvedValue([entity]),
+      getLibraryEntry: vi.fn().mockResolvedValue({ ...entity, claims, claim_history: [], sources: [] }),
+      getAIConfiguration: vi.fn().mockResolvedValue({
+        purposes: [
+          { key: "extraction", label: "Claim extraction", description: "Proposes claims.", prompt_version: "extraction/8", prompt_text: "Extract." },
+          { key: "prose", label: "Prose writing", description: "Drafts prose.", prompt_version: null, prompt_text: null },
+        ],
+        profiles: [{ key: "deepseek-v4-flash", purpose: "prose", provider: "openrouter", model_slug: "deepseek/deepseek-v4-flash-0731", description: "First prose pick.", reasoning_effort: null, max_tokens: 8192, timeout_seconds: 90, retry_limit: 1, selectable: true, suitability: "candidate" }],
+        active_profile_by_purpose: { extraction: "deepseek-chat", prose: "deepseek-v4-flash" },
+        last_activation_by_purpose: {},
+      }),
+    })} jobPlatform={jobs} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Ruh" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Write description for Ruh" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Draft from selected" }));
+    // The failed job stays in the pen with its error until dismissed.
+    expect(await screen.findAllByText(/could not satisfy the drafting contract/, {}, { timeout: 4000 }).then((found) => found.length > 0)).toBe(true);
+    expect(screen.getByRole("button", { name: "Discard draft for Ruh" })).toBeInTheDocument();
+    // The bus records the failure — toast now, log persistently.
+    await waitFor(() => expect(toast.logEntries().some((entry) => entry.kind === "error" && entry.message.includes("Draft failed for Ruh"))).toBe(true));
+    expect(JSON.parse(globalThis.localStorage.getItem("dm-assistant.sessionLog") ?? "[]")
+      .some((entry: { kind: string; message: string }) => entry.kind === "error" && entry.message.includes("Draft failed for Ruh"))).toBe(true);
+  });
+  it("gives page-backed entries edit and write-description affordances (ADR-0016)", async () => {
+    const paged = {
+      entry_id: "e4000000-0000-0000-0000-000000000001", canonical_name: "Bastok",
+      entity_kind: "location" as const, aliases: [], misspellings: [], tags: [],
+      members: [], current_claim_count: 1, source_count: 1,
+    };
+    const claims = [{ claim_id: "c4000000-0000-0000-0000-000000000001", assertion_text: "Bastok trades ore.", state: "established", authority: "explicit_lore", visibility: "dm_only", conditional: false, recorded_at: "2026-01-01T00:00:00Z", projection: "lore_fact" as const, sources: [] }];
+    const getLibraryEntry = vi.fn().mockResolvedValue({ ...paged, claims, claim_history: [], sources: [{ document_id: "d4000000-0000-0000-0000-000000000002", path: "locations/bastok.md" }] });
+    const getSourceDocument = vi.fn().mockResolvedValue({
+      document_id: "d4000000-0000-0000-0000-000000000002",
+      source_revision_id: "r4000000-0000-0000-0000-000000000003",
+      path: "locations/bastok.md",
+      content: "---\ntype: location\n---\n\n# Bastok\n\nA trade city.", canonical_claims: [], claim_history: [] });
+    render(<App campaignClient={makeClient({
+      listLibraryEntries: vi.fn().mockResolvedValue([paged]),
+      getLibraryEntry, getSourceDocument,
+      listSourceDocuments: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 500, offset: 0 }),
+    })} jobPlatform={makeQuietJobs()} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Bastok" }));
+    // The imported page backs the entry, but the entity record is editable…
+    expect(await screen.findByRole("button", { name: "Edit entry" })).toBeInTheDocument();
+    // …and the authored page can be written beside the imported evidence.
+    expect(screen.getByRole("button", { name: "Write description for Bastok" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Edit entry" }));
+    expect(await screen.findByRole("article", { name: "Identity profile editor" })).toBeInTheDocument();
+  });
+  it("closes a clean composer on entry switch and blocks the switch while a draft is dirty (ADR-0016)", async () => {
+    const ruh = { entry_id: "e5000000-0000-0000-0000-000000000001", canonical_name: "Ruh", entity_kind: "location" as const, aliases: [], misspellings: [], tags: [], members: [], current_claim_count: 1, source_count: 0 };
+    const bastok = { entry_id: "e5000000-0000-0000-0000-000000000002", canonical_name: "Bastok", entity_kind: "location" as const, aliases: [], misspellings: [], tags: [], members: [], current_claim_count: 1, source_count: 0 };
+    const getLibraryEntry = vi.fn((id: string) => Promise.resolve(
+      id === ruh.entry_id
+        ? { ...ruh, claims: [], claim_history: [], sources: [] }
+        : { ...bastok, claims: [], claim_history: [], sources: [] }));
+    render(<App campaignClient={makeClient({
+      listLibraryEntries: vi.fn().mockResolvedValue([ruh, bastok]),
+      getLibraryEntry,
+      listSourceDocuments: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 500, offset: 0 }),
+    })} jobPlatform={makeQuietJobs()} />);
+
+    // Clean composer: switching entries closes it without asking.
+    fireEvent.click(await screen.findByRole("button", { name: "Ruh" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Write description for Ruh" }));
+    fireEvent.change(await screen.findByLabelText("Entity description"), { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "Bastok" }));
+    await waitFor(() => expect(screen.queryByLabelText("Entity description")).toBeNull());
+
+    // Dirty composer: the switch is blocked until the draft is resolved.
+    fireEvent.click(screen.getByRole("button", { name: "Ruh" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Write description for Ruh" }));
+    fireEvent.change(await screen.findByLabelText("Entity description"), { target: { value: "A quiet presence." } });
+    fireEvent.click(screen.getByRole("button", { name: "Bastok" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(/description draft/);
+    expect(screen.getByLabelText("Entity description")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Discard changes" }));
+    await waitFor(() => expect(screen.queryByLabelText("Entity description")).toBeNull());
+    expect(await screen.findByRole("heading", { name: "Bastok" })).toBeInTheDocument();
+  });
+  it("sets life status from the character editor dropdown for continued backfill", async () => {
+    const npc = {
+      entry_id: "a1000000-0000-0000-0000-000000000010", canonical_name: "Goodman",
+      entity_kind: "npc" as const, aliases: [], misspellings: [], tags: [],
+      members: [], current_claim_count: 3, source_count: 1,
+    };
+    const profile = { entity_id: npc.entry_id, version: 1, canonical_name: "Goodman",
+      status: "active", base_location: null, aliases: [], summary: "",
+      life_status: null, life_status_since: null, life_status_claim_id: null };
+    const getEntityProfile = vi.fn().mockResolvedValue(profile);
+    const updateEntityProfile = vi.fn().mockResolvedValue({ receipt_id: "r1000000-0000-0000-0000-000000000011", entity_id: npc.entry_id, version: 2, idempotent_replay: false });
+    render(<App campaignClient={makeClient({
+      listLibraryEntries: vi.fn().mockResolvedValue([npc]),
+      getLibraryEntry: vi.fn().mockResolvedValue({ ...npc, claims: [], claim_history: [], sources: [] }),
+      getEntityProfile, updateEntityProfile,
+    })} jobPlatform={makeQuietJobs()} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Goodman" }));
+    await waitFor(() => expect(getEntityProfile).toHaveBeenCalledWith(npc.entry_id));
+    fireEvent.click(screen.getByRole("button", { name: "Edit NPC page" }));
+    // Choose resurrected and give the since date; save carries the audited write.
+    fireEvent.change(screen.getByLabelText("Identity life status"), { target: { value: "resurrected" } });
+    fireEvent.change(screen.getByLabelText("Life status since"), { target: { value: "505-11-11" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save identity profile" }));
+    await waitFor(() => expect(updateEntityProfile).toHaveBeenCalledWith(
+      npc.entry_id, expect.objectContaining({ life_status: "resurrected",
+        life_status_since: { calendar_id: "gregorian-ce", year: 505, month: 11, day: 11 } })));
+    expect(await screen.findByText(/Saved with receipt r1000000/)).toBeInTheDocument();
+  });
+
+  it("renders the faction roster as structured template blocks", async () => {
+    const faction = {
+      entry_id: "b1000000-0000-0000-0000-000000000030", canonical_name: "Inquisitors",
+      entity_kind: "faction" as const, aliases: [], misspellings: [], tags: [],
+      members: [
+        { member_id: "b1000000-0000-0000-0000-000000000031", name: "Eustice", role_title: "Inquisitor", is_leadership: false },
+        { member_id: "b1000000-0000-0000-0000-000000000032", name: "Romulus", role_title: "Grand Inquisitor", is_leadership: true },
+      ], related: [], current_claim_count: 2, source_count: 0,
+    };
+    const getEntityProfile = vi.fn().mockResolvedValue(null);
+    render(<App campaignClient={makeClient({
+      listLibraryEntries: vi.fn().mockResolvedValue([faction]),
+      getLibraryEntry: vi.fn().mockResolvedValue({ ...faction, roles: [], claims: [], claim_history: [], sources: [] }),
+      getEntityProfile,
+    })} jobPlatform={makeQuietJobs()} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Inquisitors" }));
+    await waitFor(() => expect(getEntityProfile).toHaveBeenCalledWith(faction.entry_id));
+    const rosterSection = await screen.findByLabelText("Faction roster");
+    expect(rosterSection).toHaveTextContent("Eustice");
+    expect(rosterSection).toHaveTextContent("Romulus");
+    expect(rosterSection).toHaveTextContent("Grand Inquisitor ★");
+    expect(screen.getByText(/★ unique leadership seat/)).toBeInTheDocument();
+    expect(screen.getByText(/Records — claims and sources/)).toBeInTheDocument();
+  });
+
+  it("sets life status on a sheet-backed npc through the character editor", async () => {
+    const npc = {
+      entry_id: "a1000000-0000-0000-0000-000000000020", canonical_name: "Romulus",
+      entity_kind: "npc" as const, aliases: [], misspellings: [], tags: [],
+      members: [], current_claim_count: 5, source_count: 1,
+    };
+    const sheet = "---\ntype: npc\nname: Romulus\nstatus: active\n---\n\n# Romulus\n\n## Background\n\nPatience and knives.";
+    const entityProfile = { entity_id: npc.entry_id, version: 1, canonical_name: "Romulus",
+      status: "active", base_location: null, aliases: [], summary: "",
+      life_status: null, life_status_since: null, life_status_claim_id: null };
+    const getEntityProfile = vi.fn().mockResolvedValue(entityProfile);
+    const setLifeStatus = vi.fn().mockResolvedValue({ receipt_id: "r2000000-0000-0000-0000-000000000021", version: 2, idempotent_replay: false });
+    render(<App campaignClient={makeClient({
+      listLibraryEntries: vi.fn().mockResolvedValue([npc]),
+      getLibraryEntry: vi.fn().mockResolvedValue({ ...npc, claims: [], claim_history: [],
+        sources: [{ document_id: "d2000000-0000-0000-0000-000000000022", path: "npcs/romulus.md" }] }),
+      getSourceDocument: vi.fn().mockResolvedValue({ document_id: "d2000000-0000-0000-0000-000000000022",
+        source_revision_id: "s2000000-0000-0000-0000-000000000023", path: "npcs/romulus.md",
+        content: sheet, canonical_claims: [], claim_history: [] }),
+      getPCProfile: vi.fn().mockResolvedValue({ document_id: "d2000000-0000-0000-0000-000000000022",
+        source_revision_id: "s2000000-0000-0000-0000-000000000023", version: 1, canonical_name: "Romulus",
+        status: "active", aliases: [], background: "" }),
+      getEntityProfile, setLifeStatus,
+    })} jobPlatform={makeQuietJobs()} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Romulus" }));
+    // The sheet-backed hero shows Life status once the profile loads.
+    await waitFor(() => expect(getEntityProfile).toHaveBeenCalledWith(npc.entry_id));
+    fireEvent.click(screen.getByRole("button", { name: "Edit NPC page" }));
+    fireEvent.change(screen.getByLabelText("NPC life status"), { target: { value: "undead" } });
+    fireEvent.change(screen.getByLabelText("NPC life status since"), { target: { value: "505-11-11" } });
+    await waitFor(() => expect(setLifeStatus).toHaveBeenCalledWith(
+      npc.entry_id, "undead", { year: 505, month: 11, day: 11 }, null, expect.stringMatching(/^life-status:/)));
+  });
+
+  it("confirms a life-status proposal and surfaces seats held by the dead", async () => {
+    const proposals = [
+      { entity_id: "a1000000-0000-0000-0000-000000000001", entity_name: "Martin Faeroth",
+        death_claim_id: "c1000000-0000-0000-0000-000000000002",
+        death_assertion: "On 505-11-05, Martin Faeroth died; the party reached Vael'ka'noth's chamber.",
+        death_date: "505-11-05", current_status: null },
+    ];
+    const getLifeStatusProposals = vi.fn().mockResolvedValueOnce(proposals).mockResolvedValue([]);
+    const setLifeStatus = vi.fn().mockResolvedValue({ receipt_id: "r1000000-0000-0000-0000-000000000003", version: 2, idempotent_replay: false });
+    const getDeadSeats = vi.fn().mockResolvedValue([
+      { member_name: "Martin Faeroth", faction_name: "Carpet Rollers", role_title: null,
+        is_leadership: false, life_status_since: "505-11-05",
+        member_id: "a1000000-0000-0000-0000-000000000001", faction_id: "f1000000-0000-0000-0000-000000000004" },
+    ]);
+    render(<App campaignClient={makeClient({ getLifeStatusProposals, setLifeStatus, getDeadSeats })} jobPlatform={makeQuietJobs()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Tools" }));
+    expect(await screen.findByText(/SHOWING 1 DEATH PROPOSAL/)).toBeInTheDocument();
+    expect(screen.getByText(/SEAT HELD BY THE DEAD/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Mark dead" }));
+    await waitFor(() => expect(setLifeStatus).toHaveBeenCalledWith(
+      "a1000000-0000-0000-0000-000000000001", "dead", { year: 505, month: 11, day: 5 },
+      "c1000000-0000-0000-0000-000000000002", expect.stringMatching(/^life-status:/)));
+    expect(await screen.findByText(/Marked Martin Faeroth dead as of 505-11-05/)).toBeInTheDocument();
+    expect(screen.getByText(/Martin Faeroth — member of Carpet Rollers/)).toBeInTheDocument();
+  });
+
+  it("reviews a death-vs-later-claim conflict through the audited path", async () => {
+    const pair = {
+      entity_name: "Martin Faeroth",
+      claim_a_id: "a1000000-0000-0000-0000-000000000001",
+      claim_a_assertion: "Martin Faeroth died; the party reached Vael'ka'noth's chamber.",
+      claim_a_date: "505-11-05",
+      claim_b_id: "b1000000-0000-0000-0000-000000000002",
+      claim_b_assertion: "the party learned that guards had smuggled goods for Martin Faeroth",
+      claim_b_date: "505-11-11", claim_b_authority: "real_play", claim_b_state: "observed",
+    };
+    const getConflictQueue = vi.fn()
+      .mockResolvedValueOnce([pair])
+      .mockResolvedValue([]);
+    const decideConflict = vi.fn().mockResolvedValue({
+      decision_id: "c1000000-0000-0000-0000-000000000003",
+      change_set_id: "c2000000-0000-0000-0000-000000000004", idempotent_replay: false });
+    render(<App campaignClient={makeClient({ getConflictQueue, decideConflict })} jobPlatform={makeQuietJobs()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Tools" }));
+    // The pair renders with both sides and authority shown.
+    expect(await screen.findByText(/death observed 505-11-05/)).toBeInTheDocument();
+    expect(screen.getByText(/smuggled goods for Martin Faeroth/)).toBeInTheDocument();
+    expect(screen.getByText(/SHOWING 1 CONFLICT/)).toBeInTheDocument();
+    // Retire the later claim through the audited path.
+    fireEvent.click(screen.getByRole("button", { name: "Retire later claim" }));
+    await waitFor(() => expect(decideConflict).toHaveBeenCalledWith(
+      "a1000000-0000-0000-0000-000000000001", "b1000000-0000-0000-0000-000000000002",
+      "supersede", "Retired: contradicts the observed death of Martin Faeroth on 505-11-05"));
+    expect(await screen.findByText(/death of Martin Faeroth stands/)).toBeInTheDocument();
+    expect(await screen.findByText(/No detected conflicts/)).toBeInTheDocument();
+  });
+
+  it("runs the session dating walk with provenance inheritance", async () => {
+    const walk = [
+      { document_id: "d1000000-0000-0000-0000-000000000001", path: "sessions/notes/2025 03 01.md", title: "2025 03 01", session_date: "2025-03-01", year: 505, month: 2, day: 28, undated_claims: 0, dated_by: "dm" as const },
+      { document_id: "d1000000-0000-0000-0000-000000000002", path: "sessions/notes/2025 07 19.md", title: "2025 07 19", session_date: "2025-07-19", year: null, month: null, day: null, undated_claims: 4, dated_by: null },
+    ];
+    const getSessionDatingWalk = vi.fn()
+      .mockResolvedValueOnce(walk)
+      .mockResolvedValue([{ ...walk[1], year: 505, month: 6, day: 10, undated_claims: 0, dated_by: "dm" as const }]);
+    const setSessionDate = vi.fn().mockResolvedValue({ claims_stamped: 4, claims_evidenced: 4 });
+    const getUndatedClaims = vi.fn().mockResolvedValue([
+      { claim_id: "c1000000-0000-0000-0000-000000000001", assertion: "Romulus rules from Castle Fleurite.", entities: ["Romulus"], conflict_relevant: true },
+    ]);
+    const inheritClaimDates = vi.fn().mockResolvedValue({ overlay_dated_documents: 1, frontmatter_dated_documents: 1, claims_stamped: 0 });
+    render(<App campaignClient={makeClient({
+      getSessionDatingWalk, setSessionDate, getUndatedClaims, inheritClaimDates,
+    })} jobPlatform={makeQuietJobs()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Tools" }));
+    // Progress line and the anchored next session render.
+    expect(await screen.findByText(/SHOWING 1 OF 2 SESSIONS DATED/)).toBeInTheDocument();
+    expect(screen.getByText(/after 505-2-28/)).toBeInTheDocument();
+    expect(screen.getByText(/4 claims waiting/)).toBeInTheDocument();
+    // Dating the next session stamps its claims through provenance.
+    fireEvent.change(screen.getByLabelText("Campaign date for 2025 07 19"), { target: { value: "505-6-10" } });
+    fireEvent.click(screen.getByRole("button", { name: "Date" }));
+    await waitFor(() => expect(setSessionDate).toHaveBeenCalledWith(
+      "d1000000-0000-0000-0000-000000000002", 505, 6, 10, "reconstructed"));
+    expect(await screen.findByText(/Dated 2025 07 19 to 505-6-10 · 4 claims stamped/)).toBeInTheDocument();
+    // Residue queue is conflict-ranked and visible.
+    expect(screen.getByText(/Romulus rules from Castle Fleurite/)).toBeInTheDocument();
+    expect(screen.getByText("collision risk")).toBeInTheDocument();
+  });
+
+  it("opens settings from the DM chip and controls toasts, log, and nav", async () => {
+    render(<App campaignClient={makeClient({})} jobPlatform={makeQuietJobs()} />);
+    // The DM chip opens the settings page.
+    fireEvent.click(screen.getByRole("button", { name: "Open settings" }));
+    expect(await screen.findByRole("heading", { name: "Settings" })).toBeInTheDocument();
+    // Nav shows both hideable pages before the toggle.
+    expect(screen.getByRole("button", { name: "Migration" })).toBeInTheDocument();
+    // Turn off toasts and hide Migration; both apply immediately.
+    fireEvent.click(screen.getByRole("checkbox", { name: /Show toasts/ }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /Show Migration/ }));
+    expect(screen.queryByRole("button", { name: "Migration" })).not.toBeInTheDocument();
+    // Errors-only log toggle reflects in the count line after opening the Log.
+    fireEvent.click(screen.getByRole("checkbox", { name: /Errors only/ }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Log" })[0]);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Tools" })).toBeInTheDocument());
+  });
+
+  it("edits AI prompts from Settings with receipted overrides", async () => {
+    const setAIPrompt = vi.fn().mockResolvedValue({
+      receipt_id: "95000000-0000-0000-0000-000000000001", purpose: "prose",
+      action: "set", version_label: "prose/local-1", changed_at: "2026-09-18T12:00:00Z",
+    });
+    const getAIPrompts = vi.fn()
+      .mockResolvedValueOnce([
+        { purpose: "extraction", prompt_text: "Extract grounded claims.", version_label: "extraction/default", overridden: false, updated_at: null },
+        { purpose: "prose", prompt_text: "Write with voice. Respond as JSON: {\"draft\": \"...\"}", version_label: "prose/default", overridden: false, updated_at: null },
+      ])
+      .mockResolvedValue([
+        { purpose: "extraction", prompt_text: "Extract grounded claims.", version_label: "extraction/default", overridden: false, updated_at: null },
+        { purpose: "prose", prompt_text: "Tighter rules. Respond as JSON: {\"draft\": \"...\"}", version_label: "prose/local-1", overridden: true, updated_at: "2026-09-18T12:00:00Z" },
+      ]);
+    render(<App campaignClient={makeClient({ getAIPrompts, setAIPrompt })} jobPlatform={makeQuietJobs()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Open settings" }));
+    const proseBox = await screen.findByLabelText("Prose writing prompt text");
+    expect((proseBox as HTMLTextAreaElement).value).toMatch(/Write with voice/);
+    fireEvent.change(proseBox, { target: { value: "Tighter rules. Respond as JSON: {\"draft\": \"...\"}" } });
+    fireEvent.click(screen.getAllByRole("button", { name: "Save override" }).find((button) => !((button as HTMLButtonElement).disabled))!);
+    await waitFor(() => expect(setAIPrompt).toHaveBeenCalledWith("prose", "Tighter rules. Respond as JSON: {\"draft\": \"...\"}"));
+    expect(await screen.findByText(/Override active · prose\/local-1/)).toBeInTheDocument();
+    expect(await screen.findByText(/prompt saved — prose\/local-1/)).toBeInTheDocument();
+  });
+  it("promotes Dossier cards on character pages too (sheet-hood parity)", async () => {
+    const npc = {
+      entry_id: "ec000000-0000-0000-0000-000000000001", canonical_name: "Aris Placidia",
+      entity_kind: "npc" as const, aliases: [], misspellings: [], tags: [],
+      members: [], current_claim_count: 1, source_count: 1,
+    };
+    const claims = [
+      { claim_id: "cc000000-0000-0000-0000-000000000001", assertion_text: "Aris carries a locket.", state: "observed", authority: "real_play", visibility: "dm_only", conditional: false, recorded_at: "2026-01-01T00:00:00Z", projection: "real_play" as const, sources: [] },
+    ];
+    const getEntityDossier = vi.fn()
+      .mockResolvedValueOnce({ entity_id: npc.entry_id, promoted_claim_ids: [] })
+      .mockResolvedValue({ entity_id: npc.entry_id, promoted_claim_ids: ["cc000000-0000-0000-0000-000000000001"] });
+    const promoteToDossier = vi.fn().mockResolvedValue({
+      receipt_id: "98000000-0000-0000-0000-000000000001", entity_id: npc.entry_id,
+      claim_id: "cc000000-0000-0000-0000-000000000001", action: "promote", decided_at: "2026-09-19T13:00:00Z",
+    });
+    render(<App campaignClient={makeClient({
+      listLibraryEntries: vi.fn().mockResolvedValue([npc]),
+      getLibraryEntry: vi.fn().mockResolvedValue({ ...npc, claims, claim_history: [], sources: [{ document_id: "dc000000-0000-0000-0000-000000000002", path: "npcs/aris-placidia.md" }] }),
+      getSourceDocument: vi.fn().mockResolvedValue({
+        document_id: "dc000000-0000-0000-0000-000000000002", source_revision_id: "rc000000-0000-0000-0000-000000000003",
+        path: "npcs/aris-placidia.md",
+        content: "---\ntype: npc\nname: Aris Placidia\n\n## Background\n\nA quiet exile.", canonical_claims: [], claim_history: [],
+      }),
+      getPCProfile: vi.fn().mockResolvedValue(null),
+      getEntityDossier, promoteToDossier,
+    })} jobPlatform={makeQuietJobs()} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Aris Placidia" }));
+    // The character page's Records hood offers the same promote affordance.
+    fireEvent.click(await screen.findByRole("button", { name: /Promote to Dossier/ }));
+    await waitFor(() => expect(promoteToDossier).toHaveBeenCalledWith(npc.entry_id, claims[0].claim_id));
+    // The fact becomes an established-style Dossier card on the page.
+    await waitFor(() => expect(screen.getAllByText(/Aris carries a locket/).some((node) => node.closest(".dossier-fact-card") !== null)).toBe(true));
+  });
+  it("promotes claims to Dossier cards and demotes them back (receipted DM curation)", async () => {
+    const entity = {
+      entry_id: "eb000000-0000-0000-0000-000000000001", canonical_name: "Fleurite",
+      entity_kind: "location" as const, aliases: [], misspellings: [], tags: [],
+      members: [], current_claim_count: 2, source_count: 0,
+    };
+    const claims = [
+      { claim_id: "cb000000-0000-0000-0000-000000000001", assertion_text: "Fleurite has a population of about 24,000.", state: "established", authority: "explicit_lore", visibility: "dm_only", conditional: false, recorded_at: "2026-01-01T00:00:00Z", projection: "lore_fact" as const, sources: [] },
+      { claim_id: "cb000000-0000-0000-0000-000000000002", assertion_text: "Fleurite trades in ore.", state: "established", authority: "explicit_lore", visibility: "dm_only", conditional: false, recorded_at: "2026-01-01T00:00:00Z", projection: "lore_fact" as const, sources: [] },
+    ];
+    const getEntityDossier = vi.fn()
+      .mockResolvedValueOnce({ entity_id: entity.entry_id, promoted_claim_ids: [] })
+      .mockResolvedValue({ entity_id: entity.entry_id, promoted_claim_ids: ["cb000000-0000-0000-0000-000000000001"] });
+    const promoteToDossier = vi.fn().mockResolvedValue({
+      receipt_id: "97000000-0000-0000-0000-000000000001", entity_id: entity.entry_id,
+      claim_id: "cb000000-0000-0000-0000-000000000001", action: "promote", decided_at: "2026-09-19T12:00:00Z",
+    });
+    const demoteFromDossier = vi.fn();
+    render(<App campaignClient={makeClient({
+      listLibraryEntries: vi.fn().mockResolvedValue([entity]),
+      getLibraryEntry: vi.fn().mockResolvedValue({ ...entity, claims, claim_history: [], sources: [] }),
+      getEntityProfile: vi.fn().mockResolvedValue({ entity_id: entity.entry_id, version: 1, canonical_name: "Fleurite", status: null, base_location: null, aliases: [], summary: "", parent_location: "Illisan", location_type: "City-state" }),
+      getEntityDossier, promoteToDossier, demoteFromDossier,
+    })} jobPlatform={makeQuietJobs()} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Fleurite" }));
+    // The breadcrumb trail renders for the location (Illisan › Fleurite).
+    expect(await screen.findByText("Illisan", { selector: ".entry-breadcrumb button" })).toBeInTheDocument();
+    // Promote from the Records hood: the claim becomes a Dossier card.
+    fireEvent.click(screen.getAllByRole("button", { name: /Promote to Dossier/ })[0]);
+    await waitFor(() => expect(promoteToDossier).toHaveBeenCalledWith(entity.entry_id, claims[0].claim_id));
+    await waitFor(() => expect(screen.getAllByText(/Fleurite has a population of about 24,000/).some((node) => node.closest(".dossier-fact-card") !== null)).toBe(true));
+    // The promoted claim shows its On page tag inside the hood.
+    expect(document.querySelector(".on-page-tag svg")).not.toBeNull();
+    // Demote from the card removes it (back under the hood only).
+    fireEvent.click(screen.getByRole("button", { name: /Demote from Dossier/ }));
+    // The card is gone; the claim itself stays in the Records hood.
+    await waitFor(() => expect(document.querySelector(".dossier-fact-card")).toBeNull());
+    await waitFor(() => expect(demoteFromDossier).toHaveBeenCalledWith(entity.entry_id, claims[0].claim_id));
+  });
+  it("manages the campaign clock from the topbar chip", async () => {
+    const getCurrentCampaignDate = vi.fn()
+      .mockResolvedValueOnce(null)
+      .mockResolvedValue({ calendar_id: "gregorian-ce", year: 505, month: 11, day: 26 });
+    const getCampaignDateHistory = vi.fn().mockResolvedValue([
+      { calendar_id: "gregorian-ce", year: 505, month: 11, day: 26, reason: "Session end", changed_by: "dm", changed_at: "2026-09-14T10:00:00Z" },
+    ]);
+    const setCurrentCampaignDate = vi.fn().mockResolvedValue({ calendar_id: "gregorian-ce", year: 505, month: 11, day: 26 });
+    render(<App campaignClient={makeClient({
+      getCurrentCampaignDate, getCampaignDateHistory, setCurrentCampaignDate,
+    })} jobPlatform={makeQuietJobs()} />);
+
+    // Chip shows before any date is set; opens the panel.
+    const chip = await screen.findByRole("button", { name: /Set campaign date/ });
+    fireEvent.click(chip);
+    expect(await screen.findByRole("dialog", { name: "Campaign clock" })).toBeInTheDocument();
+    expect(await screen.findByText(/Session captures advance it automatically/)).toBeInTheDocument();
+
+    // Set the date with a reason; the chip reflects it and history renders.
+    fireEvent.change(screen.getByLabelText("Campaign year"), { target: { value: "505" } });
+    fireEvent.change(screen.getByLabelText("Campaign month"), { target: { value: "11" } });
+    fireEvent.change(screen.getByLabelText("Campaign day"), { target: { value: "26" } });
+    fireEvent.change(screen.getByLabelText("Campaign date change reason"), { target: { value: "Session end" } });
+    fireEvent.click(screen.getByRole("button", { name: "Set date" }));
+    await waitFor(() => expect(setCurrentCampaignDate).toHaveBeenCalledWith(
+      { calendar_id: "gregorian-ce", year: 505, month: 11, day: 26 }, "Session end"));
+    expect(await screen.findByText(/505-11-26 CE/)).toBeInTheDocument();
+    expect(screen.getByText(/Session end · /)).toBeInTheDocument();
+    expect(screen.getByText(/Campaign date set to 505-11-26/)).toBeInTheDocument();
+  });
+
+  it("opens the Help page from a term tooltip click", async () => {
+    const faction = {
+      entry_id: "b1000000-0000-0000-0000-0000000000f1", canonical_name: "Inquisitors",
+      entity_kind: "faction" as const, aliases: [], misspellings: [], tags: [],
+      members: [], current_claim_count: 1, source_count: 0,
+    };
+    const getLibraryEntry = vi.fn().mockResolvedValue({ ...faction, roles: [{ name: "Inquisitor", is_leadership: false, holder_names: [] }], claims: [], claim_history: [], sources: [] });
+    const getEntityProfile = vi.fn().mockResolvedValue({
+      entity_id: faction.entry_id, version: 1, canonical_name: "Inquisitors",
+      status: "active", base_location: null, aliases: [], summary: "",
+    });
+    render(<App campaignClient={makeClient({
+      listLibraryEntries: vi.fn().mockResolvedValue([faction]),
+      getLibraryEntry, getEntityProfile,
+    })} jobPlatform={makeQuietJobs()} />);
+
+    // Help is reachable from the nav and renders the vocabulary.
+    fireEvent.click(screen.getByRole("button", { name: "Help" }));
+    expect(await screen.findByRole("heading", { name: "Help — Campaign Vocabulary" })).toBeInTheDocument();
+    expect(screen.getByText(/Everything the system .knows. is Claims/)).toBeInTheDocument();
+
+    // A term tooltip click deep-links to its full entry.
+    fireEvent.click(screen.getByRole("button", { name: "Library" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Inquisitors" }));
+    await waitFor(() => expect(getEntityProfile).toHaveBeenCalledWith(faction.entry_id));
+    fireEvent.click(screen.getByRole("button", { name: "Roles" }));
+    expect(await screen.findByText(/vacant seats are/)).toBeInTheDocument();
+    fireEvent.click(screen.getByText("role", { exact: true }));
+    expect(await screen.findByRole("heading", { name: "Role" })).toBeInTheDocument();
   });
 
   it("shows derived co-mentions as read-only associations, never a removable roster", async () => {
@@ -2320,7 +3330,7 @@ describe("DM Assistant shell", () => {
     fireEvent.change(screen.getByLabelText("Identity status"), { target: { value: "disbanded" } });
     fireEvent.click(screen.getByRole("button", { name: "White Cloaks" }));
     const switchAlerts = await screen.findAllByRole("alert");
-    expect(switchAlerts.some((alert) => alert.textContent?.includes("Unsaved identity profile changes"))).toBe(true);
+    expect(switchAlerts.some((alert) => alert.textContent?.includes("Resolve the open identity profile"))).toBe(true);
     expect(screen.queryByRole("heading", { name: "White Cloaks" })).not.toBeInTheDocument();
     // Saving through the prompt commits, then the switch proceeds.
     fireEvent.click(screen.getByRole("button", { name: "Save profile" }));
@@ -2341,6 +3351,11 @@ describe("DM Assistant shell", () => {
       { document_id: "d2", path: "lore/goodmans-city.md" },
       { document_id: "d3", path: "locations/lore-doc.md" },
     ])?.path).toBe("lore/goodmans-city.md");
+    // The authored description page outranks an imported exact-name page.
+    expect(selectEntrySource({ canonical_name: "Fleurite", entity_kind: "location" }, [
+      { document_id: "d5", path: "entities/fleurite.md" },
+      { document_id: "d6", path: "locations/illisan/fleurite/fleurite.md" },
+    ])?.path).toBe("entities/fleurite.md");
     // Lore writeups may append a generic suffix word to the entity's name.
     expect(selectEntrySource({ canonical_name: "Thanore", entity_kind: "location" }, [
       { document_id: "d4", path: "lore/thanore-history.md" },
@@ -2407,7 +3422,7 @@ describe("DM Assistant shell", () => {
     expect(await screen.findByText("No roles defined yet. Define one above or seat a member from a faction's profile editor.")).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Role faction"), { target: { value: faction.entry_id } });
     fireEvent.change(screen.getByLabelText("New role definition name"), { target: { value: "Grand Inquisitor" } });
-    fireEvent.click(screen.getByLabelText("Leadership ★ (unique seat)"));
+    fireEvent.click(screen.getByLabelText(/unique seat/));
     fireEvent.click(screen.getByRole("button", { name: "Define role" }));
     await waitFor(() => expect(defineFactionRole).toHaveBeenCalledWith(faction.entry_id, "Grand Inquisitor", true));
     expect((await screen.findAllByText(/Defined Grand Inquisitor ★ for Inquisitors/)).length).toBeGreaterThan(0);
@@ -2457,6 +3472,16 @@ describe("DM Assistant shell", () => {
     expect(screen.getByText("Vacant")).toBeInTheDocument();
     expect(screen.getByText("Declared during Identity Review — unlinked")).toBeInTheDocument();
     expect(screen.getByText("Inquisitor")).toBeInTheDocument();
+  });
+
+  it("pre-strips real-world date headers from imported assertions at review", () => {
+    // TKT-0122: the date is provenance; the canonical wording starts clean.
+    expect(cleanImportedAssertion("12/6/25 Coreferra making a plan for 8 giant badgers.")).toBe("Coreferra making a plan for 8 giant badgers.");
+    expect(cleanImportedAssertion("2/14/26 — Bird Room & Demon Encounter\nLocation: Tower")).toBe("Bird Room & Demon Encounter\nLocation: Tower");
+    expect(cleanImportedAssertion("2025-08-23: Want to investigate boat passage.")).toBe("Want to investigate boat passage.");
+    // Campaign-year dates and undated text pass through untouched.
+    expect(cleanImportedAssertion("On 505-11-05, Martin Faeroth died.")).toBe("On 505-11-05, Martin Faeroth died.");
+    expect(cleanImportedAssertion("The council met under a rainless sky.")).toBe("The council met under a rainless sky.");
   });
 
   it("records a misspelling from the target search results", async () => {

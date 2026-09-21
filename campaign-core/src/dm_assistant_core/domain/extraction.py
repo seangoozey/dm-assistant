@@ -333,12 +333,16 @@ class ExtractionHarness:
         *,
         extractor_version: str = "extraction/8",
         max_attempts: int = 2,
+        system_prompt: str = EXTRACTION_SYSTEM_PROMPT,
     ) -> None:
         if max_attempts < 1:
             raise ValueError("max_attempts must be at least 1")
         self._client = client
         self._extractor_version = extractor_version
         self._max_attempts = max_attempts
+        # Receipted overrides (TKT-0126) replace the prompt text only; the
+        # version recorded with runs comes from the effective prompt label.
+        self._system_prompt = system_prompt
 
     @property
     def extractor_version(self) -> str:
@@ -399,7 +403,7 @@ class ExtractionHarness:
         normalized_source = _normalize_whitespace(source_text)
         try:
             content = self._client.quick_complete(
-                system=EXTRACTION_SYSTEM_PROMPT,
+                system=self._system_prompt,
                 user=user_message,
                 response_schema=ExtractionContract.model_json_schema(),
             )

@@ -27,6 +27,46 @@ describe("reviewCampaign backend runnable", () => {
     expect(endpoint.searchParams.get("source")).toBe("sanitized");
   });
 
+  it("maps the campaign clock operations to their exact routes", async () => {
+    const ok = () => new Response(JSON.stringify({ calendar_id: "gregorian-ce", year: 505, month: 11, day: 26 }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+    const request = vi.fn<typeof fetch>().mockImplementation(async () => ok());
+
+    await reviewCampaign({ operation: "get_current_campaign_date" }, "http://campaign-core:8000", request);
+    await reviewCampaign(
+      { operation: "set_current_campaign_date", body: { calendar_id: "gregorian-ce", year: 505, month: 11, day: 26, reason: null } },
+      "http://campaign-core:8000", request);
+    await reviewCampaign({ operation: "get_campaign_date_history", query: { limit: 5 } }, "http://campaign-core:8000", request);
+
+    const [first, second, third] = request.mock.calls as unknown as Array<[URL, RequestInit]>;
+    // Reading the clock must never fall through to the mutating PUT.
+    expect([first[1].method, first[0].pathname]).toEqual(["GET", "/campaign/current-date"]);
+    expect([second[1].method, second[0].pathname]).toEqual(["PUT", "/campaign/current-date"]);
+    expect([third[1].method, third[0].pathname]).toEqual(["GET", "/campaign/current-date/history"]);
+    expect(third[0].searchParams.get("limit")).toBe("5");
+  });
+
+  it("routes prose drafting through Campaign Core as a DM-gated POST", async () => {
+    const request = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify({ draft_text: "Text [1].", cited_keys: ["claim:k1"], model_slug: "m", prompt_version: "prose/1", prompt_tokens: 1, completion_tokens: 1 }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    await reviewCampaign(
+      { operation: "draft_prose", body: { subject: "Fleurite", subject_kind: "location", paragraph_limit: 3, material: [{ key: "claim:k1", kind: "claim", text: "Text." }], idempotency_key: "t" } },
+      "http://campaign-core:8000",
+      request,
+    );
+
+    const [endpoint, init] = request.mock.calls[0] as unknown as [URL, RequestInit];
+    expect([init.method, endpoint.pathname]).toEqual(["POST", "/prose/draft"]);
+    expect(endpoint.searchParams.get("requester_role")).toBe("dm");
+  });
+
   it("posts exact approval coordinates and surfaces Core detail", async () => {
     const body = {
       reviewed_version: 2,

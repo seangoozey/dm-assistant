@@ -61,6 +61,17 @@ class PostgresMarkdownImportRepository:
                 return receipt.model_copy(update={"idempotent_replay": True})
             return self._ingest_new(connection, batch)
 
+    def current_document_path(self, document_id: UUID) -> str | None:
+        """Current normalized path of a document, for revision targeting guards."""
+        with self._database.connection() as connection:
+            row = connection.execute(
+                "SELECT normalized_path FROM source_document_paths "
+                "WHERE source_document_id = %s AND is_current "
+                "ORDER BY last_seen_at DESC, normalized_path LIMIT 1",
+                (document_id,),
+            ).fetchone()
+        return row[0] if row is not None else None
+
     @staticmethod
     def _validate_batch(batch: MarkdownScanBatch) -> None:
         paths = [source.path for source in batch.files]
@@ -630,6 +641,7 @@ def _path_is_admitted(path: PurePosixPath) -> bool:
         and path.parts[0]
         in {
             "encounters",
+            "entities",
             "gm",
             "handouts",
             "locations",

@@ -278,6 +278,7 @@ class SourceDocumentContent(BaseModel):
     capture_mode: str | None = None
     capture_id: UUID | None = None
     mentions: tuple[dict[str, Any], ...] = ()
+    referenced_claims: tuple[str, ...] = ()
     canonical_claims: tuple[SourceDocumentClaim, ...] = ()
     claim_history: tuple[SourceDocumentClaimHistory, ...] = ()
 

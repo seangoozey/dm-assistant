@@ -15,14 +15,16 @@ button, textarea { font: inherit; }
 button { cursor: pointer; }
 button:disabled { cursor: not-allowed; }
 
-.app-shell { min-height: 100vh; background: radial-gradient(circle at 20% 0%, #faf8ef 0, transparent 30%), #f2f0e8; }
-.topbar { height: 76px; padding: 0 clamp(24px, 5vw, 76px); display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; border-bottom: 1px solid #d4d0c2; background: rgba(246,244,235,.92); position: sticky; top: 0; z-index: 10; backdrop-filter: blur(12px); }
+.app-shell { min-height: 100vh; display: flex; flex-direction: column; background: radial-gradient(circle at 20% 0%, #faf8ef 0, transparent 30%), #f2f0e8; }
+.app-shell > main { flex: 1 0 auto; }
+.topbar { height: 76px; padding: 0 clamp(16px, 4vw, 76px); display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 20px; border-bottom: 1px solid #d4d0c2; background: rgba(246,244,235,.92); position: sticky; top: 0; z-index: 10; backdrop-filter: blur(12px); }
 .brand { display: flex; align-items: center; gap: 11px; color: inherit; text-decoration: none; width: max-content; }
 .archive-mark { width: 38px; height: 38px; fill: none; stroke: #82533a; stroke-width: 1.4; }
 .brand span { display: grid; }
 .brand strong { font-family: "Libre Caslon Display", serif; font-size: 20px; font-weight: 400; line-height: 1.05; }
 .brand small { color: #817b6c; font-size: 10px; letter-spacing: .14em; text-transform: uppercase; }
-nav { display: flex; align-items: stretch; height: 76px; gap: 32px; }
+nav { display: flex; align-items: stretch; height: 76px; gap: 32px; min-width: 0; overflow-x: auto; scrollbar-width: none; justify-content: center; }
+nav::-webkit-scrollbar { display: none; }
 nav button { display: flex; align-items: center; position: relative; color: #6f6b60; text-decoration: none; font-size: 13px; font-weight: 600; background: none; border: 0; cursor: pointer; padding: 0; }
 nav button.active { color: #292821; }
 nav button.active::after { content: ""; height: 2px; background: #82533a; position: absolute; left: 0; right: 0; bottom: 0; }
@@ -31,14 +33,15 @@ nav a.active { color: #292821; }
 nav a.active::after { content: ""; height: 2px; background: #82533a; position: absolute; left: 0; right: 0; bottom: 0; }
 nav em { margin-left: 6px; padding: 3px 5px; border-radius: 4px; background: #dfdccf; color: #898376; font: 500 8px "DM Mono", monospace; text-transform: uppercase; }
 .brand { cursor: pointer; background: none; border: 0; padding: 0; font: inherit; }
-.identity { justify-self: end; display: flex; align-items: center; gap: 9px; color: #6f6b60; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
+.topbar-right { justify-self: end; display: flex; align-items: center; gap: 14px; }
+.identity { display: flex; align-items: center; gap: 9px; color: #6f6b60; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; white-space: nowrap; flex-shrink: 0; }
 .identity span { display: grid; place-items: center; width: 31px; height: 31px; background: #2e302b; color: #fff; border-radius: 50%; font-size: 10px; }
 
 main { width: min(1080px, calc(100% - 40px)); margin: 0 auto; }
 main.page-documents { width: calc(100% - 24px); max-width: 1600px; }
 main.page-migration { width: calc(100% - 24px); max-width: 1600px; }
 .hero { padding: 84px 0 42px; text-align: center; }
-.doc-layout { position: relative; display: grid; grid-template-columns: 320px 1fr; gap: 0; height: calc(100vh - 76px - 40px); border: 1px solid #d6d0c3; border-radius: 8px; overflow: hidden; background: #f8f6ef; transition: grid-template-columns .22s ease; }
+.doc-layout { position: relative; display: grid; grid-template-columns: 320px 1fr; gap: 0; height: calc(100vh - 76px - 34px); border: 1px solid #d6d0c3; border-radius: 8px; overflow: hidden; background: #f8f6ef; transition: grid-template-columns .22s ease; }
 .doc-layout.library-collapsed { grid-template-columns: 22px 1fr; }
 .doc-tree-panel { position: relative; border-right: 1px solid #d6d0c3; overflow: auto; background: #eeebe1; }
 .doc-tree-panel.collapsed { overflow: hidden; }
@@ -67,7 +70,7 @@ main.page-migration { width: calc(100% - 24px); max-width: 1600px; }
 .character-content h2 { margin: 0 0 12px; color: #5f4335; font: 600 19px "Libre Caslon Display", serif; }
 .character-content pre { margin: 0; color: #35312b; font: 400 15px/1.65 "Libre Caslon Display", serif; white-space: pre-wrap; word-wrap: break-word; }
 .character-content .empty-section, .section-note { margin: 0; color: #777064; }
-.entry-view > header { display: flex; justify-content: space-between; align-items: center; }
+.entry-view > header { display: flex; justify-content: space-between; align-items: center; gap: 14px; }
 .entry-view > header span { color: #817a6e; text-transform: none; overflow-wrap: anywhere; }
 .entry-hero { padding: 30px 32px 24px; border-bottom: 1px solid #e4ded1; background: linear-gradient(135deg, #f8f0e5, #fffefa 65%); }
 .entry-hero > span { color: #8b5b43; font: 600 9px "DM Mono", monospace; letter-spacing: .12em; text-transform: uppercase; }
@@ -130,13 +133,15 @@ main.page-migration { width: calc(100% - 24px); max-width: 1600px; }
 .entry-claims .claim-history { margin-top: 18px; padding-top: 14px; border-top: 1px solid #d9d1c3; }
 .entry-claims .claim-history > article { padding: 10px 0; border-bottom: 1px solid #e1dbcf; }
 .entry-claims .claim-history p { margin: 0 0 4px; }
-.record-source { margin-top: 12px; padding-top: 10px; border-top: 1px solid #e2ddd2; color: #756e62; }
+/* Provenance expands the parent card's bottom edge: no margin, edge to edge. */
+.record-source { margin: 12px -1rem -.9rem; padding: 10px 1rem; border-top: 1px solid #e2ddd2; border-bottom-left-radius: 6px; border-bottom-right-radius: 6px; background: #f6f3ec; color: #756e62; align-self: stretch; }
 .record-source summary { cursor: pointer; font-size: 11px; font-weight: 700; }
 .record-source code { display: block; margin-top: 7px; font: 10px "DM Mono", monospace; overflow-wrap: anywhere; }
 .record-source pre { max-height: 220px; overflow: auto; white-space: pre-wrap; }
-.full-assertion { margin: 10px 0 14px; border-left: 2px solid #c9b9aa; padding-left: 12px; }
+/* Read-full expands the parent card's bottom edge like provenance. */
+.full-assertion { margin: 10px -1rem -.9rem; padding: 8px 1rem 10px; border-top: 1px solid #e2ddd2; border-bottom-left-radius: 6px; border-bottom-right-radius: 6px; background: #f6f3ec; align-self: stretch; }
 .full-assertion summary { cursor: pointer; color: #82533a; font-size: 10px; font-weight: 700; }
-.full-assertion p { margin: 10px 0 0 !important; white-space: pre-wrap; }
+.full-assertion p { margin: 8px 0 0 !important; white-space: pre-wrap; }
 @media (max-width: 820px) { .entry-sections, .character-dossier > div { grid-template-columns: 1fr; } .entry-section.level-2 { grid-column: span 1; } }
 .pc-editor header { display: flex; align-items: center; justify-content: space-between; gap: 18px; }
 .pc-editor .character-content { display: grid; gap: 22px; }
@@ -407,7 +412,7 @@ main.page-migration { width: calc(100% - 24px); max-width: 1600px; }
 .status-succeeded .progress-track span { background: #667b55; }
 .status-failed .progress-track span { background: #9a4933; }
 .job-status p, .inline-error { margin: 9px 0 0; color: #924a35; font-size: 10px; }
-.page-footer { display: flex; justify-content: space-between; padding: 20px clamp(24px, 5vw, 76px); border-top: 1px solid #d4d0c2; color: #908a7e; font: 9px "DM Mono", monospace; text-transform: uppercase; letter-spacing: .08em; }
+.page-footer { display: flex; justify-content: space-between; padding: 6px clamp(24px, 5vw, 76px); border-top: 1px solid #d4d0c2; color: #908a7e; font: 9px "DM Mono", monospace; text-transform: uppercase; letter-spacing: .08em; }
 
 @media (max-width: 760px) {
   .topbar { grid-template-columns: 1fr auto; padding: 0 20px; }.topbar nav { display: none; }.identity b { display: none; }
@@ -457,7 +462,21 @@ main.page-migration { width: calc(100% - 24px); max-width: 1600px; }
 .proposal-draft-summary span { color: #817a6e; font: 500 8px "DM Mono", monospace; text-transform: uppercase; }
 .proposal-draft-summary b { overflow-wrap: anywhere; color: #35322d; font: 500 11px/1.4 "Manrope", sans-serif; }
 .step-actions { display: flex; justify-content: space-between; gap: 12px; margin-top: 14px; }
-.ai-settings { padding: 28px 4vw; border-bottom: 1px solid #d5d0c4; }.ai-settings-grid { display: grid; grid-template-columns: minmax(260px, .7fr) minmax(0, 1.3fr); gap: 18px; }.ai-settings-grid article { display: grid; gap: 12px; padding: 16px; border: 1px solid #d5d0c4; border-radius: 5px; background: #fffefa; }.ai-settings-grid label { display: grid; gap: 6px; font-weight: 700; }.ai-settings-grid select { padding: 8px; }.ai-settings-grid dl { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin: 0; }.ai-settings-grid dt { color: #817a6e; font-size: 9px; text-transform: uppercase; }.ai-settings-grid dd { margin: 2px 0 0; }.ai-settings-grid pre { max-height: 360px; overflow: auto; white-space: pre-wrap; font-size: 10px; }.ai-settings-grid article > header { display: flex; justify-content: space-between; } @media (max-width: 800px) { .ai-settings-grid { grid-template-columns: 1fr; } }
+.ai-settings { padding: 28px 4vw; border-bottom: 1px solid #d5d0c4; }
+/* TKT-0124: per-purpose AI model panels inside the Settings page. */
+.ai-purpose-panel { display: grid; gap: 12px; padding: 16px; border: 1px solid #d5d0c4; border-radius: 5px; background: #fffefa; }
+.ai-purpose-panel > header { display: grid; gap: 4px; }
+.ai-purpose-panel > header b { font-family: "DM Mono", monospace; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: #82533a; }
+.ai-purpose-panel > header span { font-size: 12px; color: #6b6459; line-height: 1.5; }
+.ai-purpose-panel dl { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin: 0; }
+.ai-purpose-panel dt { color: #817a6e; font-size: 9px; text-transform: uppercase; }
+.ai-purpose-panel dd { margin: 2px 0 0; font-size: 12px; }
+.ai-purpose-panel pre { max-height: 280px; overflow: auto; white-space: pre-wrap; font-size: 10px; }
+.ai-activation-note { color: #8a7d70; font-size: 10px; }
+.ai-purpose-select { display: flex; gap: 10px; align-items: end; }
+.ai-purpose-select label { display: grid; gap: 6px; font-weight: 700; flex: 1; }
+.ai-purpose-select select { padding: 8px; }
+@media (max-width: 700px) { .ai-purpose-select { flex-direction: column; align-items: stretch; } }
 .reconciliation-list { display: grid; gap: .65rem; }
 .reconciliation-list > header { display: flex; justify-content: space-between; }
 .reconciliation-list > button { display: grid; gap: .35rem; width: 100%; text-align: left; }
@@ -475,7 +494,10 @@ main.page-migration { width: calc(100% - 24px); max-width: 1600px; }
 .reconciliation-review textarea { width: 100%; resize: vertical; }
 @media (max-width: 760px) { .claim-comparison { grid-template-columns: 1fr; } }
 .canonical-claim-list { display: grid; gap: .75rem; }
-.canonical-claim-list article { position: relative; min-height: 42px; padding: 1rem 7rem 1rem 1rem; border: 1px solid #d5d0c4; border-radius: 6px; background: #fffefa; box-shadow: 0 2px 8px rgba(52,45,37,.04); }
+/* The action row sits in flow, top-right, on its own line — text can never
+   intersect the icons no matter how many the row holds. */
+.canonical-claim-list article { display: flex; flex-direction: column; min-height: 42px; padding: .7rem 1rem .9rem; border: 1px solid #d5d0c4; border-radius: 6px; background: #fffefa; box-shadow: 0 2px 8px rgba(52,45,37,.04); }
+.canonical-claim-list article > .record-card-actions { position: static; align-self: flex-end; margin: -3px -4px 4px 0; }
 .canonical-claim-list article.hidden-record { opacity: .58; border-style: dashed; }
 .canonical-claim-list article p { margin: 0; white-space: pre-wrap; }
 .canonical-claim-list article footer { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-top: .7rem; }
@@ -823,3 +845,233 @@ main.page-log { width: calc(100% - 24px); max-width: 1600px; }
 .tree-doc-flag { margin-left: 7px; padding: 1px 5px; border-radius: 3px; background: #f0ede4; color: #a49c8e; font: 600 8px "DM Mono", monospace; text-transform: uppercase; letter-spacing: .07em; }
 .tree-doc-flag { display: inline-flex; align-items: center; margin-left: 6px; color: #a49c8e; }
 .tree-doc-flag svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+
+/* TKT-0116 glossary: term tooltips and the Help page. */
+.term { position: relative; cursor: help; border-bottom: 1px dotted #82533a; }
+.term:focus { outline: none; border-bottom-color: #4a443c; }
+.term-tip { display: none; position: absolute; bottom: calc(100% + 7px); left: 0; z-index: 45; width: 290px; padding: 10px 13px; border: 1px solid #cbc5b7; border-radius: 6px; background: #fffefa; color: #4a443c; font-size: 11px; line-height: 1.5; font-weight: 400; text-align: left; box-shadow: 0 2px 10px rgba(74, 68, 60, .14); pointer-events: none; }
+.term-tip b { display: block; color: #82533a; font: 600 9px "DM Mono", monospace; text-transform: uppercase; letter-spacing: .1em; margin-bottom: 4px; }
+.term-tip small { display: block; margin-top: 5px; color: #a49c8e; font: 500 8px "DM Mono", monospace; text-transform: uppercase; letter-spacing: .06em; }
+.term:hover .term-tip, .term:focus .term-tip { display: block; }
+main.page-help { width: calc(100% - 24px); max-width: 1080px; display: grid; gap: 18px; }
+.glossary-group { border: 1px solid #cbc5b7; border-radius: 8px; background: #fffefa; padding: 18px 22px; display: grid; gap: 14px; }
+.glossary-group h3 { margin: 0; color: #84513b; font: 600 10px "DM Mono", monospace; text-transform: uppercase; letter-spacing: .12em; }
+.glossary-entry h4 { margin: 0 0 4px; font-family: "Libre Caslon Text", serif; font-size: 17px; color: #2e2a24; }
+.glossary-entry p { margin: 0; color: #4a443c; font-size: 13px; line-height: 1.55; }
+.glossary-flash { animation: glossary-flash 2.4s ease-out; }
+@keyframes glossary-flash { 0%, 40% { background: #f3e4d5; } 100% { background: transparent; } }
+
+/* TKT-0117 campaign clock chip and panel. */
+.campaign-clock { position: relative; }
+.campaign-clock-chip { display: inline-flex; align-items: center; gap: 8px; border: 1px solid #cbc5b7; border-radius: 6px; background: #fffefa; color: #4a443c; padding: 7px 11px; font-size: 11px; font-weight: 600; white-space: nowrap; flex-shrink: 0; }
+.campaign-clock-chip:hover { background: #f8f5ec; }
+.campaign-clock-kicker { color: #8a7d70; font: 600 8px "DM Mono", monospace; text-transform: uppercase; letter-spacing: .1em; }
+.campaign-clock-panel { position: absolute; top: calc(100% + 8px); right: 0; z-index: 50; width: min(340px, calc(100vw - 32px)); display: grid; gap: 10px; border: 1px solid #cbc5b7; border-radius: 8px; background: #fffefa; padding: 16px 18px; box-shadow: 0 4px 14px rgba(74, 68, 60, .16); }
+.campaign-clock-panel > b { color: #84513b; font: 600 10px "DM Mono", monospace; text-transform: uppercase; letter-spacing: .12em; }
+.campaign-clock-panel label { display: grid; gap: 4px; font: 500 9px "DM Mono", monospace; text-transform: uppercase; letter-spacing: .12em; color: #82533a; }
+.campaign-clock-panel .form-grid { grid-template-columns: 1.4fr 1fr 1fr; }
+.campaign-clock-panel input { border: 1px solid #c8bcac; border-radius: 4px; background: #fffefa; font-size: 12px; padding: 6px 8px; min-width: 0; width: 100%; box-sizing: border-box; }
+.campaign-clock-actions { display: flex; align-items: center; gap: 10px; }
+.campaign-clock-actions .decision-button { margin-left: auto; padding: 7px 12px; font-size: 10px; }
+.campaign-clock-history { display: grid; gap: 4px; border-top: 1px solid #e6e1d5; padding-top: 8px; }
+.campaign-clock-history > span { color: #84513b; font: 600 8px "DM Mono", monospace; text-transform: uppercase; letter-spacing: .1em; }
+.campaign-clock-history small { color: #8a7d70; font-size: 10px; }
+@media (max-width: 1180px) {
+  nav { gap: 20px; }
+}
+@media (max-width: 1060px) {
+  .brand span { display: none; }
+}
+@media (max-width: 940px) {
+  .identity b { display: none; }
+  .topbar-right { gap: 10px; }
+}
+@media (max-width: 820px) {
+  .campaign-clock-kicker { display: none; }
+}
+
+/* TKT-0118 session dating walk. */
+.session-dating { border: 1px solid #cbc5b7; border-radius: 8px; background: #fffefa; padding: 20px 24px; display: grid; gap: 12px; max-width: 1080px; }
+.dating-walk-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; }
+.dating-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 9px 12px; border: 1px solid #e6e1d5; border-radius: 4px; background: #f8f5ec; }
+.dating-when { display: grid; gap: 2px; min-width: 0; }
+.dating-when b { font-size: 13px; color: #2e2a24; }
+.dating-when small { color: #8a7d70; font: 500 9px "DM Mono", monospace; text-transform: uppercase; letter-spacing: .06em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dating-anchor { color: #82533a; }
+.dating-set { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.dating-set input { border: 1px solid #c8bcac; border-radius: 4px; background: #fffefa; font-size: 12px; padding: 6px 8px; width: 96px; }
+.dating-current { font: 600 11px "DM Mono", monospace; color: #65462f; }
+.dating-current small { color: #a49c8e; font-size: 8px; text-transform: uppercase; letter-spacing: .06em; }
+.dating-claims { color: #8a7d70; font: 500 9px "DM Mono", monospace; text-transform: uppercase; }
+.dating-backwards { color: #a04b33; font: 600 9px "DM Mono", monospace; text-transform: uppercase; }
+.residue-queue { border-top: 1px solid #e6e1d5; padding-top: 10px; }
+.residue-queue summary { color: #84513b; font: 600 10px "DM Mono", monospace; text-transform: uppercase; letter-spacing: .12em; cursor: pointer; }
+.residue-queue ul { margin: 8px 0 0; padding: 0; list-style: none; display: grid; gap: 4px; }
+.residue-queue li { padding: 7px 10px; border: 1px solid #e6e1d5; border-radius: 4px; background: #fffefa; font-size: 12px; }
+.residue-relevant { border-color: #d8b5a8; background: #f8ebe5; }
+.residue-queue small { color: #8a7d70; }
+
+/* TKT-0097 conflict review. */
+.conflict-review { border: 1px solid #cbc5b7; border-radius: 8px; background: #fffefa; padding: 20px 24px; display: grid; gap: 12px; max-width: 1080px; }
+.conflict-card { display: grid; gap: 10px; border: 1px solid #d8b5a8; border-radius: 6px; background: #f8ebe5; padding: 14px 16px; }
+.conflict-card h3 { margin: 0; font-family: "Libre Caslon Text", serif; font-size: 17px; color: #2e2a24; }
+.conflict-card h3 small { margin-left: 10px; color: #8a7d70; font: 600 9px "DM Mono", monospace; text-transform: uppercase; letter-spacing: .08em; }
+.conflict-sides { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+@media (max-width: 900px) { .conflict-sides { grid-template-columns: 1fr; } }
+.conflict-side { border: 1px solid #e6e1d5; border-radius: 4px; background: #fffefa; padding: 10px 12px; }
+.conflict-side .log-kind { display: block; margin-bottom: 5px; color: #84513b; font: 600 8px "DM Mono", monospace; text-transform: uppercase; letter-spacing: .1em; }
+.conflict-death { border-left: 3px solid #889c75; }
+.conflict-later { border-left: 3px solid #a04b33; }
+.conflict-side p { margin: 0; font-size: 12px; line-height: 1.5; color: #4a443c; }
+.conflict-actions { display: flex; gap: 10px; justify-content: flex-end; }
+
+/* TKT-0111/0121: description composer + records hood. */
+.description-page-status { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 8px 12px; border: 1px solid #d4d0c2; border-radius: 6px; background: #f8f5ec; }
+.description-page-status.error { border-color: #c0705f; background: #f9ece8; }
+.description-composer .gathered-claims { border: 1px solid #e6e1d5; border-radius: 6px; background: #f8f5ec; padding: 12px 14px; display: grid; gap: 8px; }
+.description-composer .gathered-claims summary { color: #84513b; font: 600 10px "DM Mono", monospace; text-transform: uppercase; letter-spacing: .1em; cursor: pointer; }
+.description-composer .gathered-claims h4 { margin: 6px 0 2px; color: #84513b; font: 600 9px "DM Mono", monospace; text-transform: uppercase; letter-spacing: .1em; }
+.gathered-claim { display: grid; grid-template-columns: auto 1fr; gap: 8px; align-items: start; font-size: 12px; color: #4a443c; line-height: 1.5; }
+.records-hood { border-top: 1px solid #d4d0c2; margin-top: 18px; }
+.records-hood > summary { display: inline-flex; align-items: center; gap: 8px; padding: 10px 28px; color: #8a7d70; font: 600 9px "DM Mono", monospace; text-transform: uppercase; letter-spacing: .1em; cursor: pointer; }
+.records-hood > summary:hover { color: #82533a; }
+.records-hood > summary svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.7; }
+.records-hood[open] > summary { color: #82533a; }
+.records-hood > button { display: inline-flex; align-items: center; gap: 6px; border: 0; background: none; color: #8a7d70; font: 600 9px "DM Mono", monospace; text-transform: uppercase; cursor: pointer; padding: 6px 0; }
+.records-hood > button:disabled { opacity: .5; cursor: default; }
+.records-hood > button svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.7; }
+
+/* Life status field: stack the select and since-date inside one grid cell —
+the date hangs off the dropdown (below), never off the side of the form. */
+.life-status-field { min-width: 0; }
+.life-status-field select, .life-status-field input { width: 100%; box-sizing: border-box; min-width: 0; }
+.life-status-field { display: grid; gap: 5px; min-width: 0; }
+.life-status-field label { display: grid; gap: 5px; color: #817a6e; font: 500 8px "DM Mono", monospace; text-transform: uppercase; letter-spacing: .08em; }
+.life-status-field select, .life-status-field input { width: 100%; box-sizing: border-box; min-width: 0; }
+
+/* TKT-0114 settings. */
+main.page-settings { width: calc(100% - 24px); max-width: 860px; display: grid; gap: 18px; }
+.settings-panel { border: 1px solid #cbc5b7; border-radius: 8px; background: #fffefa; padding: 18px 22px; display: grid; gap: 12px; }
+.settings-panel h3 { margin: 0; color: #84513b; font: 600 10px "DM Mono", monospace; text-transform: uppercase; letter-spacing: .12em; }
+.setting-row { display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: start; font-size: 12px; color: #4a443c; }
+.setting-row b { display: block; font-size: 13px; color: #2e2a24; }
+.setting-row small { display: block; color: #8a7d70; font-size: 11px; line-height: 1.45; margin-top: 2px; }
+.setting-row input[type="number"] { border: 1px solid #c8bcac; border-radius: 4px; background: #fffefa; font-size: 12px; padding: 6px 8px; width: 72px; justify-self: end; }
+.identity.active { border: 1px solid #82533a; border-radius: 20px; padding: 2px 9px 2px 2px; background: #f3e4d5; }
+
+/* TKT-0121 structured faction roster block. */
+.faction-roster .roster-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 5px; }
+.faction-roster .roster-list li { display: flex; align-items: center; gap: 10px; padding: 6px 10px; border: 1px solid #e6e1d5; border-radius: 4px; background: #f8f5ec; }
+.faction-roster .member-name { font-weight: 600; font-size: 13px; color: #2e2a24; }
+.faction-roster .identity-members-legend { display: block; margin-top: 6px; }
+.roster-associations li { border-style: dashed; background: transparent; }
+
+/* TKT-0120: opt-in drafting row inside the gathered-claims panel. */
+.composer-draft-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 14px 0; }
+/* The AI-action wand: leads every button that triggers a model call. */
+.wand-icon { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; margin-right: 6px; vertical-align: -1px; }
+/* Gathered relations panel: grey until the graph layer is enabled, definitively
+   outlined when it is. Base rows stay selectable either way. */
+.relations-panel { background: #efede6; }
+.relations-panel.graph-enabled { background: #fffefa; border: 1.5px solid #82533a; }
+.relations-panel .graph-toggle { align-items: baseline; gap: 8px; border-bottom: 1px solid #e0dbcd; padding-bottom: 8px; }
+.relations-panel .graph-rows { display: grid; gap: 6px; margin-top: 8px; }
+.relations-panel .graph-rows-off { opacity: .45; pointer-events: none; }
+/* Consistent vertical rhythm across the composer's stacked elements. */
+.description-composer .character-content { display: grid; gap: 14px; align-content: start; }
+.description-composer .character-content > * { margin: 0; }
+
+/* TKT-0127: the drafts pen shares the floating table-notes pattern. */
+.drafts-launcher.has-ready { border-color: #82533a; color: #82533a; }
+.drafts-pen .table-note-actions { display: flex; gap: 8px; }
+
+/* TKT-0128: the tray ARRAY — launchers in a horizontal row; open panels tile
+   horizontally from the anchor without overlapping; any number may be open. */
+.tray-dock { position: fixed; z-index: 9; bottom: 20px; display: flex; flex-direction: column; gap: 10px; max-width: calc(100vw - 40px); }
+.tray-dock.right { right: 20px; align-items: flex-end; }
+.tray-dock.left { left: 20px; align-items: flex-start; }
+.tray-dock.centered { left: 50%; transform: translateX(-50%); align-items: center; }
+.tray-launchers { display: flex; flex-direction: row; gap: 10px; }
+.tray-dock .table-notes-launcher { position: static; }
+.tray-panels { display: flex; flex-direction: row; gap: 10px; align-items: flex-end; }
+.tray-dock.right .tray-panels { justify-content: flex-end; }
+.tray-dock.left .tray-panels { justify-content: flex-start; }
+.tray-dock.centered .tray-panels { justify-content: center; }
+.tray-dock .table-notes-panel { position: static; width: min(430px, 42vw); max-height: min(660px, calc(100vh - 140px)); }
+.tray-dock .ask-tray { width: min(680px, 72vw); }
+.tray-dock .ask-tray { padding: 14px 16px; overflow-y: auto; }
+.tray-dock .ask-tray .ask-box { margin: 0; padding: 0; border: 0; background: none; }
+.topbar-search { display: grid; width: 34px; height: 34px; place-items: center; border: 1px solid #cbc5b7; border-radius: 17px; background: #fffefa; color: #624535; cursor: pointer; }
+.topbar-search svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
+.topbar-search:hover { color: #82533a; border-color: #82533a; }
+
+/* TKT-0121: the Dossier reuses the established character-dossier card style
+   (Aris Placidia's page) verbatim — only the demote action is additive. */
+.character-dossier > div > section.dossier-fact-card { position: relative; padding-right: 2.4rem; }
+.dossier-fact-card .record-card-actions { position: absolute; top: 6px; right: 6px; }
+.on-page-tag { display: inline-flex; align-items: center; gap: 4px; color: #82533a; font: 600 8px "DM Mono", monospace; text-transform: uppercase; letter-spacing: .06em; padding: 5px 6px; }
+.on-page-tag svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.7; }
+.entry-breadcrumb { display: flex; align-items: center; justify-content: flex-start; gap: 8px; margin: -12px 0 10px; color: #7d776c; font-size: 12px; text-align: left; }
+.entry-breadcrumb button { border: 0; background: none; padding: 0; color: #82533a; font: inherit; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.entry-breadcrumb .breadcrumb-sep { color: #b9b1a3; }
+
+/* Entry sections render as character-dossier cards; level-2 spans the grid. */
+.character-dossier .entry-section-card.level-2 { grid-column: 1 / -1; }
+
+/* TKT-0129: vocabulary chips in Settings. */
+.vocabulary-values { display: flex; flex-wrap: wrap; gap: 8px; }
+.vocabulary-chip { display: inline-flex; align-items: center; gap: 5px; padding: 5px 9px; border: 1px solid #d5c9bb; border-radius: 14px; background: #faf7f0; font-size: 12px; }
+.vocabulary-chip button { padding: 0 2px; border: 0; background: none; color: #a08b7a; cursor: pointer; font-size: 13px; line-height: 1; }
+.vocabulary-chip button:hover { color: #9a4f29; }
+.vocabulary-chip.retired { border-style: dashed; color: #a39a8c; background: transparent; }
+.vocabulary-chip.retired button { color: #82533a; }
+.vocabulary-chip small { color: #a39a8c; font: 600 8px "DM Mono", monospace; text-transform: uppercase; }
+
+/* TKT-0110: link audit findings in Tools. */
+.link-audit-group { margin-top: 14px; }
+.link-audit-group h4 { margin: 0 0 8px; color: #5f4335; font: 600 12px "Manrope", sans-serif; }
+.link-audit-finding { padding: 10px 14px; border: 1px solid #d5cfc2; border-radius: 6px; background: #fffefa; margin-bottom: 6px; display: grid; gap: 4px; }
+.link-audit-finding > div { display: flex; align-items: center; gap: 8px; }
+.link-audit-finding b { color: #352e27; }
+.link-audit-finding p { margin: 0; font-size: 12px; line-height: 1.5; color: #4a443c; }
+
+/* TKT-0099: Lore creation page. */
+.page-lore { width: calc(100% - 24px); max-width: 1600px; margin: 0 auto; }
+.lore-queue-form { display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px; align-items: end; }
+.lore-queue-form label { display: grid; gap: 4px; font-weight: 700; font-size: 11px; }
+.lore-queue-form input { padding: 9px 12px; border: 1px solid #c9c3b5; border-radius: 4px; background: #fffefa; font: 12px "Manrope", sans-serif; }
+.lore-queue-item { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 14px; border: 1px solid #d5cfc2; border-radius: 6px; background: #fffefa; margin-bottom: 6px; }
+.lore-queue-item.selected { border-color: #82533a; background: #faf5ec; }
+.lore-queue-item > div:first-child { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.lore-queue-item b { color: #352e27; }
+.lore-queue-item small { color: #8a7d70; }
+.lore-item-actions { display: flex; gap: 6px; }
+.lore-search-row { display: flex; gap: 10px; align-items: flex-end; margin: 16px 0 6px; }
+.lore-search-row label { display: grid; gap: 4px; font-weight: 700; font-size: 11px; flex: 1; }
+.lore-search-row input { padding: 9px 12px; border: 1px solid #c9c3b5; border-radius: 4px; background: #fffefa; font: 12px Manrope, sans-serif; min-width: 0; }
+.lore-search-row button { flex-shrink: 0; height: 37px; }
+.lore-existing-matches { padding: 10px 14px; border: 1px solid #d5cfc2; border-radius: 6px; background: #faf7f0; margin: 10px 0; display: grid; gap: 6px; }
+.lore-match-row { display: flex; align-items: center; gap: 8px; }
+.lore-resolved-history { margin-top: 14px; }
+.page-lore .lore-evidence-item { display: grid; gap: 4px; padding: 10px 12px; border: 1px solid #ddd6c8; border-radius: 6px; background: #fffefa; margin-bottom: 6px; }
+.page-lore .lore-evidence-header { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.page-lore .lore-evidence-header label { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 700; color: #6b6459; }
+.page-lore .lore-evidence-text { font-size: 12px; line-height: 1.55; color: #39352f; }
+.page-lore .lore-evidence-text.clamped { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; cursor: pointer; }
+.page-lore .lore-evidence-source { font: 10px "DM Mono", monospace; color: #8a7d70; overflow-wrap: anywhere; }
+.page-lore .lore-considered-section { margin-top: 10px; padding: 10px; border: 1px dashed #cbc5b7; border-radius: 6px; background: #f8f5ec; }
+.page-lore .step-actions { margin: 18px 0 10px; }
+
+.role-chip.graph-chip { border-style: dashed; color: #82533a; background: #f8f5ec; }
+
+/* Moved-assertion tiles on the old owner's page. */
+.moved-assertion-tile { border-style: dashed; opacity: .8; }
+.moved-assertion-tile h3 { font-size: 13px; color: #5f4335; }
+.moved-assertion-tile .text-button { color: #82533a; font-weight: 700; }
+.lore-link-annotation { color: #a08b7a; font-size: 9px; }
+
+/* TKT-0099: AI direction field in the Lore workspace. */
+.lore-direction-field { margin: 14px 0; }
+.lore-direction-field textarea { display: block; width: 100%; min-height: 64px; box-sizing: border-box; resize: vertical; border: 1px solid #c9c3b5; border-radius: 5px; background: #fffefa; color: #35312b; padding: 12px 14px; font: 400 14px/1.5 "Libre Caslon Display", serif; }
+
+.identity-section-label { display: block; margin: 10px 0 6px; color: #84513b; font: 600 9px "DM Mono", monospace; text-transform: uppercase; letter-spacing: .12em; }

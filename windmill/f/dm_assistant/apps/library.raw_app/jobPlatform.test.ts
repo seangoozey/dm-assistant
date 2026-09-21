@@ -6,9 +6,11 @@ describe("WindmillJobPlatform", () => {
   it("contains Windmill calls behind one portable interface", async () => {
     const healthJobId = "019fe949-209f-0980-4374-96fed322a598";
     const extractionJobId = "019fe949-209f-0980-4374-96fed322a599";
+    const proseJobId = "019fe949-209f-0980-4374-96fed322a59a";
     const backend: WindmillBackend = {
       start_health_check: vi.fn().mockResolvedValue(healthJobId),
       start_candidate_extraction: vi.fn().mockResolvedValue(extractionJobId),
+      start_prose_draft: vi.fn().mockResolvedValue(proseJobId),
       cancel_job: vi.fn().mockResolvedValue("cancelled"),
       inspect_job: vi.fn().mockResolvedValue({
         state: "succeeded",
@@ -27,6 +29,11 @@ describe("WindmillJobPlatform", () => {
       jobId: extractionJobId,
       state: "queued",
     });
+    expect(await platform.startProseDraft({ subject: "Fleurite" })).toMatchObject({
+      jobId: proseJobId,
+      state: "queued",
+    });
+    expect(backend.start_prose_draft).toHaveBeenCalledWith({ command: { subject: "Fleurite" } });
     expect(await platform.inspect(healthJobId)).toMatchObject({
       jobId: healthJobId,
       state: "succeeded",
@@ -41,11 +48,15 @@ describe("WindmillJobPlatform", () => {
     const platform = new WindmillJobPlatform({
       start_health_check: vi.fn().mockResolvedValue("Failed to deserialize query string"),
       start_candidate_extraction: vi.fn().mockResolvedValue("Failed to deserialize query string"),
+      start_prose_draft: vi.fn().mockResolvedValue("Failed to deserialize query string"),
       cancel_job: vi.fn(),
       inspect_job: vi.fn(),
     });
 
     await expect(platform.startCandidateExtraction(["candidate-1"])).rejects.toThrow(
+      "Windmill did not return a valid job ID",
+    );
+    await expect(platform.startProseDraft({})).rejects.toThrow(
       "Windmill did not return a valid job ID",
     );
   });

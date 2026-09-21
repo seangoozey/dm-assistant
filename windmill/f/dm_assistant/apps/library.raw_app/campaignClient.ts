@@ -245,6 +245,7 @@ export interface SourceDocumentContent {
   capture_mode?: string;
   capture_id?: string;
   mentions?: DirectInputMention[];
+  referenced_claims?: string[];
   canonical_claims?: SourceDocumentClaim[];
   claim_history?: SourceDocumentClaimHistory[];
 }
@@ -261,11 +262,63 @@ export interface IdentityGapAliasCandidate { entity_id: string; canonical_name: 
 export interface IdentityGap { surface: string; normalized_surface: string; claims_with_phrase: number; total_mentions: number; retrieval_demand: number; role_hint: boolean; suggested_canonical_name?: string | null; suggested_kind?: string | null; related_surfaces: string[]; evidence: IdentityGapEvidence[]; alias_candidates: IdentityGapAliasCandidate[]; }
 export interface IdentityGapQueue { gaps: IdentityGap[]; total_candidates: number; }
 export interface IdentityDecisionReceipt { decision_id: string; kind: string; surface: string; entity_id?: string; linked_claims?: number; idempotent_replay: boolean; }
-export interface EntityProfile { entity_id: string; version: number; canonical_name: string; status?: string | null; location_type?: string | null; parent_location?: string | null; base_location?: string | null; player?: string | null; race?: string | null; sex?: string | null; aliases: string[]; summary: string; }
+export interface EntityProfile { entity_id: string; version: number; canonical_name: string; status?: string | null; location_type?: string | null; parent_location?: string | null; base_location?: string | null; player?: string | null; race?: string | null; sex?: string | null; aliases: string[]; summary: string; life_status?: "alive" | "dead" | "undead" | "resurrected" | "immortal" | "unknown" | null; life_status_since?: { calendar_id: string; year: number; month: number; day: number } | null; life_status_claim_id?: string | null; }
 export interface EntityProfileAliasSync { entity_name: string; applied: string[]; removed: string[]; skipped_conflicting: string[]; }
 export interface EntityProfileReceipt { receipt_id: string; entity_id: string; version: number; idempotent_replay: boolean; alias_sync?: EntityProfileAliasSync | null; }
 export interface EntityKindProposalVersion { proposal_id: string; workflow_session_id: string; status: string; version_id: string; version_number: number; content_hash: string; created_at: string; item: { item_id: string; target_id: string; before: Record<string, unknown>; after: Record<string, unknown> }; }
 export interface CampaignDate { calendar_id: string; year: number; month: number; day: number; }
+export interface SessionDatingEntry {
+  document_id: string; path: string; title: string; session_date?: string | null;
+  year?: number | null; month?: number | null; day?: number | null;
+  undated_claims: number; dated_by?: "dm" | "capture" | null;
+}
+export interface UndatedClaimEntry {
+  claim_id: string; assertion: string; entities: string[]; conflict_relevant: boolean;
+}
+export interface SessionDateResult { claims_stamped: number; claims_evidenced: number; }
+export interface InheritResult { overlay_dated_documents: number; frontmatter_dated_documents: number; claims_stamped: number; }
+export interface ConflictPair {
+  entity_name: string;
+  claim_a_id: string; claim_a_assertion: string; claim_a_date: string;
+  claim_b_id: string; claim_b_assertion: string; claim_b_date: string;
+  claim_b_authority: string; claim_b_state: string;
+}
+export interface ConflictDecisionResult {
+  decision_id: string; change_set_id?: string | null; idempotent_replay: boolean;
+}
+export interface EntityDescriptionReceipt {
+  entity_id: string; document_id: string; revision_id: string; path: string; idempotent_replay: boolean;
+}
+export interface ProseMaterialItem { key: string; kind: string; text: string; state?: string | null; }
+export interface ProseDraftCommand { subject: string; subject_kind: string; paragraph_limit: number; direction?: string | null; material: ProseMaterialItem[]; idempotency_key: string; }
+export interface ProseDraftResult { draft_text: string; cited_keys: string[]; model_slug: string; prompt_version: string; prompt_tokens: number; completion_tokens: number; }
+export interface GraphRelationRow { key: string; text: string; backing: string; }
+export interface EffectivePrompt { purpose: string; prompt_text: string; version_label: string; overridden: boolean; updated_at: string | null; }
+export interface PromptOverrideReceipt { receipt_id: string; purpose: string; action: string; version_label: string; changed_at: string; }
+export interface DossierView { entity_id: string; promoted_claim_ids: string[]; }
+export interface VocabularyValue { vocabulary: string; value: string; retired: boolean; }
+export interface VocabularyChangeReceipt { receipt_id: string; vocabulary: string; action: string; value: string; changed_at: string; }
+export interface ReattributionReceipt { receipt_id: string; claim_id: string; old_entity_id: string; new_entity_id: string; moved_at: string; }
+export interface MovedAssertion { claim_id: string; assertion_text: string; state: string; new_entity_id: string; new_entity_name: string; moved_at: string; reason: string; }
+export interface LinkFinding { kind: string; entity_id: string | null; entity_name: string; entity_kind: string; document_id: string | null; document_path: string | null; detail: string; }
+export interface LinkAuditResult { audited_at: string; findings: LinkFinding[]; }
+export interface DossierDecisionReceipt { receipt_id: string; entity_id: string; claim_id: string; action: string; decided_at: string; }
+export interface LifeStatusProposal {
+  entity_id: string; entity_name: string; death_claim_id: string;
+  death_assertion: string; death_date: string; current_status?: string | null;
+}
+export interface DeadSeat {
+  member_name: string; faction_name: string; role_title?: string | null;
+  is_leadership: boolean; life_status_since: string;
+  member_id: string; faction_id: string;
+}
+export interface LifeStatusReceipt {
+  receipt_id: string; version: number; idempotent_replay: boolean;
+}
+export interface CampaignClockChange {
+  calendar_id: string; year: number; month: number; day: number;
+  reason?: string | null; changed_by: string; changed_at: string;
+}
 export interface DirectInputMention { entity_id: string; display_name: string; start_offset: number; end_offset: number; }
 export interface SessionNoteCaptureInput { session_date: string; in_game_date: CampaignDate; title: string; text: string; visibility: "dm_only" | "party" | "character"; mentions: DirectInputMention[]; idempotency_key: string; capture_id?: string; }
 export interface SessionNoteCaptureReceipt { capture_id: string; source_document_id: string; source_revision_id: string; candidate_id: string; candidate_ids: string[]; idempotent_replay: boolean; }
@@ -416,7 +469,18 @@ export interface CandidateDispositionResult {
 
 export interface CampaignClient {
   getAIConfiguration(): Promise<AIConfigurationSnapshot>;
-  activateAIProfile(profileKey: string): Promise<AIActivationReceipt>;
+  activateAIProfile(profileKey: string, purpose: string): Promise<AIActivationReceipt>;
+  getAIPrompts(): Promise<EffectivePrompt[]>;
+  getEntityDossier(entityId: string): Promise<DossierView>;
+  getTemplateVocabulary(vocabulary: string): Promise<VocabularyValue[]>;
+  getLinkAudit(): Promise<LinkAuditResult>;
+  reattributeClaim(claimId: string, newEntityId: string, reason: string): Promise<ReattributionReceipt>;
+  getMovedAssertions(entityId: string): Promise<MovedAssertion[]>;
+  changeTemplateVocabulary(vocabulary: string, action: "add" | "retire", value: string): Promise<VocabularyChangeReceipt>;
+  promoteToDossier(entityId: string, claimId: string): Promise<DossierDecisionReceipt>;
+  demoteFromDossier(entityId: string, claimId: string): Promise<DossierDecisionReceipt>;
+  setAIPrompt(purpose: string, promptText: string): Promise<PromptOverrideReceipt>;
+  resetAIPrompt(purpose: string): Promise<PromptOverrideReceipt>;
   getTaxonomy(): Promise<TaxonomySnapshot>;
   searchEntities(canonicalName: string): Promise<EntityIdentity[]>;
   listLibraryEntries(): Promise<LibraryEntrySummary[]>;
@@ -438,6 +502,20 @@ export interface CampaignClient {
   closeBrainstorm(sessionId: string, proposalId: string): Promise<BrainstormSession>;
   captureSessionNote(input: SessionNoteCaptureInput): Promise<SessionNoteCaptureReceipt>;
   getCurrentCampaignDate(): Promise<CampaignDate | null>;
+  setCurrentCampaignDate(date: CampaignDate, reason?: string): Promise<CampaignDate>;
+  getCampaignDateHistory(limit?: number): Promise<CampaignClockChange[]>;
+  getSessionDatingWalk(): Promise<SessionDatingEntry[]>;
+  setSessionDate(documentId: string, year: number, month: number, day: number, reason?: string): Promise<SessionDateResult>;
+  inheritClaimDates(): Promise<InheritResult>;
+  getUndatedClaims(limit?: number): Promise<UndatedClaimEntry[]>;
+  getConflictQueue(): Promise<ConflictPair[]>;
+  decideConflict(claimAId: string, claimBId: string, action: "dismiss" | "supersede", reason: string): Promise<ConflictDecisionResult>;
+  writeEntityDescription(entityId: string, text: string, referencedClaimIds: string[], idempotencyKey: string, documentId?: string | null): Promise<EntityDescriptionReceipt>;
+  draftProse(command: ProseDraftCommand): Promise<ProseDraftResult>;
+  getEntityGraphNeighborhood(entityId: string): Promise<GraphRelationRow[]>;
+  getLifeStatusProposals(): Promise<LifeStatusProposal[]>;
+  setLifeStatus(entityId: string, status: string, since: { year: number; month: number; day: number }, claimId: string | null, idempotencyKey: string): Promise<LifeStatusReceipt>;
+  getDeadSeats(): Promise<DeadSeat[]>;
   getOpenSessionRun(): Promise<SessionRun | null>;
   openSessionRun(input: OpenSessionRunInput): Promise<SessionRun>;
   saveSessionRunNote(runId: string, note: SaveSessionRunNoteInput): Promise<SessionRunNote>;
@@ -496,9 +574,10 @@ export interface CampaignClient {
   ): Promise<ChangeSetReceipt>;
 }
 
-export interface AIModelProfile { key: string; provider: string; model_slug: string; description: string; reasoning_effort: string | null; max_tokens: number; timeout_seconds: number; retry_limit: number; selectable: boolean; suitability: string; }
-export interface AIActivationReceipt { receipt_id: string; profile_key: string; prompt_version: string; activated_at: string; }
-export interface AIConfigurationSnapshot { profiles: AIModelProfile[]; active_profile_key: string; prompt_version: string; prompt_text: string; last_activation: AIActivationReceipt | null; }
+export interface AIModelProfile { key: string; purpose: string; provider: string; model_slug: string; description: string; reasoning_effort: string | null; max_tokens: number; timeout_seconds: number; retry_limit: number; selectable: boolean; suitability: string; }
+export interface AIPurposeInfo { key: string; label: string; description: string; prompt_version: string | null; prompt_text: string | null; }
+export interface AIActivationReceipt { receipt_id: string; purpose: string; profile_key: string; prompt_version: string; activated_at: string; }
+export interface AIConfigurationSnapshot { purposes: AIPurposeInfo[]; profiles: AIModelProfile[]; active_profile_by_purpose: Record<string, string>; last_activation_by_purpose: Record<string, AIActivationReceipt>; }
 
 export interface ReviewBackendRequest {
   operation:
@@ -522,6 +601,18 @@ export interface ReviewBackendRequest {
     | "close_brainstorm"
     | "capture_session_note"
     | "get_current_campaign_date"
+    | "set_current_campaign_date"
+    | "get_campaign_date_history"
+    | "get_session_dating_walk"
+    | "set_session_document_date"
+    | "inherit_claim_dates"
+    | "get_undated_claims"
+    | "get_conflict_queue"
+    | "decide_conflict"
+    | "write_entity_description"
+    | "get_life_status_proposals"
+    | "set_life_status"
+    | "get_dead_seats"
     | "get_open_session_run"
     | "open_session_run"
     | "save_session_run_note"
@@ -563,6 +654,19 @@ export interface ReviewBackendRequest {
     | "apply_approval"
     | "get_ai_configuration"
     | "activate_ai_profile"
+    | "draft_prose"
+    | "get_entity_graph_neighborhood"
+    | "get_ai_prompts"
+    | "get_entity_dossier"
+    | "get_template_vocabulary"
+    | "get_link_audit"
+    | "reattribute_claim"
+    | "get_moved_assertions"
+    | "change_template_vocabulary"
+    | "promote_to_dossier"
+    | "demote_from_dossier"
+    | "set_ai_prompt"
+    | "reset_ai_prompt"
     | "discover_claim_overlaps"
     | "reconcile_claims"
     | "get_claim_snapshot"
@@ -579,6 +683,8 @@ export interface ReviewBackendRequest {
   run_id?: string;
   session_id?: string;
   entity_id?: string;
+  purpose?: string;
+  vocabulary?: string;
   record_id?: string;
   note_id?: string;
   query?: Record<string, string | number | undefined>;
@@ -655,7 +761,18 @@ export class HttpCampaignClient implements CampaignClient {
     return this.core("/taxonomy?requester_role=dm");
   }
   getAIConfiguration(): Promise<AIConfigurationSnapshot> { return this.core("/ai/configuration?requester_role=dm"); }
-  activateAIProfile(profileKey: string): Promise<AIActivationReceipt> { return this.core("/ai/configuration/activate?requester_role=dm", "POST", { profile_key: profileKey }); }
+  activateAIProfile(profileKey: string, purpose: string): Promise<AIActivationReceipt> { return this.core("/ai/configuration/activate?requester_role=dm", "POST", { profile_key: profileKey, purpose }); }
+  getAIPrompts(): Promise<EffectivePrompt[]> { return this.core("/ai/prompts?requester_role=dm"); }
+  getEntityDossier(entityId: string): Promise<DossierView> { return this.core(`/entities/${entityId}/dossier?requester_role=dm`); }
+  getTemplateVocabulary(vocabulary: string): Promise<VocabularyValue[]> { return this.core(`/template-vocabularies/${vocabulary}?requester_role=dm`); }
+  getLinkAudit(): Promise<LinkAuditResult> { return this.core("/campaign/link-audit?requester_role=dm"); }
+  reattributeClaim(claimId: string, newEntityId: string, reason: string): Promise<ReattributionReceipt> { return this.core(`/claims/${claimId}/reattribute?requester_role=dm`, "POST", { claim_id: claimId, new_entity_id: newEntityId, reason }); }
+  getMovedAssertions(entityId: string): Promise<MovedAssertion[]> { return this.core(`/entities/${entityId}/moved-assertions?requester_role=dm`); }
+  changeTemplateVocabulary(vocabulary: string, action: "add" | "retire", value: string): Promise<VocabularyChangeReceipt> { return this.core(`/template-vocabularies/${vocabulary}?requester_role=dm`, "POST", { action, value }); }
+  promoteToDossier(entityId: string, claimId: string): Promise<DossierDecisionReceipt> { return this.core(`/entities/${entityId}/dossier/${claimId}/promote?requester_role=dm`, "POST"); }
+  demoteFromDossier(entityId: string, claimId: string): Promise<DossierDecisionReceipt> { return this.core(`/entities/${entityId}/dossier/${claimId}/demote?requester_role=dm`, "POST"); }
+  setAIPrompt(purpose: string, promptText: string): Promise<PromptOverrideReceipt> { return this.core(`/ai/prompts/${purpose}?requester_role=dm`, "PUT", { purpose, prompt_text: promptText }); }
+  resetAIPrompt(purpose: string): Promise<PromptOverrideReceipt> { return this.core(`/ai/prompts/${purpose}?requester_role=dm`, "DELETE"); }
 
   searchEntities(canonicalName: string): Promise<EntityIdentity[]> {
     return this.core(`/entities${queryString({ canonical_name: canonicalName, requester_role: "dm" })}`, "GET");
@@ -705,6 +822,20 @@ export class HttpCampaignClient implements CampaignClient {
   closeBrainstorm(sessionId: string, proposalId: string): Promise<BrainstormSession> { return this.core(`/brainstorms/${sessionId}/close?requester_role=dm`, "POST", { proposal_id: proposalId }); }
   captureSessionNote(input: SessionNoteCaptureInput): Promise<SessionNoteCaptureReceipt> { return this.core("/capture/session-notes", "POST", input); }
   getCurrentCampaignDate(): Promise<CampaignDate | null> { return this.core("/campaign/current-date"); }
+  setCurrentCampaignDate(date: CampaignDate, reason?: string): Promise<CampaignDate> { return this.core("/campaign/current-date?requester_role=dm", "PUT", { calendar_id: date.calendar_id, year: date.year, month: date.month, day: date.day, reason: reason ?? null }); }
+  getCampaignDateHistory(limit?: number): Promise<CampaignClockChange[]> { return this.core(`/campaign/current-date/history?limit=${limit ?? 10}`); }
+  getSessionDatingWalk(): Promise<SessionDatingEntry[]> { return this.core("/campaign/session-dating"); }
+  setSessionDate(documentId: string, year: number, month: number, day: number, reason?: string): Promise<SessionDateResult> { return this.core(`/campaign/session-dating/${documentId}?requester_role=dm`, "PUT", { year, month, day, reason: reason ?? null }); }
+  inheritClaimDates(): Promise<InheritResult> { return this.core("/campaign/claim-dates/inherit?requester_role=dm", "POST"); }
+  getUndatedClaims(limit?: number): Promise<UndatedClaimEntry[]> { return this.core(`/campaign/undated-claims?limit=${limit ?? 50}`); }
+  getConflictQueue(): Promise<ConflictPair[]> { return this.core("/campaign/conflicts"); }
+  decideConflict(claimAId: string, claimBId: string, action: "dismiss" | "supersede", reason: string): Promise<ConflictDecisionResult> { return this.core("/campaign/conflicts/decisions?requester_role=dm", "POST", { claim_a_id: claimAId, claim_b_id: claimBId, action, reason }); }
+  writeEntityDescription(entityId: string, text: string, referencedClaimIds: string[], idempotencyKey: string, documentId?: string | null): Promise<EntityDescriptionReceipt> { return this.core(`/entities/${entityId}/description?requester_role=dm`, "POST", { entity_id: entityId, text, referenced_claim_ids: referencedClaimIds, idempotency_key: idempotencyKey, ...(documentId ? { document_id: documentId } : {}) }); }
+  draftProse(command: ProseDraftCommand): Promise<ProseDraftResult> { return this.core("/prose/draft?requester_role=dm", "POST", command); }
+  getEntityGraphNeighborhood(entityId: string): Promise<GraphRelationRow[]> { return this.core(`/entities/${entityId}/graph-neighborhood?requester_role=dm`); }
+  getLifeStatusProposals(): Promise<LifeStatusProposal[]> { return this.core("/campaign/life-status/proposals"); }
+  setLifeStatus(entityId: string, status: string, since: { year: number; month: number; day: number }, claimId: string | null, idempotencyKey: string): Promise<LifeStatusReceipt> { return this.core(`/campaign/life-status/${entityId}?requester_role=dm`, "POST", { status, since_year: since.year, since_month: since.month, since_day: since.day, claim_id: claimId ?? null, idempotency_key: idempotencyKey }); }
+  getDeadSeats(): Promise<DeadSeat[]> { return this.core("/campaign/dead-seats"); }
   getOpenSessionRun(): Promise<SessionRun | null> { return this.core("/campaign/session-runs/open?requester_role=dm"); }
   openSessionRun(input: OpenSessionRunInput): Promise<SessionRun> { return this.core("/campaign/session-runs/open?requester_role=dm", "POST", input); }
   saveSessionRunNote(runId: string, note: SaveSessionRunNoteInput): Promise<SessionRunNote> { return this.core(`/campaign/session-runs/${runId}/notes/${note.note_id}?requester_role=dm`, "PUT", note); }
@@ -859,7 +990,18 @@ export class WindmillCampaignClient implements CampaignClient {
     return this.review({ operation: "get_taxonomy" });
   }
   getAIConfiguration(): Promise<AIConfigurationSnapshot> { return this.review({ operation: "get_ai_configuration" }); }
-  activateAIProfile(profileKey: string): Promise<AIActivationReceipt> { return this.review({ operation: "activate_ai_profile", body: { profile_key: profileKey } }); }
+  activateAIProfile(profileKey: string, purpose: string): Promise<AIActivationReceipt> { return this.review({ operation: "activate_ai_profile", body: { profile_key: profileKey, purpose } }); }
+  getAIPrompts(): Promise<EffectivePrompt[]> { return this.review({ operation: "get_ai_prompts" }); }
+  getEntityDossier(entityId: string): Promise<DossierView> { return this.review({ operation: "get_entity_dossier", entity_id: entityId }); }
+  getTemplateVocabulary(vocabulary: string): Promise<VocabularyValue[]> { return this.review({ operation: "get_template_vocabulary", vocabulary }); }
+  getLinkAudit(): Promise<LinkAuditResult> { return this.review({ operation: "get_link_audit" }); }
+  reattributeClaim(claimId: string, newEntityId: string, reason: string): Promise<ReattributionReceipt> { return this.review({ operation: "reattribute_claim", claim_id: claimId, body: { claim_id: claimId, new_entity_id: newEntityId, reason } }); }
+  getMovedAssertions(entityId: string): Promise<MovedAssertion[]> { return this.review({ operation: "get_moved_assertions", entity_id: entityId }); }
+  changeTemplateVocabulary(vocabulary: string, action: "add" | "retire", value: string): Promise<VocabularyChangeReceipt> { return this.review({ operation: "change_template_vocabulary", vocabulary, body: { action, value } }); }
+  promoteToDossier(entityId: string, claimId: string): Promise<DossierDecisionReceipt> { return this.review({ operation: "promote_to_dossier", entity_id: entityId, claim_id: claimId }); }
+  demoteFromDossier(entityId: string, claimId: string): Promise<DossierDecisionReceipt> { return this.review({ operation: "demote_from_dossier", entity_id: entityId, claim_id: claimId }); }
+  setAIPrompt(purpose: string, promptText: string): Promise<PromptOverrideReceipt> { return this.review({ operation: "set_ai_prompt", purpose, body: { purpose, prompt_text: promptText } }); }
+  resetAIPrompt(purpose: string): Promise<PromptOverrideReceipt> { return this.review({ operation: "reset_ai_prompt", purpose }); }
 
   searchEntities(canonicalName: string): Promise<EntityIdentity[]> {
     return this.review({ operation: "search_entities", query: { canonical_name: canonicalName } });
@@ -914,6 +1056,20 @@ export class WindmillCampaignClient implements CampaignClient {
   closeBrainstorm(sessionId: string, proposalId: string): Promise<BrainstormSession> { return this.review({ operation: "close_brainstorm", session_id: sessionId, body: { proposal_id: proposalId } }); }
   captureSessionNote(input: SessionNoteCaptureInput): Promise<SessionNoteCaptureReceipt> { return this.review({ operation: "capture_session_note", body: input }); }
   getCurrentCampaignDate(): Promise<CampaignDate | null> { return this.review({ operation: "get_current_campaign_date" }); }
+  setCurrentCampaignDate(date: CampaignDate, reason?: string): Promise<CampaignDate> { return this.review({ operation: "set_current_campaign_date", body: { calendar_id: date.calendar_id, year: date.year, month: date.month, day: date.day, reason: reason ?? null } }); }
+  getCampaignDateHistory(limit?: number): Promise<CampaignClockChange[]> { return this.review<CampaignClockChange[]>({ operation: "get_campaign_date_history", query: { limit } }); }
+  getSessionDatingWalk(): Promise<SessionDatingEntry[]> { return this.review<SessionDatingEntry[]>({ operation: "get_session_dating_walk" }); }
+  setSessionDate(documentId: string, year: number, month: number, day: number, reason?: string): Promise<SessionDateResult> { return this.review<SessionDateResult>({ operation: "set_session_document_date", path_id: documentId, body: { year, month, day, reason: reason ?? null } }); }
+  inheritClaimDates(): Promise<InheritResult> { return this.review<InheritResult>({ operation: "inherit_claim_dates" }); }
+  getUndatedClaims(limit?: number): Promise<UndatedClaimEntry[]> { return this.review<UndatedClaimEntry[]>({ operation: "get_undated_claims", query: { limit } }); }
+  getConflictQueue(): Promise<ConflictPair[]> { return this.review<ConflictPair[]>({ operation: "get_conflict_queue" }); }
+  decideConflict(claimAId: string, claimBId: string, action: "dismiss" | "supersede", reason: string): Promise<ConflictDecisionResult> { return this.review<ConflictDecisionResult>({ operation: "decide_conflict", body: { claim_a_id: claimAId, claim_b_id: claimBId, action, reason } }); }
+  writeEntityDescription(entityId: string, text: string, referencedClaimIds: string[], idempotencyKey: string, documentId?: string | null): Promise<EntityDescriptionReceipt> { return this.review<EntityDescriptionReceipt>({ operation: "write_entity_description", entity_id: entityId, body: { entity_id: entityId, text, referenced_claim_ids: referencedClaimIds, idempotency_key: idempotencyKey, ...(documentId ? { document_id: documentId } : {}) } }); }
+  draftProse(command: ProseDraftCommand): Promise<ProseDraftResult> { return this.review<ProseDraftResult>({ operation: "draft_prose", body: command }); }
+  getEntityGraphNeighborhood(entityId: string): Promise<GraphRelationRow[]> { return this.review<GraphRelationRow[]>({ operation: "get_entity_graph_neighborhood", entity_id: entityId }); }
+  getLifeStatusProposals(): Promise<LifeStatusProposal[]> { return this.review<LifeStatusProposal[]>({ operation: "get_life_status_proposals" }); }
+  setLifeStatus(entityId: string, status: string, since: { year: number; month: number; day: number }, claimId: string | null, idempotencyKey: string): Promise<LifeStatusReceipt> { return this.review<LifeStatusReceipt>({ operation: "set_life_status", entity_id: entityId, body: { status, since_year: since.year, since_month: since.month, since_day: since.day, claim_id: claimId, idempotency_key: idempotencyKey } }); }
+  getDeadSeats(): Promise<DeadSeat[]> { return this.review<DeadSeat[]>({ operation: "get_dead_seats" }); }
   getOpenSessionRun(): Promise<SessionRun | null> { return this.review({ operation: "get_open_session_run" }); }
   openSessionRun(input: OpenSessionRunInput): Promise<SessionRun> { return this.review({ operation: "open_session_run", body: input }); }
   saveSessionRunNote(runId: string, note: SaveSessionRunNoteInput): Promise<SessionRunNote> { return this.review({ operation: "save_session_run_note", run_id: runId, note_id: note.note_id, body: note }); }

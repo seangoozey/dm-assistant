@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 
+import { getSettings } from "./settings";
+
 export type ToastKind = "success" | "error" | "info";
 
 export interface ToastItem {
@@ -21,13 +23,37 @@ type LogListener = (entries: LogEntry[]) => void;
 const DISMISS_AFTER_MS = 6500;
 const MAX_VISIBLE = 4;
 const MAX_LOG = 200;
+const LOG_STORAGE_KEY = "dm-assistant.sessionLog";
 
 let nextId = 1;
 let items: ToastItem[] = [];
-let log: LogEntry[] = [];
+// The log outlives the page: an error that toasted must still be on the Log
+// after a reload, or "every outcome is recorded in the Log" is a promise the
+// app only keeps between refreshes. Browser-local, session-scoped vocabulary.
+let log: LogEntry[] = (() => {
+  try {
+    const stored = globalThis.localStorage?.getItem(LOG_STORAGE_KEY);
+    const parsed = stored ? JSON.parse(stored) as LogEntry[] : [];
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      nextId = Math.max(...parsed.map((entry) => entry.id)) + 1;
+      return parsed;
+    }
+  } catch {
+    // Corrupted storage starts a fresh log rather than breaking toasts.
+  }
+  return [];
+})();
 const timers = new Map<number, ReturnType<typeof setTimeout>>();
 const listeners = new Set<Listener>();
 const logListeners = new Set<LogListener>();
+
+function persistLog(): void {
+  try {
+    globalThis.localStorage?.setItem(LOG_STORAGE_KEY, JSON.stringify(log));
+  } catch {
+    // Storage full or unavailable: the in-memory log still works.
+  }
+}
 
 function emit(): void {
   for (const listener of listeners) listener(items);
@@ -37,10 +63,10 @@ function emitLog(): void {
   for (const listener of logListeners) listener(log);
 }
 
-function scheduleDismiss(id: number): void {
+function scheduleDismiss(id: number, durationMs: number = DISMISS_AFTER_MS): void {
   const existing = timers.get(id);
   if (existing) clearTimeout(existing);
-  timers.set(id, setTimeout(() => dismiss(id), DISMISS_AFTER_MS));
+  timers.set(id, setTimeout(() => dismiss(id), durationMs));
 }
 
 function dismiss(id: number): void {
@@ -63,17 +89,20 @@ export const toast = {
   push(kind: ToastKind, message: string): void {
     const trimmed = message.trim();
     if (!trimmed) return;
+    const settings = getSettings();
     log = [...log, { id: nextId++, at: new Date().toISOString(), kind, message: trimmed }].slice(-MAX_LOG);
+    persistLog();
     emitLog();
+    if (!settings.toastsEnabled) return; // the log still records everything
     const existing = items.find((item) => item.message === trimmed);
     if (existing) {
-      scheduleDismiss(existing.id);
+      scheduleDismiss(existing.id, settings.toastDurationMs);
       emit();
       return;
     }
     const item: ToastItem = { id: nextId++, kind, message: trimmed };
     items = [...items, item].slice(-MAX_VISIBLE);
-    scheduleDismiss(item.id);
+    scheduleDismiss(item.id, settings.toastDurationMs);
     emit();
   },
   dismiss,
@@ -90,6 +119,7 @@ export const toast = {
     timers.clear();
     items = [];
     log = [];
+    persistLog();
     emit();
     emitLog();
   },

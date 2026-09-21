@@ -660,4 +660,9 @@ def _source_document_content_row(document_id: UUID, row: tuple[Any, ...]) -> Sou
         capture_mode=frontmatter.get("capture_mode"),
         capture_id=row[4],
         mentions=tuple(frontmatter.get("mentions", [])),
+        referenced_claims=tuple(
+            str(value)
+            for value in frontmatter.get("referenced_claims", [])
+            if isinstance(value, (str, int))
+        ),
     )

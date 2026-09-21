@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import re
+
+import re
 from enum import StrEnum
 from typing import TYPE_CHECKING, Literal
 
@@ -207,9 +209,12 @@ class RetrievalPolicy:
         # answer mode, reasons and conflict IDs, not merely omitted citations.
         verified = {issue.classification for issue in conflicts
                     if issue.verification == "verified_comparison"}
+        if not conflicts:
+            conflicts = verified_death_conflicts(tuple(authoritative) + tuple(context))
         conflict_mode = (
             AnswerMode.POSSIBLE_RETCN if "possible_retcon" in verified
             else AnswerMode.CONFLICT if "factual_conflict" in verified
+            else AnswerMode.POSSIBLE_RETCN if conflicts
             else _conflict_mode(query, authoritative, context)
         )
         if conflict_mode is not None:
@@ -257,12 +262,6 @@ class RetrievalPolicy:
                 )
             )
         citations = tuple(sorted({item.citation for item in evidence}))
-        # The legacy count heuristic is not proof. Expose its output as an
-        # unverified review candidate until it is replaced, never a verified issue.
-        if not conflicts and mode in {AnswerMode.CONFLICT, AnswerMode.POSSIBLE_RETCN}:
-            from dm_assistant_core.domain.evidence_comparison import legacy_review_issue
-
-            conflicts = legacy_review_issue(tuple(selected))
         return RetrievalResult(
             answer_mode=mode,
             evidence=tuple(evidence),
@@ -305,18 +304,83 @@ def _is_authoritative(record: RetrievalRecord) -> bool:
     )
 
 
+_DEATH_WORDS = re.compile(r"\b(died|dead|slain|killed)\b", re.IGNORECASE)
+
+
+def _record_effective_date(record: RetrievalRecord) -> tuple[int, int, int] | None:
+    if not record.effective_from:
+        return None
+    parts = record.effective_from.split("-")
+    if len(parts) != 3 or not all(part.isdigit() for part in parts):
+        return None
+    return int(parts[0]), int(parts[1]), int(parts[2])
+
+
+def verified_death_conflicts(
+    records: tuple[RetrievalRecord, ...],
+) -> tuple[RetrievalConflict, ...]:
+    """Verified query-time conflicts: an observed real-play death of a linked
+    record versus a current claim about the same record dated strictly later.
+
+    This replaces the legacy count heuristic: the same deterministic rule the
+    standing conflict queue uses, applied to the retrieved evidence set. No
+    counting, no unverified bundles — time and entity linkage decide.
+    """
+    deaths = [
+        record for record in records
+        if record.kind is RetrievalRecordKind.CLAIM
+        and record.state is ClaimState.OBSERVED
+        and record.authority in (RetrievalAuthority.REAL_PLAY, RetrievalAuthority.EXPLICIT_CORRECTION)
+        and record.entity_id is not None
+        and _DEATH_WORDS.search(record.assertion)
+        and _record_effective_date(record) is not None
+    ]
+    issues: list[RetrievalConflict] = []
+    for death in deaths:
+        death_date = _record_effective_date(death)
+        for other in records:
+            if other.record_id == death.record_id or other.entity_id != death.entity_id:
+                continue
+            other_date = _record_effective_date(other)
+            if other_date is None or other_date <= death_date:
+                continue
+            payload = {
+                "version": "verified-death-temporal-v1",
+                "death": death.record_id,
+                "later": other.record_id,
+                "entity_id": death.entity_id,
+            }
+            issues.append(RetrievalConflict(
+                issue_id=_issue_id(payload), policy_version="verified-death-temporal-v1",
+                classification="possible_retcon", verification="verified_comparison",
+                reason="observed death predates this claim about the same record",
+                evidence=(_snapshot_record(death), _snapshot_record(other)),
+                subject_id=death.entity_id,
+            ))
+            break
+    return tuple(issues[:50])
+
+
+def _snapshot_record(record: RetrievalRecord) -> ConflictEvidence:
+    return ConflictEvidence.model_validate({
+        key: value for key, value in record.model_dump().items()
+        if key in ConflictEvidence.model_fields
+    })
+
+
+def _issue_id(payload: dict[str, object]) -> str:
+    import hashlib
+    import json
+
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return "comparison:" + hashlib.sha256(canonical.encode()).hexdigest()
+
+
 def _conflict_mode(
     query: RetrievalQuery,
     authoritative: tuple[RetrievalRecord, ...],
     context: tuple[RetrievalRecord, ...],
 ) -> AnswerMode | None:
-    claims = [record for record in authoritative if record.kind is RetrievalRecordKind.CLAIM]
-    if len(claims) >= 2:
-        states = {record.state for record in claims}
-        if ClaimState.OBSERVED in states and ClaimState.ESTABLISHED in states:
-            return AnswerMode.POSSIBLE_RETCN
-        if states == {ClaimState.ESTABLISHED}:
-            return AnswerMode.CONFLICT
     disputed_aliases = [
         record
         for record in context

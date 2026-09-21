@@ -9,6 +9,10 @@ stays in entities and claims.
 from typing import Protocol
 from uuid import UUID
 
+from typing import Literal
+
+from dm_assistant_core.domain.chronology import CampaignDate
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from dm_assistant_core.domain import RequesterRole, RequesterVisibility
@@ -28,6 +32,11 @@ class EntityProfile(BaseModel):
     sex: str | None = None
     aliases: tuple[str, ...] = ()
     summary: str = ""
+    # Life status is an enumerated canon dimension (TKT-0123), distinct from
+    # the free-text organizational status above; anchored to a backing claim.
+    life_status: Literal["alive", "dead", "undead", "resurrected", "immortal", "unknown"] | None = None
+    life_status_since: CampaignDate | None = None
+    life_status_claim_id: UUID | None = None
 
     @field_validator("status", "location_type", "parent_location", "base_location",
                      "player", "race", "sex", mode="before")

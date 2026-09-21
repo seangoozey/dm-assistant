@@ -5,6 +5,8 @@ from uuid import UUID
 
 from fastapi import FastAPI, HTTPException, Path, Query
 from fastapi.middleware.cors import CORSMiddleware
+from datetime import datetime
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from dm_assistant_core import __version__
@@ -28,7 +30,52 @@ from dm_assistant_core.adapters.postgres import (
     PostgresTaxonomyRepository,
 )
 from dm_assistant_core.adapters.postgres.ai_configuration import PostgresAIConfigurationRepository
+from dm_assistant_core.adapters.postgres.prompt_configuration import (
+    PostgresPromptOverrideRepository,
+)
 from dm_assistant_core.adapters.postgres.campaign_clock import PostgresCampaignClockRepository
+from dm_assistant_core.adapters.postgres.session_dating import PostgresSessionDatingRepository
+from dm_assistant_core.adapters.postgres.life_status import PostgresLifeStatusRepository
+from dm_assistant_core.adapters.postgres.conflict_review import PostgresConflictReviewRepository
+from dm_assistant_core.adapters.postgres.identity_gaps import PostgresIdentityQueueRepository
+from dm_assistant_core.application.entity_descriptions import (
+    EntityDescriptionCommand, EntityDescriptionReceipt, EntityDescriptionService)
+from dm_assistant_core.application.entity_graph_neighborhood import GraphRelationRow
+from dm_assistant_core.application.prompt_configuration import (
+    EffectivePrompt,
+    PromptConfigurationService,
+    PromptOverrideReceipt,
+    SetPromptOverride,
+)
+from dm_assistant_core.application.claim_reattribution import (
+    ClaimReattributionService,
+    MovedAssertion,
+    ReattributeClaim,
+    ReattributionReceipt,
+)
+from dm_assistant_core.adapters.postgres.claim_reattribution import (
+    PostgresClaimReattributionRepository,
+)
+from dm_assistant_core.application.link_audit import (
+    LinkAuditResult,
+    LinkAuditService,
+)
+from dm_assistant_core.adapters.postgres.link_audit import PostgresLinkAuditRepository
+from dm_assistant_core.application.template_vocabularies import (
+    TemplateVocabularyService,
+    VocabularyChangeReceipt,
+    VocabularyCommand,
+    VocabularyValue,
+)
+from dm_assistant_core.application.dossier import (
+    DossierDecisionReceipt,
+    DossierService,
+    DossierView,
+)
+from dm_assistant_core.adapters.postgres.dossier import PostgresDossierRepository
+from dm_assistant_core.adapters.postgres.template_vocabularies import (
+    PostgresTemplateVocabularyRepository,
+)
 from dm_assistant_core.application import (
     ApproveCandidateProposalCommand,
     ArtifactExportError,
@@ -106,11 +153,18 @@ from dm_assistant_core.application import (
     UpdatePCProfileCommand,
 )
 from dm_assistant_core.application.ai_configuration import (
-    PROMPT_VERSION,
+    PURPOSES,
     ActivationReceipt,
     AIConfigurationService,
     AIConfigurationSnapshot,
     ModelProfile,
+)
+from dm_assistant_core.application.prose_drafting import (
+    ProseDraftCommand,
+    ProseDraftError,
+    ProseDraftResult,
+    ProseDraftingService,
+    ProseHarness,
 )
 from dm_assistant_core.application.claim_reconciliation import (
     ApplyClaimReconciliationCommand,
@@ -233,6 +287,12 @@ def create_app(
     artifact_exports: ArtifactExportService | None = None,
     candidate_extraction: CandidateExtractionService | None = None,
     ai_configuration: AIConfigurationService | None = None,
+    prose_drafting: ProseDraftingService | None = None,
+    prompt_configuration: PromptConfigurationService | None = None,
+    dossier: DossierService | None = None,
+    template_vocabularies: TemplateVocabularyService | None = None,
+    link_audit: LinkAuditService | None = None,
+    claim_reattribution: ClaimReattributionService | None = None,
     pc_profiles: PCProfileService | None = None,
     claim_reconciliation: ClaimReconciliationService | None = None,
     session_runs: SessionRunService | None = None,
@@ -287,10 +347,34 @@ def create_app(
     active_pc_profiles = pc_profiles or PCProfileService(
         PostgresPCProfileRepository(PostgresDatabase(active_settings.database_dsn))
     )
-    active_direct_capture = SessionNoteCaptureService(
-        active_imports,
-        PostgresCampaignClockRepository(PostgresDatabase(active_settings.database_dsn)),
-    )
+    active_clock = PostgresCampaignClockRepository(PostgresDatabase(active_settings.database_dsn))
+    active_session_dating = PostgresSessionDatingRepository(PostgresDatabase(active_settings.database_dsn))
+    active_conflict_review = PostgresConflictReviewRepository(PostgresDatabase(active_settings.database_dsn))
+    class _EntityNameLookup:
+        def __init__(self, database) -> None:
+            self._database = database
+
+        def get(self, entity_id):
+            with self._database.connection() as connection:
+                row = connection.execute(
+                    "SELECT id, canonical_name FROM entities WHERE id = %s", (entity_id,)).fetchone()
+            if row is None:
+                return None
+            return type("Entity", (), {"entity_id": row[0], "canonical_name": row[1]})()
+
+    active_entity_descriptions = EntityDescriptionService(
+        active_imports, _EntityNameLookup(PostgresDatabase(active_settings.database_dsn)))
+    active_entity_graph_neighborhood = None
+    if active_settings.graph_pilot_bundle and active_settings.environment == "development":
+        from dm_assistant_core.application.entity_graph_neighborhood import (
+            EntityGraphNeighborhoodService,
+        )
+
+        active_entity_graph_neighborhood = EntityGraphNeighborhoodService(
+            active_settings.graph_pilot_bundle,
+            _EntityNameLookup(PostgresDatabase(active_settings.database_dsn)),
+        )
+    active_direct_capture = SessionNoteCaptureService(active_imports, active_clock)
     active_brainstorms = brainstorms or BrainstormService(
         PostgresBrainstormRepository(PostgresDatabase(active_settings.database_dsn)),
         active_imports,
@@ -318,12 +402,32 @@ def create_app(
     active_entity_profiles = EntityProfileService(
         PostgresEntityProfileRepository(PostgresDatabase(active_settings.database_dsn))
     )
+    active_life_status = PostgresLifeStatusRepository(
+        PostgresDatabase(active_settings.database_dsn), active_entity_profiles)
     if candidate_extraction is not None:
         active_candidate_extraction = candidate_extraction
     elif active_settings.openrouter_api_key:
         active_candidate_extraction = _default_candidate_extraction_service(active_settings)
     else:
         active_candidate_extraction = None
+    # The prose writer builds lazily per request: it needs the ACTIVE prose
+    # profile, which can change in Settings at any moment.
+    active_prose_drafting = prose_drafting
+    active_prompt_configuration = prompt_configuration or PromptConfigurationService(
+        PostgresPromptOverrideRepository(PostgresDatabase(active_settings.database_dsn))
+    )
+    active_dossier = dossier or DossierService(
+        PostgresDossierRepository(PostgresDatabase(active_settings.database_dsn))
+    )
+    active_template_vocabularies = template_vocabularies or TemplateVocabularyService(
+        PostgresTemplateVocabularyRepository(PostgresDatabase(active_settings.database_dsn))
+    )
+    active_link_audit = link_audit or LinkAuditService(
+        PostgresLinkAuditRepository(PostgresDatabase(active_settings.database_dsn))
+    )
+    active_claim_reattribution = claim_reattribution or ClaimReattributionService(
+        PostgresClaimReattributionRepository(PostgresDatabase(active_settings.database_dsn))
+    )
     app = FastAPI(title="DM Assistant Campaign Core", version=__version__)
     if active_settings.allowed_cors_origins:
         app.add_middleware(
@@ -345,6 +449,8 @@ def create_app(
     app.state.artifact_exports = active_artifact_exports
     app.state.candidate_extraction = active_candidate_extraction
     app.state.ai_configuration = active_ai_configuration
+    app.state.prose_drafting = active_prose_drafting
+    app.state.dossier = active_dossier
     app.state.pc_profiles = active_pc_profiles
     app.state.session_runs = active_session_runs
     app.state.brainstorms = active_brainstorms
@@ -363,8 +469,58 @@ def create_app(
             raise HTTPException(status_code=403, detail="AI configuration is DM-only")
         return active_ai_configuration.snapshot()
 
+    @app.get(
+        "/ai/prompts",
+        response_model=list[EffectivePrompt],
+        tags=["operations"],
+    )
+    def get_ai_prompts(
+        requester_role: Annotated[RequesterRole, Query()] = RequesterRole.DM,
+    ) -> list[EffectivePrompt]:
+        if requester_role is not RequesterRole.DM:
+            raise HTTPException(status_code=403, detail="AI prompts are DM-only")
+        return [active_prompt_configuration.effective(p) for p in ("extraction", "prose")]
+
+    @app.put(
+        "/ai/prompts/{purpose}",
+        response_model=PromptOverrideReceipt,
+        tags=["operations"],
+    )
+    def set_ai_prompt(
+        purpose: str,
+        command: SetPromptOverride,
+        requester_role: Annotated[RequesterRole, Query()] = RequesterRole.DM,
+    ) -> PromptOverrideReceipt:
+        if requester_role is not RequesterRole.DM:
+            raise HTTPException(status_code=403, detail="AI prompts are DM-only")
+        if command.purpose != purpose:
+            raise HTTPException(status_code=422, detail="purpose must match the request path")
+        try:
+            return active_prompt_configuration.set_override(command)
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+
+    @app.delete(
+        "/ai/prompts/{purpose}",
+        response_model=PromptOverrideReceipt,
+        tags=["operations"],
+    )
+    def reset_ai_prompt(
+        purpose: str,
+        requester_role: Annotated[RequesterRole, Query()] = RequesterRole.DM,
+    ) -> PromptOverrideReceipt:
+        if requester_role is not RequesterRole.DM:
+            raise HTTPException(status_code=403, detail="AI prompts are DM-only")
+        try:
+            return active_prompt_configuration.clear_override(purpose)
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+
     class ActivateAIConfiguration(BaseModel):
         profile_key: str
+        # Absent purpose means extraction — the registry's original and only
+        # purpose, so existing callers (windmill review bridge) stay valid.
+        purpose: str = "extraction"
 
     @app.post("/ai/configuration/activate", response_model=ActivationReceipt, tags=["operations"])
     def activate_ai_configuration(
@@ -374,9 +530,82 @@ def create_app(
         if requester_role is not RequesterRole.DM:
             raise HTTPException(status_code=403, detail="AI configuration is DM-only")
         try:
-            return active_ai_configuration.activate(command.profile_key)
+            return active_ai_configuration.activate(command.purpose, command.profile_key)
         except ValueError as error:
             raise HTTPException(status_code=422, detail=str(error)) from error
+
+    @app.get(
+        "/campaign/link-audit",
+        response_model=LinkAuditResult,
+        tags=["operations"],
+    )
+    def campaign_link_audit(
+        requester_role: Annotated[RequesterRole, Query()] = RequesterRole.DM,
+    ) -> LinkAuditResult:
+        """Standing entity/document link audit: wrong-page borrows, zero-affinity
+        identities. Computed live, never stored — every fix is a DM decision."""
+        if requester_role is not RequesterRole.DM:
+            raise HTTPException(status_code=403, detail="link audit is DM-only")
+        return active_link_audit.audit()
+
+    @app.get(
+        "/entities/{entity_id}/graph-neighborhood",
+        tags=["operations"],
+        response_model=list[GraphRelationRow],
+    )
+    def entity_graph_neighborhood(
+        entity_id: UUID,
+        requester_role: Annotated[RequesterRole, Query()] = RequesterRole.DM,
+    ) -> list[GraphRelationRow]:
+        """Ranked, capped relation rows for prose gather (TKT-0120 expansion).
+
+        Audited seats first, then derived co-mentions — every row names the
+        record class behind it. Discovery aids, never proof.
+        """
+        if requester_role is not RequesterRole.DM:
+            raise HTTPException(status_code=403, detail="graph neighborhood is DM-only")
+        if active_entity_graph_neighborhood is None:
+            raise HTTPException(
+                status_code=409,
+                detail="graph neighborhood is not configured (pilot bundle inactive)",
+            )
+        return active_entity_graph_neighborhood.neighborhood(str(entity_id))
+
+    @app.post(
+        "/claims/{claim_id}/reattribute",
+        response_model=ReattributionReceipt,
+        tags=["operations"],
+    )
+    def reattribute_claim(
+        claim_id: UUID,
+        command: ReattributeClaim,
+        requester_role: Annotated[RequesterRole, Query()] = RequesterRole.DM,
+    ) -> ReattributionReceipt:
+        """Move an assertion to a new owning entity (receipted). Provenance
+        is untouched; the old owner gains a 'moved to' reference."""
+        if requester_role is not RequesterRole.DM:
+            raise HTTPException(status_code=403, detail="claim re-attribution is DM-only")
+        if command.claim_id != claim_id:
+            raise HTTPException(status_code=422, detail="claim_id must match the request path")
+        try:
+            return active_claim_reattribution.reattribute(command)
+        except ValueError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+
+    @app.get(
+        "/entities/{entity_id}/moved-assertions",
+        response_model=list[MovedAssertion],
+        tags=["operations"],
+    )
+    def entity_moved_assertions(
+        entity_id: UUID,
+        requester_role: Annotated[RequesterRole, Query()] = RequesterRole.DM,
+    ) -> list[MovedAssertion]:
+        """Assertions that moved away from this entity — Dossier tiles with
+        shortcuts to the new owners."""
+        if requester_role is not RequesterRole.DM:
+            raise HTTPException(status_code=403, detail="moved assertions are DM-only")
+        return active_claim_reattribution.moved_from(entity_id)
 
     @app.get("/taxonomy", response_model=TaxonomySnapshot, tags=["campaign"])
     def taxonomy_snapshot(
@@ -648,9 +877,272 @@ def create_app(
         except (ImportRejectedError, ValueError) as error:
             raise HTTPException(status_code=409, detail=str(error)) from error
 
+    class CampaignDateSetting(BaseModel):
+        """DM-set current in-game date with an optional reason (TKT-0117)."""
+
+        calendar_id: str = "gregorian-ce"
+        year: int
+        month: int
+        day: int
+        reason: str | None = None
+
+        def as_date(self) -> CampaignDate:
+            return CampaignDate(calendar_id=self.calendar_id, year=self.year,
+                                month=self.month, day=self.day)
+
+    class CampaignClockChangeEntry(BaseModel):
+        calendar_id: str
+        year: int
+        month: int
+        day: int
+        reason: str | None
+        changed_by: str
+        changed_at: datetime
+
     @app.get("/campaign/current-date", response_model=CampaignDate | None, tags=["campaign"])
     def get_current_campaign_date() -> CampaignDate | None:
         return active_direct_capture.current_date()
+
+    # The clock is runtime state, not canonical truth (session capture writes
+    # it outside change sets), so it carries its own tag: the architectural
+    # boundary test keeps "campaign"-tagged mutations change-set-only.
+    @app.put("/campaign/current-date", response_model=CampaignDate, tags=["campaign-clock"])
+    def set_current_campaign_date(
+        command: CampaignDateSetting,
+        requester_role: Annotated[RequesterRole, Query()] = RequesterRole.DM,
+    ) -> CampaignDate:
+        if requester_role is not RequesterRole.DM:
+            raise HTTPException(status_code=403, detail="the campaign clock is DM-only")
+        active_clock.set_current(CampaignDate(
+            calendar_id=command.calendar_id, year=command.year,
+            month=command.month, day=command.day), command.reason)
+        return command.as_date()
+
+    @app.post("/entities/{entity_id}/description",
+              response_model=EntityDescriptionReceipt, tags=["entity-descriptions"])
+    def write_entity_description(
+        entity_id: UUID,
+        command: EntityDescriptionCommand,
+        requester_role: Annotated[RequesterRole, Query()] = RequesterRole.DM,
+    ) -> EntityDescriptionReceipt:
+        if requester_role is not RequesterRole.DM:
+            raise HTTPException(status_code=403, detail="description authoring is DM-only")
+        if command.entity_id != entity_id:
+            raise HTTPException(status_code=422, detail="entity_id must match the request path")
+        try:
+            return active_entity_descriptions.write(command)
+        except ValueError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+
+    @app.get(
+        "/template-vocabularies/{vocabulary}",
+        response_model=list[VocabularyValue],
+        tags=["operations"],
+    )
+    def get_template_vocabulary(
+        vocabulary: str,
+        requester_role: Annotated[RequesterRole, Query()] = RequesterRole.DM,
+    ) -> list[VocabularyValue]:
+        """Offered values for a template field (receipted, retireable)."""
+        if requester_role is not RequesterRole.DM:
+            raise HTTPException(status_code=403, detail="template vocabularies are DM-only")
+        try:
+            return active_template_vocabularies.values(vocabulary)
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+
+    @app.post(
+        "/template-vocabularies/{vocabulary}",
+        response_model=VocabularyChangeReceipt,
+        tags=["operations"],
+    )
+    def change_template_vocabulary(
+        vocabulary: str,
+        command: VocabularyCommand,
+        requester_role: Annotated[RequesterRole, Query()] = RequesterRole.DM,
+    ) -> VocabularyChangeReceipt:
+        if requester_role is not RequesterRole.DM:
+            raise HTTPException(status_code=403, detail="template vocabularies are DM-only")
+        if command.action not in ("add", "retire"):
+            raise HTTPException(status_code=422, detail="action must be add or retire")
+        try:
+            return active_template_vocabularies.change(vocabulary, command)
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+
+    @app.get(
+        "/entities/{entity_id}/dossier",
+        response_model=DossierView,
+        tags=["operations"],
+    )
+    def get_dossier(
+        entity_id: UUID,
+        requester_role: Annotated[RequesterRole, Query()] = RequesterRole.DM,
+    ) -> DossierView:
+        """The entry's DM-curated Dossier: promoted claim ids, latest-decision-wins."""
+        if requester_role is not RequesterRole.DM:
+            raise HTTPException(status_code=403, detail="dossier is DM-only")
+        return active_dossier.view(entity_id)
+
+    @app.post(
+        "/entities/{entity_id}/dossier/{claim_id}/promote",
+        response_model=DossierDecisionReceipt,
+        tags=["operations"],
+    )
+    def promote_to_dossier(
+        entity_id: UUID,
+        claim_id: UUID,
+        requester_role: Annotated[RequesterRole, Query()] = RequesterRole.DM,
+    ) -> DossierDecisionReceipt:
+        if requester_role is not RequesterRole.DM:
+            raise HTTPException(status_code=403, detail="dossier is DM-only")
+        return active_dossier.promote(entity_id, claim_id)
+
+    @app.post(
+        "/entities/{entity_id}/dossier/{claim_id}/demote",
+        response_model=DossierDecisionReceipt,
+        tags=["operations"],
+    )
+    def demote_from_dossier(
+        entity_id: UUID,
+        claim_id: UUID,
+        requester_role: Annotated[RequesterRole, Query()] = RequesterRole.DM,
+    ) -> DossierDecisionReceipt:
+        if requester_role is not RequesterRole.DM:
+            raise HTTPException(status_code=403, detail="dossier is DM-only")
+        return active_dossier.demote(entity_id, claim_id)
+
+    class LifeStatusCommand(BaseModel):
+        status: str
+        since_year: int
+        since_month: int
+        since_day: int
+        claim_id: UUID | None = None  # anchored when detector-confirmed; DM-knowledge sets carry none
+        idempotency_key: str = Field(min_length=1)
+
+    @app.get("/campaign/life-status/proposals", tags=["life-status"])
+    def life_status_proposals() -> list[dict]:
+        return [
+            {"entity_id": item.entity_id, "entity_name": item.entity_name,
+             "death_claim_id": item.death_claim_id, "death_assertion": item.death_assertion,
+             "death_date": item.death_date, "current_status": item.current_status or None}
+            for item in active_life_status.proposals()
+        ]
+
+    @app.post("/campaign/life-status/{entity_id}", tags=["life-status"])
+    def set_life_status(
+        entity_id: UUID,
+        command: LifeStatusCommand,
+        requester_role: Annotated[RequesterRole, Query()] = RequesterRole.DM,
+    ) -> dict:
+        if requester_role is not RequesterRole.DM:
+            raise HTTPException(status_code=403, detail="life status is DM-only")
+        try:
+            receipt = active_life_status.apply(
+                entity_id, command.status, command.since_year, command.since_month,
+                command.since_day, command.claim_id, command.idempotency_key)
+            return {"receipt_id": str(receipt.receipt_id), "version": receipt.version,
+                    "idempotent_replay": receipt.idempotent_replay}
+        except ValueError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+
+    @app.get("/campaign/dead-seats", tags=["life-status"])
+    def dead_seats() -> list[dict]:
+        return [
+            {"member_name": seat.member_name, "faction_name": seat.faction_name,
+             "role_title": seat.role_title, "is_leadership": seat.is_leadership,
+             "life_status_since": seat.life_status_since,
+             "member_id": seat.member_id, "faction_id": seat.faction_id}
+            for seat in active_life_status.dead_seats()
+        ]
+
+    class ConflictDecisionCommand(BaseModel):
+        claim_a_id: UUID
+        claim_b_id: UUID
+        action: str
+        reason: str = Field(min_length=1)
+
+    @app.get("/campaign/conflicts", tags=["conflicts"])
+    def conflict_queue() -> list[dict]:
+        return [
+            {"entity_name": pair.entity_name,
+             "claim_a_id": pair.claim_a_id, "claim_a_assertion": pair.claim_a_assertion,
+             "claim_a_date": pair.claim_a_date,
+             "claim_b_id": pair.claim_b_id, "claim_b_assertion": pair.claim_b_assertion,
+             "claim_b_date": pair.claim_b_date, "claim_b_authority": pair.claim_b_authority,
+             "claim_b_state": pair.claim_b_state}
+            for pair in active_conflict_review.queue()
+        ]
+
+    @app.post("/campaign/conflicts/decisions", tags=["conflicts"])
+    def decide_conflict(
+        command: ConflictDecisionCommand,
+        requester_role: Annotated[RequesterRole, Query()] = RequesterRole.DM,
+    ) -> dict:
+        if requester_role is not RequesterRole.DM:
+            raise HTTPException(status_code=403, detail="conflict review is DM-only")
+        try:
+            return active_conflict_review.decide(
+                command.claim_a_id, command.claim_b_id, command.action, command.reason)
+        except Exception as error:
+            from psycopg import errors as psycopg_errors
+            if getattr(error, "sqlstate", None) == "P0001":
+                raise HTTPException(status_code=409, detail=str(error).splitlines()[0]) from error
+            raise
+
+    class SessionDateSetting(BaseModel):
+        year: int
+        month: int
+        day: int
+        reason: str | None = None
+
+    @app.get("/campaign/session-dating", tags=["campaign-dating"])
+    def session_dating_walk() -> list[dict]:
+        return [
+            {"document_id": entry.document_id, "path": entry.path, "title": entry.title,
+             "session_date": entry.session_date, "year": entry.year, "month": entry.month,
+             "day": entry.day, "undated_claims": entry.undated_claims, "dated_by": entry.dated_by}
+            for entry in active_session_dating.walk()
+        ]
+
+    @app.put("/campaign/session-dating/{document_id}", tags=["campaign-dating"])
+    def set_session_document_date(
+        document_id: UUID,
+        command: SessionDateSetting,
+        requester_role: Annotated[RequesterRole, Query()] = RequesterRole.DM,
+    ) -> dict:
+        if requester_role is not RequesterRole.DM:
+            raise HTTPException(status_code=403, detail="session dating is DM-only")
+        return active_session_dating.set_date(document_id, command.year, command.month,
+                                              command.day, command.reason)
+
+    @app.post("/campaign/claim-dates/inherit", tags=["campaign-dating"])
+    def inherit_claim_dates(
+        requester_role: Annotated[RequesterRole, Query()] = RequesterRole.DM,
+    ) -> dict:
+        if requester_role is not RequesterRole.DM:
+            raise HTTPException(status_code=403, detail="claim date inheritance is DM-only")
+        return active_session_dating.inherit()
+
+    @app.get("/campaign/undated-claims", tags=["campaign-dating"])
+    def undated_claims(limit: int = 50) -> list[dict]:
+        return [
+            {"claim_id": entry.claim_id, "assertion": entry.assertion,
+             "entities": list(entry.entities), "conflict_relevant": entry.conflict_relevant}
+            for entry in active_session_dating.undated_claims(min(limit, 200))
+        ]
+
+    @app.get("/campaign/current-date/history", response_model=list[CampaignClockChangeEntry],
+             tags=["campaign"])
+    def campaign_date_history(limit: int = 10) -> list[CampaignClockChangeEntry]:
+        return [
+            CampaignClockChangeEntry(
+                calendar_id=change.date.calendar_id, year=change.date.year,
+                month=change.date.month, day=change.date.day,
+                reason=change.reason, changed_by=change.changed_by,
+                changed_at=change.changed_at)
+            for change in active_clock.history(min(limit, 50))
+        ]
 
     @app.get("/brainstorms/open", response_model=BrainstormSession | None, tags=["brainstorm"])
     def get_open_brainstorm(
@@ -1587,8 +2079,11 @@ def create_app(
     ) -> CandidateExtractionResult:
         service = active_candidate_extraction
         if candidate_extraction is None and active_settings.openrouter_api_key:
+            effective_extraction_prompt = active_prompt_configuration.effective("extraction")
             service = _default_candidate_extraction_service(
-                active_settings, active_ai_configuration.active_profile()
+                active_settings, active_ai_configuration.active_profile("extraction"),
+                system_prompt=effective_extraction_prompt.prompt_text,
+                prompt_version=effective_extraction_prompt.version_label,
             )
         if service is None:
             raise HTTPException(
@@ -1598,6 +2093,48 @@ def create_app(
         try:
             return service.extract(candidate_id)
         except CandidateExtractionError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+
+    @app.post(
+        "/prose/draft",
+        response_model=ProseDraftResult,
+        tags=["operations"],
+    )
+    def draft_prose(
+        command: ProseDraftCommand,
+        requester_role: Annotated[RequesterRole, Query()] = RequesterRole.DM,
+    ) -> ProseDraftResult:
+        """Draft prose from selected material with the active prose model.
+
+        Non-mutating: a draft is a machine-drafted suggestion the DM disposes
+        of through the normal authoring path — no campaign records change.
+        """
+        if requester_role is not RequesterRole.DM:
+            raise HTTPException(status_code=403, detail="prose drafting is DM-only")
+        service = active_prose_drafting
+        if service is None:
+            try:
+                profile = active_ai_configuration.active_profile("prose")
+            except ValueError as error:
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        "no prose model is active — activate one in Settings "
+                        "(AI models) first"
+                    ),
+                ) from error
+            if not active_settings.openrouter_api_key:
+                raise HTTPException(
+                    status_code=503,
+                    detail="prose drafting is not configured (no AI provider key)",
+                )
+            effective = active_prompt_configuration.effective("prose")
+            service = _default_prose_drafting_service(
+                active_settings, profile,
+                system_prompt=effective.prompt_text, prompt_version=effective.version_label)
+        try:
+            return service.draft(command)
+        except ProseDraftError as error:
             raise HTTPException(status_code=409, detail=str(error)) from error
 
     @app.post(
@@ -1621,6 +2158,9 @@ def _requester(role: RequesterRole, character_id: str | None) -> RequesterVisibi
 def _default_candidate_extraction_service(
     settings: Settings,
     profile: ModelProfile | None = None,
+    *,
+    system_prompt: str | None = None,
+    prompt_version: str | None = None,
 ) -> CandidateExtractionService:
     """Build the candidate extraction service from settings when no override is injected."""
     from dm_assistant_core.adapters.openrouter import OpenRouterClient
@@ -1636,11 +2176,54 @@ def _default_candidate_extraction_service(
         max_retries=profile.retry_limit if profile else settings.openrouter_max_retries,
         reasoning_effort=profile.reasoning_effort if profile else None,
     )
-    harness = ExtractionHarness(client)
+    harness = (
+        ExtractionHarness(client, system_prompt=system_prompt)
+        if system_prompt is not None else ExtractionHarness(client)
+    )
+    if prompt_version is not None:
+        effective_version = prompt_version
+    elif profile:
+        effective_version = next(
+            purpose.prompt_version
+            for purpose in PURPOSES
+            if purpose.key == profile.purpose and purpose.prompt_version
+        )
+    else:
+        effective_version = harness.extractor_version
     return CandidateExtractionService(
         PostgresCandidateExtractionRepository(PostgresDatabase(settings.database_dsn)),
         harness,
         model_profile_key=profile.key if profile else None,
         model_slug=active_model,
-        prompt_version=PROMPT_VERSION if profile else harness.extractor_version,
+        prompt_version=effective_version,
+    )
+
+
+def _default_prose_drafting_service(
+    settings: Settings,
+    profile: ModelProfile,
+    *,
+    system_prompt: str | None = None,
+    prompt_version: str | None = None,
+) -> ProseDraftingService:
+    """Build the prose writer from the active prose profile (per request)."""
+    from dm_assistant_core.adapters.openrouter import OpenRouterClient
+
+    client = OpenRouterClient(
+        api_key=settings.openrouter_api_key,
+        base_url=settings.openrouter_base_url,
+        model=profile.model_slug,
+        max_tokens=profile.max_tokens,
+        timeout_seconds=profile.timeout_seconds,
+        max_retries=profile.retry_limit,
+        reasoning_effort=profile.reasoning_effort,
+    )
+    harness = (
+        ProseHarness(client, system_prompt=system_prompt)
+        if system_prompt is not None else ProseHarness(client)
+    )
+    return ProseDraftingService(
+        harness,
+        model_slug=profile.model_slug,
+        **({"prompt_version": prompt_version} if prompt_version is not None else {}),
     )

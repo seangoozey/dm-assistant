@@ -52,11 +52,17 @@ def test_api_exposes_conflict_contract_and_hides_private_presence():
         assert result.status_code == 200
         return result.json()
 
-    visible = (record(), record("b"))
+    visible = (
+        record(assertion="This person died at the gates.", state="observed",
+               authority="real_play", effective_from="505-11-05"),
+        record("b", assertion="This person greets visitors today.",
+               effective_from="505-11-11"),
+    )
     ordinary = asyncio.run(response(visible))
     assert ordinary == asyncio.run(response((*visible, record("secret", visibility="dm"))))
     issue, = ordinary["conflicts"]
-    assert issue["verification"] == "unverified"
+    assert issue["policy_version"] == "verified-death-temporal-v1"
+    assert issue["verification"] == "verified_comparison"
     assert {item["record_id"] for item in issue["evidence"]} == {"a", "b"}
     assert issue["requires_review"] is True
     assert ordinary["comparison_coverage"] == "partial"

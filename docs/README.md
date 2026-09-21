@@ -25,6 +25,7 @@ An older document can still reveal intent. Do not silently overwrite a newer dec
 - [Domain model](architecture/domain-model.md)
 - [Campaign Core schema](architecture/campaign-core-schema.md)
 - [Workflows](architecture/workflows.md)
+- [Promotion Pipeline](architecture/promotion-pipeline.md) — the reusable Proposal → Candidate → Claim framework (ADR-0018)
 - [Deployment](architecture/deployment.md)
 - [UI conventions](architecture/ui-conventions.md) — the app's design language; check before styling new UI
 - [Current-system migration](migration/current-system.md)

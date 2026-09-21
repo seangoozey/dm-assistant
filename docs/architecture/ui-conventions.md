@@ -39,12 +39,15 @@ Type stack: **Manrope** (UI, weights 400–700) · **Libre Caslon Display** (ser
 
 Icon buttons pair with `RecordIcon kind="edit"|"hide"|"show"|"note"`; SVGs are stroked, `stroke: currentColor; stroke-width: 1.7`.
 
+**AI-action wand:** every button that triggers a model call (drafting prose, extracting claims, retrying a failed extraction) leads its label with the magic-wand icon (`<WandIcon />`, `.wand-icon`) — AI involvement is visible before the click. Buttons without the wand never call a model. Documented in Help as the glossary entry "AI action (✨ wand)".
+
 ## Panels & cards
 
 - Card: `1px solid #cbc5b7; radius 8px; background #fffefa; padding 22–26px` (`.identity-full`, `.operation-card` uses the tinted `#e9e6dc` variant).
 - Queue/list panel: `#f0ede4`, hairline row separators, row hover `#f8f5ec` (`.migration-queue`, `.identity-compact-list`).
 - Notices: `.notice` (warm error/announcement), `role="status"` paragraphs inside panels for receipts.
 - Empty states: serif line + short explanation (`empty-state`, `identity-empty`).
+- Records affordance (ADR-0015): every entry exposes the SAME under-the-hood control — one icon in the standard `entry-page-actions` slot, label "Records", opening the audit view (claims, states, authorities, provenance, supersession). Same icon, same slot, same label on every surface; consistency is the contract.
 - Role chips (faction rosters): `.role-chip` pill; `.role-chip.leadership` tinted accent variant. The ★ suffix marks a unique leadership seat and is explained by the roster's legend line — the star renders only from `is_leadership`, never from text.
 
 ## Entry pages (characters, locations, encounters)

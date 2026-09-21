@@ -96,6 +96,35 @@ services:
       start_period: 30s
     logging: *default-logging
 
+  # TKT-0127: a second worker so page loads (the review bridge) never queue
+  # behind a long AI job — Windmill distributes queued jobs to idle workers.
+  windmill-worker-2:
+    image: ghcr.io/windmill-labs/windmill:1.775.2
+    restart: unless-stopped
+    privileged: true
+    environment:
+      DATABASE_URL: postgres://${WINDMILL_DB_USER}:${WINDMILL_DB_PASSWORD}@windmill-db:5432/${WINDMILL_DB_NAME:-windmill}?sslmode=disable
+      MODE: worker
+      WORKER_GROUP: default
+      FAVOR_UNSHARE_PID: "true"
+      CAMPAIGN_CORE_URL: http://campaign-core:8000
+    depends_on:
+      windmill-db:
+        condition: service_healthy
+    volumes:
+      - windmill-worker-cache-2:/tmp/windmill/cache
+      - windmill-worker-logs:/tmp/windmill/logs
+    networks:
+      - windmill-database
+      - application
+    healthcheck:
+      test: ["CMD-SHELL", "ps | grep -q '[w]indmill'"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    logging: *default-logging
+
   campaign-core:
     image: dm-assistant-campaign-core:0.1.0
     build:
@@ -169,6 +198,7 @@ volumes:
   windmill-db-data:
   campaign-db-data:
   windmill-worker-cache:
+  windmill-worker-cache-2:
   windmill-worker-logs:
 
 networks:
