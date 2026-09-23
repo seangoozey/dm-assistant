@@ -1,0 +1,71 @@
+---
+id: TKT-0136
+title: Promotion Pipeline — reusable Proposal → Candidate → Claim review and commit
+status: in-progress
+priority: P2
+milestone: trustworthy-librarian
+depends_on: []
+created: 2026-09-20
+updated: 2026-09-21
+---
+
+# TKT-0136: Promotion Pipeline — reusable Proposal → Candidate → Claim review and commit
+
+## Context
+
+Sean's ruling (2026-09-20): build one reusable progression for turning working material into canon, serving every surface that consumes it — initially Description filing, Lore creation, and Brainstorm promotion, with the surface set expected to grow (new surfaces join by declaring ownership model, defaults row, derivation rule, bundle suffix) — plus a repair intake for in-app material that was written but never promoted correctly. Key constraint: **user ease** (the DM touches only what is wrong). The Migration wizard solved this class for imports with poor results (sequence-as-navigation, structure-as-gate, per-claim form grids, approval ceremony); the direct session reviewer proved the better pattern. Framework: `docs/architecture/promotion-pipeline.md`; decision record: ADR-0018 (proposed). Shaping rulings locked: compact scan-able candidate list, "Approve promotion" commit verb, name "Promotion Pipeline", and the **ownership-model distinction**: Description/Lore are bound-subject (owner implicit — existing for Description, created by the commit for Lore); Brainstorm is free-subject (no owner, many Entities existing or new) and carries machinery intrinsic to it.
+
+## Scope when taken up
+
+- **Backend facade** (`campaign-core/src/dm_assistant_core/application/promotion.py`):
+  - `derive(surface, proposal_refs, hints)` → candidate list: assertion text, subject (inherited for bound surfaces, required resolution for free), defaulted Truth State, provenance, mechanical consequence (new / moves from / replaces), conflict flags (current detectors only — verified-death temporal + deterministic checks; free-text semantic contradiction is out of scope), deterministic-check results. A read.
+  - `approve_promotion(payload, idempotency_key)` → single-action binding transaction: build immutable proposal version, bind approval to exactly that version + items, apply (entities, claims, re-attributions, supersessions, documents), receipt — reusing change_sets / candidate_proposals internals, no new canonical mutation route.
+  - Server-side defaults per the framework's defaults table (authority, visibility, confidence, conditionality, recorded_at, dates). The 20-field `CreateClaimDecision` is assembled server-side.
+  - Free-subject support: records created inside a commit are referenced by bundle-local key (`{"new_record": "r1"}`), resolved to UUIDs server-side within the transaction; one commit may create several records.
+- **Promotion Review list component**: compact scan-able rows — all approvable elements at a glance (text, subject, state chip, provenance cite, consequence/flag line), inline fixes, one expandable dimensions disclosure per candidate, one "Approve promotion · N claims [+ bundle]" button; receipts and failures into the toast/Log bus. UI tokens per ui-conventions; no wizard chrome. Renders the ownership model: bound surfaces show the owner as page context; free surfaces show a required subject chip per row and NEW RECORD rows grouping claims beneath them.
+- **Surface adoption** (each slice adds exactly one mechanism):
+  1. Description — bound-subject, existing owner; citation mirrors and novel statements (simplest commit path)
+  2. Lore — bound-subject, owner created by the commit; adds re-attribution and new-record bundle
+  3. Brainstorm — free-subject; adds per-candidate subject resolution, NEW RECORD rows, multi-record bundles (the machinery intrinsic to Brainstorm; the same machinery later serves session-note statements and the Migration claim step)
+- **Repair lane**: standing unpromoted-material audit (entities with zero claims but authored documents; unpromoted brainstorm thoughts; direct captures with pending statements) surfaced as a Tools-panel review that reopens stalled artifacts as proposals; *replaces claim #Z* consequences commit through supersession receipts.
+- **Glossary**: "Promotion Pipeline" entry lands with the component (test-enforced registry rule).
+
+## Out of scope
+
+- Migration wizard rework (steps 3–6 collapse into this component under TKT-0131, separately).
+- Durable pending-proposal queues for ephemeral surfaces (rejected in ADR-0018).
+- Any AI seam beyond the four fixed ones; AI never gates or executes commit.
+- General semantic conflict detection — free-text contradiction (e.g. "ugly" vs "cute") is not detected and the flag must never be worded as if it were; widening detection (structured Attribute domains, an optional AI review seam) is future work, tracked separately when ruled in.
+- TKT-0040's conflict-gated lore application specifics (the pipeline surfaces conflicts inline; 0040 remains its own track).
+
+## Validation evidence
+
+**Slice 1 delivered 2026-09-21 — backend facade + Promotion Review list + Description adoption.**
+
+Backend (`campaign-core`):
+- `application/promotion.py`: `derive` (deterministic statement split, defaults from `SURFACE_REGISTRY`, reference-mirror marking, narrow conflict pre-check) and `approve_promotion` (single-action binding: file description with statement-span candidates → create-or-revise proposal → approve with version-derived idempotency key → apply change set; convergent retry via the stored-change-set replay path).
+- `entity_descriptions.py`: `statement_spans` on the command — only approved statements become reviewable candidates (no Migration-queue residue); receipt returns ordered `candidate_ids`.
+- Conflict gate shared: `assertions_require_conflict_review` moved from the postgres adapter to `application/candidate_proposals.py` so preview and commit agree.
+- **Latent CTS bug fixed on the way**: the Considered truth state could not commit at three layers (missing `ClaimState.CONSIDERED` domain enum member, no `("considered","brainstorm")` coordinate pair, brainstorm UI authority map lacked `considered`) — all fixed; PC-subject check now permits considered as the mildest planning state.
+- API: `POST /promotion/derive`, `POST /promotion/approve` (DM-only; readable 422/409 errors).
+
+Tests:
+- Unit `tests/test_promotion.py` 12/12 (splitter offsets, mirror-vs-mention, overlap-gate narrowness incl. ugly/cute, derive reference/conflict marking, document-only commit, full-chain commit, revise convergence, state-not-offered, stale-span errors).
+- Integration `tests/test_promotion_postgres.py` 2/2 in the docker harness: full derive→approve→apply chain against real Postgres with idempotent replay (2 claims, established/explicit_lore, correct subject) and reference-mirror exclusion.
+- Suite: 510 passed (one pre-existing failure unrelated to this ticket: `test_boundaries.py::test_canonical_table_writes_exist_only_in_migrations` — TKT-0099's `claim_reattribution.py` writes canonical tables outside a migration-owned function; flagged to Sean, fix belongs to the 0099 track).
+- React 138/138 incl. the new promotion review test (on-demand derive never automatic; locked reference rows; consequence at a glance; commit payload excludes references; receipt toast).
+
+UI:
+- `PromotionReviewList` component embedded in the Description composer: scan-able rows (assertion inline-edit, Truth State select for new claims, consequence line, conflict flag with honest "known conflict" wording, provenance), staleness guard (prose changed → review again), one "Approve promotion · N claims + description" button (falls back to "File description" at N=0); plain "File description" path preserved.
+- Glossary: "Promotion Pipeline" entry landed (registry rule).
+- Live verification on the deployed stack: bridge + Core derive exercised end-to-end in the browser (2 candidates derived from prose on a real entry, Established defaults, consequence lines, commit label); no commit clicked — that would have written real claims.
+
+Remaining slices (not started): **remove the plain "File description" bypass — statement review becomes mandatory** (user ruling 2026-09-21: claims-from-prose opt-in is a compliance violation; every statement gets an explicit include-or-exclude decision, ADR-0018 point 8); Lore adoption (bound-created owner + re-attribution consequences); Brainstorm adoption (free-subject machinery, NEW RECORD rows, multi-record bundles); repair lane + standing unpromoted-material audit; Migration steps 3–6 collapse (TKT-0131).
+
+### Fix: unpaged NPCs had no Write Description button (2026-09-21, deployed)
+
+Sean reported Osirus (NPC, only lore-doc mentions, no sheet and no authored page) lacked the button. Root cause: entries with no matched page render a SYNTHESIZED stand-in document, which carries `type: npc` frontmatter — so the character view branch took over, and that branch never offered the write-description affordance (only "Edit NPC page"). Unpaged characters are exactly the entries that need the affordance. Fix: the synthesized-character branch passes `onWriteDescription` (same unpaged RecordIcon button as the templated view), and the Description composer now renders in that branch with the same save lifecycle (document list refresh before entry reload). Verified live on Osirus: button present, composer opens. React 139/139.
+
+### Known limitation from live use (2026-09-21): paraphrase blindness in mirror + duplicate checks
+
+The Osirus description review showed the reference-mirror detector (term overlap ≥ 0.5) missing every paraphrase of a gathered claim — all six statements derived as "new claim" though most restated the three references. The commit-time same-subject duplicate check shares the blindness (needs matching predicates or near-identical term sets), so approving such a list creates near-duplicate claims against ADR-0015's "one source saying it, never two." Deterministic mitigation is limited by design (per consequence≠conflict); the planned path is TKT-0137's AI restatement suggestions (marked, DM-confirmed). Until then: the review list is the dedup check — scan restatement consequences manually when prose was drafted from gathered claims.

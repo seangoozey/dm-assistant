@@ -251,7 +251,7 @@ export interface SourceDocumentContent {
 }
 
 export type ClaimProjection = "real_play" | "player_plan" | "npc_plan" | "dm_plan" | "lore_fact";
-export interface SourceDocumentClaim { claim_id: string; assertion_text: string; state: string; authority: string; visibility: string; conditional: boolean; condition_text?: string; recorded_at: string; projection: ClaimProjection; source_excerpt?: string; sources?: LibraryEntrySource[]; }
+export interface SourceDocumentClaim { claim_id: string; assertion_text: string; state: string; authority: string; visibility: string; conditional: boolean; condition_text?: string; recorded_at: string; projection: ClaimProjection; source_excerpt?: string; sources?: LibraryEntrySource[]; subject_entity_id?: string | null; subject_entity_name?: string | null; }
 export interface SourceDocumentClaimHistory extends SourceDocumentClaim { superseded_by_claim_id: string; supersession_reason: string; }
 
 export interface PCProfile { document_id: string; source_revision_id: string; version: number; canonical_name: string; player?: string; race?: string; sex?: string; status: string; aliases: string[]; background: string; }
@@ -288,6 +288,32 @@ export interface ConflictDecisionResult {
 }
 export interface EntityDescriptionReceipt {
   entity_id: string; document_id: string; revision_id: string; path: string; idempotent_replay: boolean;
+}
+// Promotion Pipeline (ADR-0018): derive previews candidates; approve commits.
+export interface PromotionCandidate {
+  sequence: number; span_start: number; span_end: number; assertion_text: string;
+  state: string; authority: string;
+  consequence: { kind: "new_claim" | "reference"; claim_id: string | null; label: string };
+  conflict: { against_claim_id: string; against_text: string; note: string } | null;
+  included: boolean;
+}
+export interface PromotionCandidateList {
+  surface: string; ownership: string; entity_id: string; entity_name: string;
+  candidates: PromotionCandidate[];
+}
+export interface PromotionStatementInput {
+  span_start: number; span_end: number; assertion_text: string; state: string; included: boolean;
+}
+export interface ApprovePromotionInput {
+  surface: "description"; entity_id: string; document_text: string;
+  statements: PromotionStatementInput[]; referenced_claim_ids: string[];
+  document_id?: string | null; idempotency_key: string;
+}
+export interface PromotionCommitReceipt {
+  entity_id: string; entity_name: string; document_id: string; revision_id: string; path: string;
+  claims_committed: number; claim_ids: string[];
+  proposal_id: string | null; change_set_id: string | null; receipt_id: string | null;
+  idempotent_replay: boolean;
 }
 export interface ProseMaterialItem { key: string; kind: string; text: string; state?: string | null; }
 export interface ProseDraftCommand { subject: string; subject_kind: string; paragraph_limit: number; direction?: string | null; material: ProseMaterialItem[]; idempotency_key: string; }
@@ -511,6 +537,8 @@ export interface CampaignClient {
   getConflictQueue(): Promise<ConflictPair[]>;
   decideConflict(claimAId: string, claimBId: string, action: "dismiss" | "supersede", reason: string): Promise<ConflictDecisionResult>;
   writeEntityDescription(entityId: string, text: string, referencedClaimIds: string[], idempotencyKey: string, documentId?: string | null): Promise<EntityDescriptionReceipt>;
+  derivePromotion(surface: "description", entityId: string, documentText: string, referencedClaimIds: string[]): Promise<PromotionCandidateList>;
+  approvePromotion(input: ApprovePromotionInput): Promise<PromotionCommitReceipt>;
   draftProse(command: ProseDraftCommand): Promise<ProseDraftResult>;
   getEntityGraphNeighborhood(entityId: string): Promise<GraphRelationRow[]>;
   getLifeStatusProposals(): Promise<LifeStatusProposal[]>;
@@ -671,7 +699,9 @@ export interface ReviewBackendRequest {
     | "reconcile_claims"
     | "get_claim_snapshot"
     | "correct_claim"
-    | "replace_claim";
+    | "replace_claim"
+    | "derive_promotion"
+    | "approve_promotion";
   candidate_id?: string;
   proposal_id?: string;
   plan_id?: string;
@@ -831,6 +861,8 @@ export class HttpCampaignClient implements CampaignClient {
   getConflictQueue(): Promise<ConflictPair[]> { return this.core("/campaign/conflicts"); }
   decideConflict(claimAId: string, claimBId: string, action: "dismiss" | "supersede", reason: string): Promise<ConflictDecisionResult> { return this.core("/campaign/conflicts/decisions?requester_role=dm", "POST", { claim_a_id: claimAId, claim_b_id: claimBId, action, reason }); }
   writeEntityDescription(entityId: string, text: string, referencedClaimIds: string[], idempotencyKey: string, documentId?: string | null): Promise<EntityDescriptionReceipt> { return this.core(`/entities/${entityId}/description?requester_role=dm`, "POST", { entity_id: entityId, text, referenced_claim_ids: referencedClaimIds, idempotency_key: idempotencyKey, ...(documentId ? { document_id: documentId } : {}) }); }
+  derivePromotion(surface: "description", entityId: string, documentText: string, referencedClaimIds: string[]): Promise<PromotionCandidateList> { return this.core("/promotion/derive?requester_role=dm", "POST", { surface, entity_id: entityId, document_text: documentText, referenced_claim_ids: referencedClaimIds }); }
+  approvePromotion(input: ApprovePromotionInput): Promise<PromotionCommitReceipt> { return this.core("/promotion/approve?requester_role=dm", "POST", input); }
   draftProse(command: ProseDraftCommand): Promise<ProseDraftResult> { return this.core("/prose/draft?requester_role=dm", "POST", command); }
   getEntityGraphNeighborhood(entityId: string): Promise<GraphRelationRow[]> { return this.core(`/entities/${entityId}/graph-neighborhood?requester_role=dm`); }
   getLifeStatusProposals(): Promise<LifeStatusProposal[]> { return this.core("/campaign/life-status/proposals"); }
@@ -1065,6 +1097,8 @@ export class WindmillCampaignClient implements CampaignClient {
   getConflictQueue(): Promise<ConflictPair[]> { return this.review<ConflictPair[]>({ operation: "get_conflict_queue" }); }
   decideConflict(claimAId: string, claimBId: string, action: "dismiss" | "supersede", reason: string): Promise<ConflictDecisionResult> { return this.review<ConflictDecisionResult>({ operation: "decide_conflict", body: { claim_a_id: claimAId, claim_b_id: claimBId, action, reason } }); }
   writeEntityDescription(entityId: string, text: string, referencedClaimIds: string[], idempotencyKey: string, documentId?: string | null): Promise<EntityDescriptionReceipt> { return this.review<EntityDescriptionReceipt>({ operation: "write_entity_description", entity_id: entityId, body: { entity_id: entityId, text, referenced_claim_ids: referencedClaimIds, idempotency_key: idempotencyKey, ...(documentId ? { document_id: documentId } : {}) } }); }
+  derivePromotion(surface: "description", entityId: string, documentText: string, referencedClaimIds: string[]): Promise<PromotionCandidateList> { return this.review<PromotionCandidateList>({ operation: "derive_promotion", entity_id: entityId, body: { surface, entity_id: entityId, document_text: documentText, referenced_claim_ids: referencedClaimIds } }); }
+  approvePromotion(input: ApprovePromotionInput): Promise<PromotionCommitReceipt> { return this.review<PromotionCommitReceipt>({ operation: "approve_promotion", entity_id: input.entity_id, body: input }); }
   draftProse(command: ProseDraftCommand): Promise<ProseDraftResult> { return this.review<ProseDraftResult>({ operation: "draft_prose", body: command }); }
   getEntityGraphNeighborhood(entityId: string): Promise<GraphRelationRow[]> { return this.review<GraphRelationRow[]>({ operation: "get_entity_graph_neighborhood", entity_id: entityId }); }
   getLifeStatusProposals(): Promise<LifeStatusProposal[]> { return this.review<LifeStatusProposal[]>({ operation: "get_life_status_proposals" }); }

@@ -255,6 +255,12 @@ class SourceDocumentClaim(BaseModel):
     recorded_at: datetime
     projection: ClaimProjection
     source_excerpt: str | None = None
+    # Backward ownership link (user ruling 2026-09-21): the record this claim
+    # is ABOUT, so evidence surfaces can title and group by owner — the
+    # document alone never told the reader (or the model) whose record a
+    # claim belongs to.
+    subject_entity_id: UUID | None = None
+    subject_entity_name: str | None = None
 
 
 class SourceDocumentClaimHistory(SourceDocumentClaim):

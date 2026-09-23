@@ -59,6 +59,7 @@ import type {
   IdentityGap,
   IdentityDecisionReceipt,
   EntityProfile,
+  PromotionCandidate,
 } from "./campaignClient";
 import type { JobPlatform, JobSnapshot } from "./jobPlatform";
 import {
@@ -438,7 +439,7 @@ function characterDocument(markdown: string): CharacterDocument | null {
   };
 }
 
-function CharacterDocumentView({ profile, path, sources = [], onEdit, dmClaims = [], claimHistory = [], onEditClaim, lifeStatus, dossierClaimIds, onPromoteClaim, onDemoteClaim }: { profile: CharacterDocument; path: string; sources?: LibraryEntrySource[]; onEdit?: () => void; dmClaims?: SourceDocumentClaim[]; claimHistory?: SourceDocumentClaimHistory[]; onEditClaim?: (claimId: string) => void; lifeStatus?: { status: string | null; since: string | null }; dossierClaimIds?: Set<string>; onPromoteClaim?: (claimId: string) => void; onDemoteClaim?: (claimId: string) => void }) {
+function CharacterDocumentView({ profile, path, sources = [], onEdit, onWriteDescription, dmClaims = [], claimHistory = [], onEditClaim, lifeStatus, dossierClaimIds, onPromoteClaim, onDemoteClaim }: { profile: CharacterDocument; path: string; sources?: LibraryEntrySource[]; onEdit?: () => void; onWriteDescription?: () => void; dmClaims?: SourceDocumentClaim[]; claimHistory?: SourceDocumentClaimHistory[]; onEditClaim?: (claimId: string) => void; lifeStatus?: { status: string | null; since: string | null }; dossierClaimIds?: Set<string>; onPromoteClaim?: (claimId: string) => void; onDemoteClaim?: (claimId: string) => void }) {
   const [hiddenClaims, setHiddenClaims] = useState<Set<string>>(() => new Set());
   const [visibilitySettings] = useSettings();
   const [visibleSources, setVisibleSources] = useState<Set<string>>(() => new Set());
@@ -459,7 +460,7 @@ function CharacterDocumentView({ profile, path, sources = [], onEdit, dmClaims =
     })}</div> : <p className="empty-section">{empty}</p>;
   };
   return <article className="document-view character-document">
-    <header><b>{profile.kind === "pc" ? "Player character" : "Non-player character"}</b><span>Campaign character</span><div className="entry-page-actions">{onEdit && <button aria-label={`Edit ${profile.kind.toUpperCase()} page`} onClick={onEdit} title="Edit" type="button"><RecordIcon kind="edit" /></button>}</div></header>
+    <header><b>{profile.kind === "pc" ? "Player character" : "Non-player character"}</b><span>Campaign character</span><div className="entry-page-actions">{onWriteDescription && <button aria-label={`Write description for ${profile.name}`} onClick={onWriteDescription} title="Write description — give this entry its page" type="button"><RecordIcon kind="unpaged" /></button>}{onEdit && <button aria-label={`Edit ${profile.kind.toUpperCase()} page`} onClick={onEdit} title="Edit" type="button"><RecordIcon kind="edit" /></button>}</div></header>
     <section className="character-profile">
       <div><span>{profile.kind === "pc" ? "Player character" : "Non-player character"}</span><h1>{profile.name}</h1></div>
       <dl>
@@ -1068,6 +1069,12 @@ function FactionRolesPage({ campaignClient, factions, onRefreshLibrary, onOpenFa
   </main>;
 }
 
+// Lore workspace evidence: a claim plus the record it belongs to. The owner
+// title matters twice — on screen (a Considered reference reads as ABOUT its
+// owner, never as a fact of the entry being drafted) and in the prose
+// material, where the model needs the same context.
+type LoreEvidence = SourceDocumentClaim & { owner_name?: string };
+
 function LoreCreationPage({ campaignClient, jobPlatform, libraryEntries, onOpenEntry, onQueueDraft, pendingDraft, onConsumeDraft, onCreated }: {
   campaignClient: CampaignClient; jobPlatform: JobPlatform;
   libraryEntries: LibraryEntrySummary[];
@@ -1079,7 +1086,7 @@ function LoreCreationPage({ campaignClient, jobPlatform, libraryEntries, onOpenE
 }) {
   const [queue, setQueue] = useState<LoreQueueItem[]>([]);
   const [selectedItem, setSelectedItem] = useState<LoreQueueItem | null>(null);
-  const [searchResults, setSearchResults] = useState<{ claims: SourceDocumentClaim[]; matches: EntityIdentity[] }>({ claims: [], matches: [] });
+  const [searchResults, setSearchResults] = useState<{ claims: LoreEvidence[]; matches: EntityIdentity[] }>({ claims: [], matches: [] });
   const [linkedClaims, setLinkedClaims] = useState<Set<string>>(() => new Set());
   const [consideredClaims, setConsideredClaims] = useState<Set<string>>(() => new Set());
   const [expandedClaims, setExpandedClaims] = useState<Set<string>>(() => new Set());
@@ -1093,17 +1100,21 @@ function LoreCreationPage({ campaignClient, jobPlatform, libraryEntries, onOpenE
   const [searchQuery, setSearchQuery] = useState("");
   const [direction, setDirection] = useState("");
   const [searchBusy, setSearchBusy] = useState(false);
+  // Evidence accordion (user ruling 2026-09-21): one branch is ALWAYS open —
+  // clicking the open bar leaves it open. Opening Results parks Consider's
+  // bar at the panel bottom; opening Consider slides it up under Results;
+  // the open branch's list is the scroll area between the bars.
+  const [evidencePanel, setEvidencePanel] = useState<"results" | "consider">("results");
 
   useEffect(() => subscribeLoreQueue(setQueue), []);
 
-  // Auto-save the evidence workspace whenever linked/considered changes.
-  // Only saves claims that are linked or considered — un-checked results are
-  // ephemeral and don't survive a refresh.
+  // Auto-save the working file — evidence AND the workspace itself (kind,
+  // direction, description). Rule of thumb for workspaces: the user should
+  // never have to worry about data loss (user ruling 2026-09-21).
   useEffect(() => {
     if (!selectedItem) return;
     const kept = searchResults.claims.filter(
       (c) => linkedClaims.has(c.claim_id) || consideredClaims.has(c.claim_id));
-    if (kept.length === 0 && linkedClaims.size === 0 && consideredClaims.size === 0) return;
     saveLoreEvidence(selectedItem.id, {
       claims: kept.map((c) => ({
         claim_id: c.claim_id,
@@ -1111,40 +1122,70 @@ function LoreCreationPage({ campaignClient, jobPlatform, libraryEntries, onOpenE
         state: c.state,
         authority: c.authority,
         source_excerpt: c.source_excerpt,
+        owner_name: c.owner_name,
       })),
       linkedClaimIds: [...linkedClaims],
       consideredClaimIds: [...consideredClaims],
+      chosenKind,
+      direction,
+      prose,
     });
-  }, [selectedItem, linkedClaims, consideredClaims, searchResults.claims]);
+  }, [selectedItem, linkedClaims, consideredClaims, searchResults.claims, chosenKind, direction, prose]);
 
   // Gather evidence for a queued name: claims that mention it, and existing
   // entities that might be what this refers to.
   const gather = useCallback(async (name: string) => {
+    if (busy) return;
     setBusy(true);
     setMessageIsError(false);
     setMessage("");
+    setEvidencePanel("results");
     try {
       const [claimPage, entityMatches] = await Promise.all([
         campaignClient.listSourceDocuments(),
         campaignClient.searchEntities(name).catch(() => [] as EntityIdentity[]),
       ]);
       const lower = name.toLocaleLowerCase();
-      const matching: SourceDocumentClaim[] = [];
+      const matching: LoreEvidence[] = [];
       for (const doc of claimPage.items) {
         const full = await campaignClient.getSourceDocument(doc.document_id).catch(() => null);
         if (!full) continue;
         for (const claim of (full.canonical_claims ?? [])) {
           if (claim.assertion_text.toLocaleLowerCase().includes(lower)) {
-            matching.push({ ...claim, source_excerpt: claim.source_excerpt ?? undefined });
+            matching.push({
+              ...claim,
+              source_excerpt: claim.source_excerpt ?? undefined,
+              // Backward ownership link from Core: whose record this claim is
+              // about, so results can be titled and grouped by entity.
+              owner_name: claim.subject_entity_name ?? undefined,
+            });
           }
         }
       }
-      setSearchResults({ claims: matching.slice(0, 30), matches: entityMatches });
+      // Gather merges exactly like search: the Considered set survives a
+      // re-gather; fresh name matches replace the unconsidered pool (deduped
+      // by underlying claim, so a retrieval or graph result already in the
+      // working set is not duplicated).
+      const underlyingId = (id: string) => {
+        const graphMatch = id.match(/^graph:[0-9a-f-]+:(.+)$/i);
+        return graphMatch ? graphMatch[1] : id;
+      };
+      setSearchResults((current) => {
+        const kept = current.claims.filter((c) => consideredClaims.has(c.claim_id));
+        const seen = new Set(kept.map((c) => underlyingId(c.claim_id)));
+        const deduped = matching.slice(0, 30).filter((c) => {
+          const id = underlyingId(c.claim_id);
+          if (seen.has(id)) return false;
+          seen.add(id);
+          return true;
+        });
+        return { claims: [...kept, ...deduped], matches: entityMatches };
+      });
     } catch (cause) {
       setMessageIsError(true);
       setMessage(cause instanceof Error ? cause.message : "Evidence gathering failed");
     } finally { setBusy(false); }
-  }, [campaignClient]);
+  }, [campaignClient, consideredClaims]);
 
   // Relevance search: the retrieval endpoint ranks by meaning, not just
   // exact text. Results arrive UNCHECKED; un-Considered prior results are
@@ -1156,6 +1197,8 @@ function LoreCreationPage({ campaignClient, jobPlatform, libraryEntries, onOpenE
     setSearchBusy(true);
     setMessageIsError(false);
     setMessage("");
+    // Searching delivers results — open the Results branch automatically.
+    setEvidencePanel("results");
     try {
       const query = searchQuery.trim();
       // Graph: consult entities matching BOTH the search query and the queued
@@ -1180,7 +1223,7 @@ function LoreCreationPage({ campaignClient, jobPlatform, libraryEntries, onOpenE
           if (!graphSeen.has(row.text)) { graphSeen.add(row.text); graphRows.push(row); }
         }
       }
-      const found: SourceDocumentClaim[] = result.evidence.map((item) => ({
+      const found: LoreEvidence[] = result.evidence.map((item) => ({
         claim_id: item.record_id,
         assertion_text: item.assertion,
         state: item.state,
@@ -1190,6 +1233,9 @@ function LoreCreationPage({ campaignClient, jobPlatform, libraryEntries, onOpenE
         recorded_at: new Date().toISOString(),
         projection: "lore_fact",
         source_excerpt: item.citation,
+        owner_name: item.entity_id
+          ? libraryEntries.find((entry) => entry.entry_id === item.entity_id)?.canonical_name
+          : undefined,
       }));
       // The graph's value is DISCOVERY: it identifies related entities whose
       // CLAIMS are the evidence. Extract entity names from graph rows, fetch
@@ -1213,7 +1259,7 @@ function LoreCreationPage({ campaignClient, jobPlatform, libraryEntries, onOpenE
       // Fetch claims from the top related entities (max 5, to keep bounded).
       const relatedEntries = libraryEntries.filter(
         (entry) => relatedNames.has(entry.canonical_name));
-      const graphEvidence: SourceDocumentClaim[] = [];
+      const graphEvidence: LoreEvidence[] = [];
       for (const entry of relatedEntries.slice(0, 5)) {
         try {
           const libEntry = await campaignClient.getLibraryEntry(entry.entry_id);
@@ -1229,6 +1275,7 @@ function LoreCreationPage({ campaignClient, jobPlatform, libraryEntries, onOpenE
               recorded_at: claim.recorded_at,
               projection: claim.projection,
               source_excerpt: `via graph → ${entry.canonical_name} (${display(entry.entity_kind)})`,
+              owner_name: entry.canonical_name,
             });
           }
         } catch { /* related entity unavailable — skip */ }
@@ -1263,11 +1310,14 @@ function LoreCreationPage({ campaignClient, jobPlatform, libraryEntries, onOpenE
 
   const pick = (item: LoreQueueItem) => {
     setSelectedItem(item);
-    setProse("");
-    setDirection("");
     setLinkTarget("");
-    // Restore saved evidence workspace (survives refresh).
+    setEvidencePanel("results");
+    // Restore the whole working file — evidence plus kind, direction, and
+    // description — so a refresh (or switching away and back) loses nothing.
     const saved = item.savedEvidence;
+    setProse(saved?.prose ?? "");
+    setDirection(saved?.direction ?? "");
+    setChosenKind(saved?.chosenKind ?? "location");
     if (saved && saved.claims.length > 0) {
       const restored = saved.claims.map((c) => ({
         ...c,
@@ -1290,18 +1340,36 @@ function LoreCreationPage({ campaignClient, jobPlatform, libraryEntries, onOpenE
 
   // AI synopsis: draft from the selected evidence using the prose writer.
   const draftSynopsis = async () => {
-    if (!selectedItem || linkedClaims.size === 0 || draftBusy) return;
+    if (!selectedItem || draftBusy) return;
     setDraftBusy(true);
     try {
-      // Route through App's queueProseDraft so the Drafts tray tracks the job.
+      // Material is the CONSIDERED set (Link implies Consider) — background
+      // reference for the draft, each item titled with the record it is
+      // actually about so the model never reads a reference as a fact of the
+      // subject. With nothing selected, the queued name itself is the seed —
+      // no evidence is required to draft.
+      const consideredMaterial = searchResults.claims
+        .filter((claim) => consideredClaims.has(claim.claim_id))
+        .map((claim) => ({
+          key: `claim:${claim.claim_id}`,
+          kind: "claim" as const,
+          text: claim.owner_name ? `[about ${claim.owner_name}] ${claim.assertion_text}` : claim.assertion_text,
+          state: claim.state,
+        }));
+      const material = consideredMaterial.length > 0 ? consideredMaterial : [
+        {
+          key: `seed:${selectedItem.id}`,
+          kind: "claim" as const,
+          text: `${selectedItem.name} is a name queued for a new ${display(chosenKind)} entry${selectedItem.context ? ` (noted from ${selectedItem.context})` : ""}.`,
+          state: "considered",
+        },
+      ];
       await onQueueDraft({
         subject: selectedItem.name,
         subject_kind: chosenKind,
         paragraph_limit: 3,
         direction: direction.trim() || undefined,
-        material: searchResults.claims
-          .filter((claim) => linkedClaims.has(claim.claim_id))
-          .map((claim) => ({ key: `claim:${claim.claim_id}`, kind: "claim", text: claim.assertion_text, state: claim.state })),
+        material,
         idempotency_key: `lore-draft:${selectedItem.id}:${crypto.randomUUID()}`,
       }, `lore:${selectedItem.id}`, selectedItem.name);
       setMessageIsError(false);
@@ -1387,6 +1455,151 @@ function LoreCreationPage({ campaignClient, jobPlatform, libraryEntries, onOpenE
   const pending = queue.filter((item) => item.status === "queued");
   const resolved = queue.filter((item) => item.status === "resolved");
   const ENTITY_KIND_OPTIONS = ENTITY_KINDS.filter((k) => !["pc"].includes(k.kind));
+  const backToLore = () => { setSelectedItem(null); setProse(""); };
+  // Results group by the record each claim is ABOUT (user ruling 2026-09-21);
+  // owner-less claims fall into a trailing "No owning record" group. The
+  // Considered set groups the same way.
+  const resultsClaims = searchResults.claims.filter((c) => !consideredClaims.has(c.claim_id));
+  const consideredClaimsList = searchResults.claims.filter((c) => consideredClaims.has(c.claim_id));
+  const groupByOwner = (claims: LoreEvidence[]): Array<{ owner: string | null; items: LoreEvidence[] }> => {
+    const groups: Array<{ owner: string | null; items: LoreEvidence[] }> = [];
+    for (const claim of claims) {
+      const owner = claim.owner_name ?? null;
+      const group = groups.find((entry) => entry.owner === owner);
+      if (group) group.items.push(claim);
+      else groups.push({ owner, items: [claim] });
+    }
+    groups.sort((left, right) => Number(left.owner === null) - Number(right.owner === null));
+    return groups;
+  };
+  const resultsByOwner = groupByOwner(resultsClaims);
+  const consideredByOwner = groupByOwner(consideredClaimsList);
+
+  // Working an item is its own page — the queue stays behind the Back button,
+  // and both columns scroll inside a viewport-height workspace.
+  if (selectedItem) return <main className="page-lore lore-working" aria-label="Lore creation workspace page">
+    <div className="lore-working-header">
+      <button className="text-button" onClick={backToLore} type="button">← Back to Lore</button>
+      <p className="kicker">Lore creation</p>
+    </div>
+    <section className="lore-workspace" aria-label="Lore creation workspace">
+      <div className="lore-workspace-main">
+        {message && <div className={"notice" + (messageIsError ? " error" : "")} role={messageIsError ? "alert" : "status"} style={{ margin: 0 }}>{message}</div>}
+        <h3>Creating: {selectedItem.name}</h3>
+
+        <div className="form-grid">
+          <label>Entity kind<select aria-label="Lore entity kind" value={chosenKind} onChange={(event) => setChosenKind(event.target.value)}>
+            {ENTITY_KIND_OPTIONS.map((k) => <option key={k.kind} value={k.kind}>{k.label}</option>)}
+          </select></label>
+        </div>
+
+        {searchResults.matches.length > 0 && <div className="lore-existing-matches">
+          <b>Existing entities with this name:</b>
+          {searchResults.matches.map((match) => <label key={match.entity_id} className="lore-match-row">
+            <input checked={linkTarget === match.canonical_name} onChange={() => setLinkTarget(linkTarget === match.canonical_name ? "" : match.canonical_name)} type="radio" />
+            <span>{match.canonical_name} ({display(match.entity_kind)})</span>
+          </label>)}
+        </div>}
+
+        <label className="pc-background-field session-notes-field lore-direction-field">AI direction (optional — shapes the draft's emphasis)<textarea aria-label="AI direction for the draft" placeholder="e.g. Focus on the statue's significance, the secrecy around it, and what the treasury means to Fleurite's power structure…" rows={3} value={direction} onChange={(event) => setDirection(event.target.value)} /></label>
+
+        <div className="composer-draft-row">
+          <button className="secondary-button" disabled={draftBusy || busy} onClick={() => void draftSynopsis()} type="button"><WandIcon />{draftBusy ? "Drafting…" : "Draft synopsis"}</button>
+          <small className="ai-activation-note">Drafts from the Considered evidence (each item labeled with the record it is about) — or from the name alone when nothing is checked. Lands in the Drafts tray</small>
+        </div>
+
+        {pendingDraft && <div className="lore-draft-ready notice" role="status">
+          <span>AI draft ready for {selectedItem.name}:</span>
+          <button className="text-button" onClick={() => { setProse(pendingDraft); onConsumeDraft(); toast.push("info", "Draft inserted — review before creating"); }} type="button">Insert into description</button>
+        </div>}
+        <label className="pc-background-field session-notes-field">Description (the new entry's page)<textarea aria-label="Lore description" placeholder={`Write ${selectedItem.name}'s page — what it is, why it matters…`} rows={10} value={prose} onChange={(event) => setProse(event.target.value)} /></label>
+
+        <div className="step-actions">
+          {linkTarget
+            ? <button disabled={busy} onClick={() => void linkEntry()} type="button">Link to {linkTarget}</button>
+            : <button className="decision-button" disabled={busy || !prose.trim()} onClick={() => void createEntry()} type="button">{busy ? "Creating…" : `Create ${selectedItem.name} as ${chosenKind}`}</button>}
+        </div>
+      </div>
+
+      <aside className="lore-evidence-panel" aria-label="Lore evidence">
+        <header><span>Evidence</span><h2>Gathered for {selectedItem.name}</h2>
+          <p>Consider keeps a claim as draft background; Link moves it to the new entry when created. Gather scans for the exact name; Search ranks passages by relevance and consults the graph.</p></header>
+        <div className="lore-panel-search">
+          <input aria-label="Lore evidence search" onChange={(event) => setSearchQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void searchEvidence(); } }} placeholder="treasure, wealth, vault…" value={searchQuery} />
+          <button className="secondary-button" disabled={searchBusy || !searchQuery.trim()} onClick={() => void searchEvidence()} type="button">{searchBusy ? "Searching…" : "Search"}</button>
+          <button className="text-button" disabled={busy} onClick={() => selectedItem && void gather(selectedItem.name)} type="button">{busy ? "Gathering…" : "Gather by name"}</button>
+        </div>
+        <button aria-expanded={evidencePanel === "results"} className="lore-panel-bar results-bar" onClick={() => setEvidencePanel("results")} type="button">Results <span>{searchResults.claims.filter((c) => !consideredClaims.has(c.claim_id)).length}</span></button>
+        <div aria-hidden={evidencePanel !== "results"} className={"lore-scroll" + (evidencePanel === "results" ? " open" : "")}>
+        <div aria-label="Search results" className="lore-panel-section">
+          {busy && <p className="empty-section">Gathering…</p>}
+          {resultsByOwner.map((group) => <div className="lore-result-group" key={group.owner ?? "__none"}>
+            <div className="lore-group-heading"><b>{group.owner ?? "No owning record"}</b><span>{group.items.length} claim{group.items.length === 1 ? "" : "s"}</span></div>
+            {group.items.map((claim) => <article className="lore-evidence-item" key={claim.claim_id}>
+            <div className="lore-evidence-header">
+              <label><input aria-label={"Consider evidence: " + claim.assertion_text.slice(0, 40)} checked={consideredClaims.has(claim.claim_id)} onChange={(event) => {
+                const next = new Set(consideredClaims);
+                event.target.checked ? next.add(claim.claim_id) : next.delete(claim.claim_id);
+                setConsideredClaims(next);
+              }} type="checkbox" /> Consider</label>
+              <label title="Ownership: this assertion moves from its current owner to the new entity when created" ><input aria-label={"Link evidence (re-attribute): " + claim.assertion_text.slice(0, 40)} checked={linkedClaims.has(claim.claim_id)} onChange={(event) => {
+                const next = new Set(linkedClaims);
+                if (event.target.checked) {
+                  next.add(claim.claim_id);
+                  setConsideredClaims((cur) => new Set(cur).add(claim.claim_id));
+                } else next.delete(claim.claim_id);
+                setLinkedClaims(next);
+              }} type="checkbox" /> Link <small className="lore-link-annotation">← moves to this entity</small></label>
+              <span className="role-chip">{display(claim.state)}</span>
+              <span className="role-chip">{display(claim.authority)}</span>
+              {claim.claim_id.startsWith("graph:") && <span className="role-chip graph-chip">graph</span>}
+            </div>
+            <p className={"lore-evidence-text" + (expandedClaims.has(claim.claim_id) ? "" : " clamped")} onClick={() => setExpandedClaims((cur) => {
+              const next = new Set(cur);
+              cur.has(claim.claim_id) ? next.delete(claim.claim_id) : next.add(claim.claim_id);
+              return next;
+            })}>{claim.assertion_text}</p>
+            {claim.source_excerpt && <code className="lore-evidence-source">{claim.source_excerpt}</code>}
+          </article>)}
+          </div>)}
+          {!busy && resultsClaims.length === 0 && <p className="empty-section">No results yet — search for evidence or gather by name.</p>}
+        </div>
+        </div>
+        <button aria-expanded={evidencePanel === "consider"} className="lore-panel-bar consider-bar" onClick={() => setEvidencePanel("consider")} type="button">Consider <span>{consideredClaims.size}</span></button>
+        <div aria-hidden={evidencePanel !== "consider"} className={"lore-scroll" + (evidencePanel === "consider" ? " open" : "")}>
+        <div aria-label="Considered evidence" className="lore-panel-section">
+          {consideredByOwner.map((group) => <div className="lore-result-group" key={group.owner ?? "__none"}>
+            <div className="lore-group-heading"><b>{group.owner ?? "No owning record"}</b><span>{group.items.length} claim{group.items.length === 1 ? "" : "s"}</span></div>
+            {group.items.map((claim) => <article className="lore-evidence-item" key={claim.claim_id}>
+            <div className="lore-evidence-header">
+              <label><input aria-label={"Unconsider: " + claim.assertion_text.slice(0, 40)} checked onChange={() => setConsideredClaims((cur) => {
+                const next = new Set(cur);
+                next.delete(claim.claim_id);
+                return next;
+              })} type="checkbox" /> Consider</label>
+              <label><input aria-label={"Link considered: " + claim.assertion_text.slice(0, 40)} checked={linkedClaims.has(claim.claim_id)} onChange={(event) => {
+                const next = new Set(linkedClaims);
+                event.target.checked ? next.add(claim.claim_id) : next.delete(claim.claim_id);
+                setLinkedClaims(next);
+              }} type="checkbox" /> Link</label>
+              <span className="role-chip">{display(claim.state)}</span>
+              <span className="role-chip">{display(claim.authority)}</span>
+              {claim.claim_id.startsWith("graph:") && <span className="role-chip graph-chip">graph</span>}
+            </div>
+            <p className={"lore-evidence-text" + (expandedClaims.has(claim.claim_id) ? "" : " clamped")} onClick={() => setExpandedClaims((cur) => {
+              const next = new Set(cur);
+              cur.has(claim.claim_id) ? next.delete(claim.claim_id) : next.add(claim.claim_id);
+              return next;
+            })}>{claim.assertion_text}</p>
+            {claim.source_excerpt && <code className="lore-evidence-source">{claim.source_excerpt}</code>}
+          </article>)}
+          </div>)}
+          {consideredClaims.size === 0 && <p className="empty-section">Nothing considered yet — check Consider on a result to keep it as draft background.</p>}
+        </div>
+        </div>
+      </aside>
+    </section>
+  </main>;
 
   return <main className="page-lore">
     <section className="identity-page-header" aria-label="Lore creation">
@@ -1401,116 +1614,14 @@ function LoreCreationPage({ campaignClient, jobPlatform, libraryEntries, onOpenE
 
     {pending.length > 0 && <section className="page-panel" aria-label="Lore queue">
       <h3>Pending ({pending.length})</h3>
-      {pending.map((item) => <article key={item.id} className={"lore-queue-item" + (selectedItem?.id === item.id ? " selected" : "")}>
+      {pending.map((item) => <article key={item.id} className="lore-queue-item">
         <div><b>{item.name}</b>{item.context && <small> · {item.context}</small>}</div>
         <small>{new Date(item.queuedAt).toLocaleDateString()}</small>
         <div className="lore-item-actions">
-          <button onClick={() => pick(item)} type="button">{selectedItem?.id === item.id ? "Working" : "Work this"}</button>
+          <button onClick={() => pick(item)} type="button">Work this</button>
           <button className="text-button" onClick={() => dismissLoreItem(item.id)} type="button">Dismiss</button>
         </div>
       </article>)}
-    </section>}
-
-    {selectedItem && <section className="page-panel" aria-label="Lore creation workspace">
-      <h3>Creating: {selectedItem.name}</h3>
-
-      <div className="form-grid">
-        <label>Entity kind<select aria-label="Lore entity kind" value={chosenKind} onChange={(event) => setChosenKind(event.target.value)}>
-          {ENTITY_KIND_OPTIONS.map((k) => <option key={k.kind} value={k.kind}>{k.label}</option>)}
-        </select></label>
-      </div>
-
-      {searchResults.matches.length > 0 && <div className="lore-existing-matches">
-        <b>Existing entities with this name:</b>
-        {searchResults.matches.map((match) => <label key={match.entity_id} className="lore-match-row">
-          <input checked={linkTarget === match.canonical_name} onChange={() => setLinkTarget(linkTarget === match.canonical_name ? "" : match.canonical_name)} type="radio" />
-          <span>{match.canonical_name} ({display(match.entity_kind)})</span>
-        </label>)}
-      </div>}
-
-      <div className="lore-search-row">
-        <button className="secondary-button" disabled={busy} onClick={() => selectedItem && void gather(selectedItem.name)} type="button">{busy ? "Gathering…" : "Gather by name"}</button>
-        <label>Search for evidence<input aria-label="Lore evidence search" onChange={(event) => setSearchQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void searchEvidence(); } }} placeholder="treasure, wealth, vault…" value={searchQuery} /></label>
-        <button className="secondary-button" disabled={searchBusy || !searchQuery.trim()} onClick={() => void searchEvidence()} type="button">{searchBusy ? "Searching…" : "Search"}</button>
-      </div>
-      <p className="roles-explainer">Gather by name scans for the exact name; Search finds passages by relevance — try broader terms. The graph is consulted for relational evidence.</p>
-
-      <label className="pc-background-field session-notes-field lore-direction-field">AI direction (optional — shapes the draft's emphasis)<textarea aria-label="AI direction for the draft" placeholder="e.g. Focus on the statue's significance, the secrecy around it, and what the treasury means to Fleurite's power structure…" rows={3} value={direction} onChange={(event) => setDirection(event.target.value)} /></label>
-
-      <h4>Gathered evidence ({searchResults.claims.length} claim{searchResults.claims.length === 1 ? "" : "s"})</h4>
-      {busy && <p className="empty-section">Gathering…</p>}
-      {!busy && searchResults.claims.length === 0 && <p className="empty-section">No claims mention this name yet — you can still create the entry from your own knowledge.</p>}
-      {searchResults.claims.filter((c) => !consideredClaims.has(c.claim_id)).length > 0 && <div>
-        {searchResults.claims.filter((c) => !consideredClaims.has(c.claim_id)).map((claim) => <article className="lore-evidence-item" key={claim.claim_id}>
-          <div className="lore-evidence-header">
-            <label><input aria-label={"Consider evidence: " + claim.assertion_text.slice(0, 40)} checked={consideredClaims.has(claim.claim_id)} onChange={(event) => {
-              const next = new Set(consideredClaims);
-              event.target.checked ? next.add(claim.claim_id) : next.delete(claim.claim_id);
-              setConsideredClaims(next);
-            }} type="checkbox" /> Consider</label>
-            <label title="Ownership: this assertion moves from its current owner to the new entity when created" ><input aria-label={"Link evidence (re-attribute): " + claim.assertion_text.slice(0, 40)} checked={linkedClaims.has(claim.claim_id)} onChange={(event) => {
-              const next = new Set(linkedClaims);
-              if (event.target.checked) {
-                next.add(claim.claim_id);
-                setConsideredClaims((cur) => new Set(cur).add(claim.claim_id));
-              } else next.delete(claim.claim_id);
-              setLinkedClaims(next);
-            }} type="checkbox" /> Link <small className="lore-link-annotation">← moves to this entity</small></label>
-            <span className="role-chip">{display(claim.authority)}</span>
-            {claim.claim_id.startsWith("graph:") && <span className="role-chip graph-chip">graph</span>}
-          </div>
-          <p className={"lore-evidence-text" + (expandedClaims.has(claim.claim_id) ? "" : " clamped")} onClick={() => setExpandedClaims((cur) => {
-            const next = new Set(cur);
-            cur.has(claim.claim_id) ? next.delete(claim.claim_id) : next.add(claim.claim_id);
-            return next;
-          })}>{claim.assertion_text}</p>
-          {claim.source_excerpt && <code className="lore-evidence-source">{claim.source_excerpt}</code>}
-        </article>)}
-      </div>}
-
-      {consideredClaims.size > 0 && <div className="lore-considered-section" aria-label="Considered evidence">
-        <b>Considered ({consideredClaims.size})</b>
-        {searchResults.claims.filter((c) => consideredClaims.has(c.claim_id)).map((claim) => <article className="lore-evidence-item" key={claim.claim_id}>
-          <div className="lore-evidence-header">
-            <label><input aria-label={"Link considered: " + claim.assertion_text.slice(0, 40)} checked={linkedClaims.has(claim.claim_id)} onChange={(event) => {
-              const next = new Set(linkedClaims);
-              event.target.checked ? next.add(claim.claim_id) : next.delete(claim.claim_id);
-              setLinkedClaims(next);
-            }} type="checkbox" /> Link</label>
-            <label><input aria-label={"Unconsider: " + claim.assertion_text.slice(0, 40)} checked onChange={() => setConsideredClaims((cur) => {
-              const next = new Set(cur);
-              next.delete(claim.claim_id);
-              return next;
-            })} type="checkbox" /> Consider</label>
-            <span className="role-chip">{display(claim.authority)}</span>
-            {claim.claim_id.startsWith("graph:") && <span className="role-chip graph-chip">graph</span>}
-          </div>
-          <p className={"lore-evidence-text" + (expandedClaims.has(claim.claim_id) ? "" : " clamped")} onClick={() => setExpandedClaims((cur) => {
-            const next = new Set(cur);
-            cur.has(claim.claim_id) ? next.delete(claim.claim_id) : next.add(claim.claim_id);
-            return next;
-          })}>{claim.assertion_text}</p>
-          {claim.source_excerpt && <code className="lore-evidence-source">{claim.source_excerpt}</code>}
-        </article>)}
-      </div>}
-
-      <div className="composer-draft-row">
-        <button className="secondary-button" disabled={draftBusy || busy || linkedClaims.size === 0} onClick={() => void draftSynopsis()} type="button"><WandIcon />{draftBusy ? "Drafting…" : "Draft synopsis"}</button>
-        <small className="ai-activation-note">Drafts from selected evidence using the active prose model — lands in the Drafts tray</small>
-      </div>
-
-      {pendingDraft && selectedItem && <div className="lore-draft-ready notice" role="status">
-        <span>AI draft ready for {selectedItem.name}:</span>
-        <button className="text-button" onClick={() => { setProse(pendingDraft); onConsumeDraft(); toast.push("info", "Draft inserted — review before creating"); }} type="button">Insert into description</button>
-      </div>}
-      <label className="pc-background-field session-notes-field">Description (the new entry's page)<textarea aria-label="Lore description" placeholder={`Write ${selectedItem.name}'s page — what it is, why it matters…`} rows={10} value={prose} onChange={(event) => setProse(event.target.value)} /></label>
-
-      <div className="step-actions">
-        <button className="text-button" onClick={() => { setSelectedItem(null); setProse(""); }} type="button">Back to queue</button>
-        {linkTarget
-          ? <button disabled={busy} onClick={() => void linkEntry()} type="button">Link to {linkTarget}</button>
-          : <button className="decision-button" disabled={busy || !prose.trim()} onClick={() => void createEntry()} type="button">{busy ? "Creating…" : `Create ${selectedItem.name} as ${chosenKind}`}</button>}
-      </div>
     </section>}
 
     {message && <div className={"notice" + (messageIsError ? " error" : "")} role={messageIsError ? "alert" : "status"} style={{ margin: "14px 0" }}>{message}</div>}
@@ -1886,6 +1997,75 @@ function ActivityLogPage({ campaignClient }: { campaignClient: CampaignClient })
   </main>;
 }
 
+// ADR-0018 Promotion Pipeline: the reusable candidate review list. Compact
+// scan-able rows — every approvable element at a glance, fixed inline, one
+// Approve promotion action (user ruling 2026-09-20).
+interface PromotionRow extends PromotionCandidate {
+  conflictCleared: boolean;
+}
+
+function PromotionReviewList({ entityName, rows, stale, busy, error, onRowChange, onCommit, onDismiss }: {
+  entityName: string; rows: PromotionRow[]; stale: boolean; busy: boolean; error: string;
+  onRowChange: (sequence: number, patch: Partial<PromotionRow>) => void;
+  onCommit: () => void; onDismiss: () => void;
+}) {
+  const included = rows.filter((row) => row.included && row.consequence.kind === "new_claim");
+  const blocked = included.some((row) => row.conflict && !row.conflictCleared);
+  return <section className="promotion-review" aria-label="Promotion review">
+    <header>
+      <div><span>Promotion review</span><h3>{entityName}</h3></div>
+      <p>{rows.length === 0
+        ? "No statements found in the prose — filing records the document only."
+        : "Scan the list, fix wording or truth state inline, then approve. Restatements of gathered claims stay references — never a second claim."}</p>
+    </header>
+    {rows.map((row) => <article className={`promotion-row${row.consequence.kind === "reference" ? " reference" : ""}${row.conflict && !row.conflictCleared ? " has-conflict" : ""}`} key={row.sequence}>
+      <label className="promotion-include"><input
+        aria-label={`${row.included ? "Exclude" : "Include"} statement ${row.sequence}`}
+        checked={row.included}
+        disabled={row.consequence.kind === "reference" || Boolean(row.conflict && !row.conflictCleared)}
+        onChange={(event) => onRowChange(row.sequence, { included: event.target.checked })}
+        type="checkbox"
+      /></label>
+      <div className="promotion-row-main">
+        <input
+          aria-label={`Statement ${row.sequence} wording`}
+          className="promotion-assertion"
+          disabled={row.consequence.kind === "reference"}
+          value={row.assertion_text}
+          onChange={(event) => onRowChange(row.sequence, { assertion_text: event.target.value, conflictCleared: row.conflict ? true : row.conflictCleared })}
+        />
+        <div className="promotion-row-meta">
+          {row.consequence.kind === "new_claim"
+            ? <label className="promotion-state"><small>Truth State</small><select
+                aria-label={`Statement ${row.sequence} truth state`}
+                value={row.state}
+                onChange={(event) => onRowChange(row.sequence, { state: event.target.value })}
+              >
+                <option value="established">Established</option>
+                <option value="considered">Considered</option>
+                <option value="prepared">Prepared</option>
+              </select></label>
+            : <span className="promotion-state-fixed">inherits reference</span>}
+          <span className="promotion-consequence">{row.consequence.kind === "new_claim" ? `new claim on ${entityName}` : row.consequence.label}</span>
+          <small className="promotion-provenance">from the description prose · statement {row.sequence}</small>
+        </div>
+        {row.conflict && !row.conflictCleared && <p className="promotion-conflict" role="alert">
+          ⚑ known conflict: “{row.conflict.against_text}” — reword the statement or leave it out
+        </p>}
+        {row.conflict && row.conflictCleared && <p className="promotion-conflict-cleared">reworded — Campaign Core re-checks on commit</p>}
+      </div>
+    </article>)}
+    {stale && <p className="promotion-stale" role="alert">The prose changed after this review — dismiss and review again.</p>}
+    {error && <p className="inline-error" role="alert">{error}</p>}
+    <div className="step-actions">
+      <button className="text-button" disabled={busy} onClick={onDismiss} type="button">Dismiss review</button>
+      <button className="decision-button" disabled={busy || stale || blocked} onClick={onCommit} type="button">
+        {busy ? "Committing…" : included.length > 0 ? `Approve promotion · ${included.length} claim${included.length === 1 ? "" : "s"} + description` : "File description"}
+      </button>
+    </div>
+  </section>;
+}
+
 function DescriptionComposer({ entry, claims, profile, campaignClient, onClose, onSaved, initialText, documentId, onDirtyChange, onQueueDraft, initialSelected }: {
   entry: LibraryEntry; claims: SourceDocumentClaim[];
   profile: EntityProfile | null; campaignClient: CampaignClient; onClose: () => void;
@@ -1934,8 +2114,64 @@ function DescriptionComposer({ entry, claims, profile, campaignClient, onClose, 
   const [graphRows, setGraphRows] = useState<{ key: string; text: string; backing: string }[] | null>(null);
   const [graphEnabled, setGraphEnabled] = useState(false);
   const [graphLoading, setGraphLoading] = useState(false);
+  // ADR-0018 Promotion Pipeline: on-demand derive (never automatic), prose
+  // snapshot for staleness, and one idempotency key held across retries.
+  const [promotionRows, setPromotionRows] = useState<PromotionRow[] | null>(null);
+  const [promotionText, setPromotionText] = useState("");
+  const [promotionBusy, setPromotionBusy] = useState(false);
+  const [promotionError, setPromotionError] = useState("");
+  const promotionKey = useRef<string | null>(null);
   const relationRows = graphRows === null ? baseRelations : [...baseRelations, ...graphRows];
   const [selectedRelations, setSelectedRelations] = useState<Set<string>>(() => new Set(initialSelected?.relationKeys ?? baseRelations.map((row) => row.key)));
+
+  const reviewPromotion = async () => {
+    if (!text.trim() || promotionBusy) return;
+    setPromotionBusy(true); setPromotionError("");
+    try {
+      const derived = await campaignClient.derivePromotion("description", entry.entry_id, text.trim(), [...selected]);
+      setPromotionRows(derived.candidates.map((candidate) => ({ ...candidate, conflictCleared: false })));
+      setPromotionText(text.trim());
+    } catch (error) {
+      setPromotionError(error instanceof Error ? error.message : "The promotion review could not be derived");
+      toast.push("error", error instanceof Error ? error.message : "Promotion derive failed");
+    } finally { setPromotionBusy(false); }
+  };
+
+  const commitPromotion = async () => {
+    if (promotionRows === null || promotionBusy) return;
+    setPromotionBusy(true); setPromotionError("");
+    try {
+      promotionKey.current ??= `promotion:${entry.entry_id}:${crypto.randomUUID()}`;
+      const receipt = await campaignClient.approvePromotion({
+        surface: "description",
+        entity_id: entry.entry_id,
+        document_text: promotionText,
+        statements: promotionRows.map((row) => ({
+          span_start: row.span_start, span_end: row.span_end,
+          assertion_text: row.assertion_text.trim(), state: row.state,
+          included: row.included && row.consequence.kind === "new_claim",
+        })),
+        referenced_claim_ids: [...selected],
+        ...(documentId ? { document_id: documentId } : {}),
+        idempotency_key: promotionKey.current,
+      });
+      setMessageIsError(false);
+      setMessage(receipt.claims_committed > 0
+        ? `Approved promotion — ${receipt.claims_committed} claim${receipt.claims_committed === 1 ? "" : "s"} + description filed at ${receipt.path} (receipt ${String(receipt.receipt_id ?? receipt.document_id).slice(0, 8)})`
+        : `Description filed at ${receipt.path} (receipt ${receipt.document_id.slice(0, 8)})`);
+      toast.push("success", receipt.claims_committed > 0
+        ? `Promotion approved — ${entry.canonical_name} +${receipt.claims_committed} claims`
+        : `Description filed — ${entry.canonical_name}`);
+      setPromotionRows(null);
+      setPromotionText("");
+      promotionKey.current = null;
+      await onSaved();
+    } catch (error) {
+      setPromotionError(error instanceof Error ? error.message : "The promotion could not be committed");
+      toast.push("error", error instanceof Error ? error.message : "Promotion commit failed");
+    } finally { setPromotionBusy(false); }
+  };
+
 
   const toggleGraphNeighborhood = async (enabled: boolean) => {
     setGraphEnabled(enabled);
@@ -2092,8 +2328,19 @@ function DescriptionComposer({ entry, claims, profile, campaignClient, onClose, 
         })}
         {claims.length === 0 && <p className="empty-section">No claims gathered — the description will be this entry's first canon input.</p>}
       </details>
+      {promotionRows !== null && <PromotionReviewList
+        entityName={entry.canonical_name}
+        rows={promotionRows}
+        stale={text.trim() !== promotionText}
+        busy={promotionBusy}
+        error={promotionError}
+        onRowChange={(sequence, patch) => setPromotionRows((current) => current?.map((row) => row.sequence === sequence ? { ...row, ...patch } : row) ?? null)}
+        onCommit={() => void commitPromotion()}
+        onDismiss={() => { setPromotionRows(null); setPromotionError(""); }}
+      />}
       <div className="step-actions">
         <button className="text-button" disabled={busy} onClick={onClose} type="button">Cancel</button>
+        <button className="secondary-button" disabled={busy || promotionBusy || !text.trim()} onClick={() => void reviewPromotion()} type="button">{promotionBusy ? "Reviewing…" : "Review promotion"}</button>
         <button className="decision-button" disabled={busy || !text.trim()} onClick={() => void save()} type="button">{busy ? "Filing…" : "File description"}</button>
       </div>
     </section>
@@ -4893,7 +5140,7 @@ function App({ campaignClient, jobPlatform, storage, pollIntervalMs = 700 }: App
                   : !selectedDocumentId && selectedEntry
                     ? (entityProfileEditing && entityProfileDraft
                       ? <EntityProfileEditor entry={selectedEntry} profile={entityProfileDraft} onChange={setEntityProfileDraft} onCancel={() => { setEntityProfileEditing(false); setEntityProfileDraft(entityProfile); setEntityProfileMessage(""); setEntityProfileMessageIsError(false); }} onSave={() => void saveEntityProfile()} message={entityProfileMessage} messageIsError={entityProfileMessageIsError} onKindChange={(kind) => void correctEntityKind(kind)} members={selectedEntry.entity_kind === "faction" ? (selectedEntry.members ?? []) : undefined} roles={selectedEntry.entity_kind === "faction" ? (selectedEntry.roles ?? []) : undefined} memberSearch={memberSearch} memberResults={memberResults} onMemberSearch={(value) => { setMemberSearch(value); if (value.trim().length > 1) { campaignClient.searchEntities(value.trim()).then(setMemberResults).catch(() => setMemberResults([])); } else { setMemberResults([]); } }} onAddMember={(member) => void addFactionMember(member)} onRemoveMember={(member) => void removeFactionMember(member)} onAssignRole={(member, roleName, isLeadership) => void assignFactionRole(member, roleName, isLeadership)} vocabularies={templateVocabularies} locationNames={libraryEntries.filter((item) => item.entity_kind === "location").map((item) => item.canonical_name)} />
-                      : <><CharacterDocumentView path={docContentPath} sources={selectedEntry.sources} profile={characterDocument(docContent)!} dmClaims={docCanonicalClaims} claimHistory={docClaimHistory} onEditClaim={(claimId) => void beginClaimEdit(claimId)} onEdit={openEntityProfileEditor} lifeStatus={selectedEntry ? { status: entityProfile?.life_status ?? null, since: entityProfile?.life_status_since ? `${entityProfile.life_status_since.year}-${String(entityProfile.life_status_since.month).padStart(2, "0")}-${String(entityProfile.life_status_since.day).padStart(2, "0")}` : null } : undefined} dossierClaimIds={selectedEntry ? dossierClaimIds : undefined} onPromoteClaim={selectedEntry ? (claimId) => void toggleDossier(claimId, "promote") : undefined} onDemoteClaim={selectedEntry ? (claimId) => void toggleDossier(claimId, "demote") : undefined} />{entityProfileMessage && <div className="notice" role="status">{entityProfileMessage}</div>}</>)
+                      : <>{descriptionComposerOpen ? <DescriptionComposer entry={selectedEntry} claims={docCanonicalClaims} profile={entityProfile} campaignClient={campaignClient} onDirtyChange={setComposerDirty} onQueueDraft={(command) => queueProseDraft(command, selectedEntry.entry_id, selectedEntry.canonical_name)} onClose={() => { setDescriptionComposerOpen(false); setRevisionDraft(null); setClaimSelection(null); setComposerDirty(false); }} onSaved={async () => { setDescriptionComposerOpen(false); setRevisionDraft(null); setClaimSelection(null); setComposerDirty(false); let fresh: SourceDocument[] | undefined; try { const page = await campaignClient.listSourceDocuments(); setSourceDocuments(page.items); fresh = page.items; } catch { /* the entry reload still runs */ } await loadCanonicalEntry(selectedEntry.entry_id, fresh); campaignClient.listLibraryEntries().then(setLibraryEntries).catch(() => {}); }} /> : <><CharacterDocumentView path={docContentPath} sources={selectedEntry.sources} profile={characterDocument(docContent)!} dmClaims={docCanonicalClaims} claimHistory={docClaimHistory} onEditClaim={(claimId) => void beginClaimEdit(claimId)} onEdit={openEntityProfileEditor} onWriteDescription={() => { setRevisionDraft(null); setClaimSelection(null); setDescriptionComposerOpen(true); }} lifeStatus={selectedEntry ? { status: entityProfile?.life_status ?? null, since: entityProfile?.life_status_since ? `${entityProfile.life_status_since.year}-${String(entityProfile.life_status_since.month).padStart(2, "0")}-${String(entityProfile.life_status_since.day).padStart(2, "0")}` : null } : undefined} dossierClaimIds={selectedEntry ? dossierClaimIds : undefined} onPromoteClaim={selectedEntry ? (claimId) => void toggleDossier(claimId, "promote") : undefined} onDemoteClaim={selectedEntry ? (claimId) => void toggleDossier(claimId, "demote") : undefined} />{entityProfileMessage && <div className="notice" role="status">{entityProfileMessage}</div>}</>}</>)
                     : <CharacterDocumentView path={docContentPath} sources={selectedEntry?.sources ?? []} profile={characterDocument(docContent)!} dmClaims={docCanonicalClaims} claimHistory={docClaimHistory} onEditClaim={(claimId) => void beginClaimEdit(claimId)} />}{pcMessage && <div className="notice" role="status">{pcMessage}</div>}</>
                 : <>{parseEntry(docContent).type === "encounter" ? <EncounterEntryView entry={parseEntry(docContent)} path={docContentPath} sourceDocumentId={docMetadata?.document_id ?? selectedDocumentId ?? ""} claims={docCanonicalClaims} history={docClaimHistory} sources={selectedEntry?.sources ?? []} npcEntries={libraryEntries.filter((entry) => entry.entity_kind === "npc")} noteCounts={new Map(Array.from(encounterNotes.filter((note) => note.sourceDocumentId === (docMetadata?.document_id ?? selectedDocumentId)).reduce((counts, note) => counts.set(note.sectionKey, (counts.get(note.sectionKey) ?? 0) + 1), new Map<string, number>()).entries()))} onOpenNpc={(npc) => void openEncounterNpcDossier(npc)} onAddNote={openTableNoteComposer} onOpenNotes={() => setTableNotesOpen(true)} onEditClaim={(claimId) => void beginClaimEdit(claimId)} />
                 : selectedEntry && entityProfileEditing

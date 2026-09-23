@@ -90,7 +90,9 @@ interface ReviewBackendRequest {
     | "reconcile_claims"
     | "get_claim_snapshot"
     | "correct_claim"
-    | "replace_claim";
+    | "replace_claim"
+    | "derive_promotion"
+    | "approve_promotion";
   candidate_id?: string;
   proposal_id?: string;
   version_number?: number;
@@ -134,6 +136,10 @@ function route(input: ReviewBackendRequest): { method: "GET" | "POST" | "PUT" | 
       return { method: "POST", path: "ai/configuration/activate" };
     case "draft_prose":
       return { method: "POST", path: "prose/draft" };
+    case "derive_promotion":
+      return { method: "POST", path: "promotion/derive" };
+    case "approve_promotion":
+      return { method: "POST", path: "promotion/approve" };
     case "get_entity_graph_neighborhood":
       return { method: "GET", path: `entities/${required(input.entity_id, "entity_id")}/graph-neighborhood` };
     case "get_ai_prompts":
@@ -216,6 +222,8 @@ function route(input: ReviewBackendRequest): { method: "GET" | "POST" | "PUT" | 
     case "get_conflict_queue": return { method: "GET", path: "campaign/conflicts" };
     case "decide_conflict": return { method: "POST", path: "campaign/conflicts/decisions?requester_role=dm" };
     case "write_entity_description": return { method: "POST", path: `entities/${required(input.entity_id, "entity_id")}/description?requester_role=dm` };
+    case "derive_promotion": return { method: "POST", path: "promotion/derive?requester_role=dm" };
+    case "approve_promotion": return { method: "POST", path: "promotion/approve?requester_role=dm" };
     case "get_life_status_proposals": return { method: "GET", path: "campaign/life-status/proposals" };
     case "set_life_status": return { method: "POST", path: `campaign/life-status/${required(input.entity_id, "entity_id")}?requester_role=dm` };
     case "get_dead_seats": return { method: "GET", path: "campaign/dead-seats" };

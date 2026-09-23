@@ -1,10 +1,10 @@
 # The Promotion Pipeline
 
-Status: proposed framework (shaping rulings 2026-09-20: compact scan-able candidate list, "Approve promotion" commit verb, the name "Promotion Pipeline"); recorded as ADR-0018; implementation tracked in TKT-0136.
+Status: accepted framework (user ruling 2026-09-20, recorded as ADR-0018 — accepted after the ownership-model, open-ended-surfaces, and consequence-vs-conflict refinements); shaping rulings: compact scan-able candidate list, "Approve promotion" commit verb, the name "Promotion Pipeline"; implementation tracked in TKT-0136.
 
 ## Purpose
 
-One reusable progression — **Proposal → Candidate → Claim** — behind every surface that turns working material into canon: Description filing, Lore creation, Brainstorm promotion, session-note review, and the repair of in-app material that was written but never promoted correctly. The design constraint that governs every choice: **user ease**, defined as *the DM touches only what is wrong*.
+One reusable progression — **Proposal → Candidate → Claim** — behind every surface, current and future, that turns working material into canon. The initial adopters are Description filing, Lore creation, Brainstorm promotion, session-note review, and the repair of in-app material that was written but never promoted correctly; the set is expected to grow as the project does, and the design assumes that (see "How a surface joins the pipeline"). The design constraint that governs every choice: **user ease**, defined as *the DM touches only what is wrong*.
 
 ## Diagnosis: what Migration taught
 
@@ -36,10 +36,11 @@ Each candidate shows exactly what a DM can judge at a glance:
 | Element | Behavior |
 |---|---|
 | **Assertion text** | Editable inline |
-| **Subject** | Entity chip with search-and-create picker; never a UUID field |
+| **Subject** | Depends on the ownership model (below): bound surfaces show the fixed owner; free surfaces require a per-candidate resolution — existing entity via search-and-create picker, never a UUID field |
 | **Truth State** | Defaulted by surface (table below); changeable inline |
 | **Provenance** | Immutable cite of where it came from |
-| **Consequence** | What committing it does: *new claim on X · moves from Y · replaces claim #Z · conflicts with #W — resolve* |
+| **Consequence** | The mechanical commit consequence — exact by definition, because the transaction itself defines it: *new claim on X · moves from Y · replaces claim #Z* |
+| **Conflict flag** | A detection, not a consequence — best-effort and honestly scoped (see below): *known conflict: #W — resolve*. An absent flag is **not** a clean bill of health |
 
 Every other dimension — authority, visibility, confidence, conditionality mechanics, recorded_at, effective/expected/observed dates — is **inherited by default from surface + provenance** and lives behind one expandable *dimensions* disclosure per candidate. The DM opens it only when something is deliberately unusual.
 
@@ -49,7 +50,13 @@ The candidate list, as rendered, **is** the one visible, versioned pending actio
 
 One button — **"Approve promotion"**, suffixed with what the transaction bundles (e.g. *Approve promotion · 3 claims + description*, *· new Fleurite Treasury + 2 claims*). It submits exactly the visible list in one idempotent Campaign Core transaction: entities created, claims created, re-attributions recorded, documents filed, supersessions receipted. The receipt lands in the toast/Log event bus.
 
-Deterministic checks surface as **inline candidate flags before the button works**. A conflict requires its explicit 0097-style resolution (dismiss with receipt, or supersede); an ambiguity requires its subject choice; a PC-agency or time violation flags red and cannot be included. Nothing explodes at commit time, and nothing applies partially — a flagged candidate blocks only itself, but commit is unavailable while any included candidate is unresolved.
+Deterministic checks surface as **inline candidate flags before the button works**. A *detected* conflict requires its explicit 0097-style resolution (dismiss with receipt, or supersede); an ambiguity requires its subject choice; a PC-agency or time violation flags red and cannot be included. Nothing explodes at commit time, and nothing applies partially — a flagged candidate blocks only itself, but commit is unavailable while any included candidate is unresolved.
+
+### What the conflict flag can and cannot say
+
+The system cannot generally say what a given claim conflicts with. Detection today is narrow: the verified-death temporal detector and the other deterministic checks. Free-text claims can contradict semantically — "Person X is ugly" conflicts with "Person X is cute" — and the system will not see it. The flag therefore means **a conflict the current detectors know how to find**, and an absent flag means no *known* conflict, never *no conflict*. The DM's reading of the list remains the real contradiction check; the flag is a narrow safety net, not an understanding.
+
+Forward-looking management can widen the net over time — structured Attribute domains catch enum-level contradictions, and an AI pre-commit review pass could flag semantic tension (a new seam only if ruled in later). Widening changes what the flag reports; it never changes the flag's meaning, and no surface should be worded as if the system understands contradiction generally.
 
 ### Binding: how ease and the approval invariant coexist
 
@@ -75,6 +82,33 @@ Ease = defaults do the work. Overridable per candidate; nothing is hidden perman
 | Repair: re-dimensioning an existing claim | (existing state) | (existing authority) | supersession receipt pointing at the claim being replaced |
 | Import (Migration, adopts later) | as extracted | as extracted | source span |
 
+## Ownership models: bound-subject and free-subject surfaces
+
+Surfaces differ structurally in who owns the candidates — not just in defaults (user ruling 2026-09-20):
+
+**Bound-subject — Description.** The proposal is implicit about its owner: the Entity already exists, and every candidate derived from the description prose is owned by it. The subject is page context, not a per-row control. Subject machinery is absent by design. Statement review is mandatory (user ruling 2026-09-21): every statement in the prose gets an explicit include-or-exclude decision — the slice-1 "File description" bypass is transitional and is removed when the review is ready to be the only path.
+
+**Bound-subject — Lore.** Same implicit ownership, but the owner is *created by the commit*: exactly one new record, and the proposal's derived candidates belong to it. Linked evidence that re-attributes INTO the new record is the one place ownership moves, and it moves by explicit *moves from Y* consequence, never by inference.
+
+**Free-subject — Brainstorm.** Not like the others at all: a brainstorm has no owner and can touch many Entities — some already existing, some needing creation. This demands machinery intrinsic to Brainstorm:
+
+- **Per-candidate subject resolution is load-bearing**: each candidate must resolve to an existing Entity or to *create new record* before it can be included. No subject is ever inferred (the session-note ruling: mentions link related records without inferring subject roles).
+- **Entity-creation candidates**: *create new record* spawns its own candidate row (NEW RECORD kicker, canonical name + kind), and the claims that chose it group under it — several claims may share one new record, and one promotion may create several.
+- **Multi-record bundles**: the commit's consequence suffix grows accordingly (*Approve promotion · 5 claims + 2 records*), and claims referencing records created in the same transaction are keyed by bundle-local reference, since their UUIDs do not exist yet.
+
+Session-note statements share the free-subject model (a note touches many entities), so this machinery serves session capture too, and later the Migration claim step when it adopts the pipeline. The repair lane inherits its surface's model: reopening an unpromoted description is bound; reopening unpromoted brainstorm thoughts is free.
+
+## How a surface joins the pipeline
+
+The set of consuming surfaces is open-ended — the project is in development and today's adopters will not be the final list. A surface adopts by **declaring four things**; everything else (the Promotion Review list, the binding transaction, deterministic checks, receipts, AI seams) is shared machinery it inherits unchanged:
+
+1. **Ownership model** — bound with an existing owner, bound with a created owner, or free.
+2. **A defaults-table row** — state, authority, and what provenance carries.
+3. **A derivation rule** — how the surface's proposal text yields candidates (citation mirrors, statement splits, selected thoughts, …).
+4. **Bundle suffix wording** — what its commit names beyond the claim count (a description document, a new record, …).
+
+A new surface is therefore a configuration, not a new pipeline. Adding one must never require touching the commit transaction, the review component's contract, or the invariants.
+
 ## The repair lane (written in-app, not yet promoted correctly)
 
 In-app writing surfaces leave material at intermediate states: a drafted entity that exists but has no claims (an empty shell), brainstorm thoughts filed as evidence but never promoted, a session capture with pending statements, a description whose gathered references drifted. The pipeline is also the intake for these — the same three stages, seeded differently:
@@ -92,13 +126,15 @@ One facade service (`application/promotion.py`) over the **existing** machinery 
 - `derive(surface, proposal_refs, hints)` → candidate list with server-filled defaults and deterministic check results. A read; nothing pending is persisted.
 - `approve_promotion(payload, idempotency_key)` → the single binding transaction above; returns a receipt (change-set ID, claim IDs, entity IDs, re-attribution and supersession receipts).
 
-The 20-field `CreateClaimDecision` does not disappear — it becomes the server's job to assemble from defaults, with the payload carrying only what the DM saw and touched: assertion text, subject target, Truth State, and any explicitly opened dimension overrides.
+The 20-field `CreateClaimDecision` does not disappear — it becomes the server's job to assemble from defaults, with the payload carrying only what the DM saw and touched: assertion text, subject target, Truth State, and any explicitly opened dimension overrides. Free-subject payloads reference records created inside the same commit by bundle-local key (`"subject": {"new_record": "r1"}`), resolved to UUIDs by the server within the transaction — the client never sends or receives provisional UUIDs.
 
 ## The reusable front end
 
 One component — the **Promotion Review list** — embedded by every consuming surface; each surface keeps its own idiom around it (ADR-0015's flow-surface ruling stands). Per the 2026-09-20 ruling: a compact scan-able list with **all approvable elements at a glance** — scan the list, fix inline, Approve promotion. Consequence lines and flags render on the row, not behind clicks; dimensions are the only thing collapsed.
 
 Failures and receipts flow through the toast/Log event bus. The commit button states the count and the bundle. No wizard chrome, no step headers, no separate approval screen — anywhere.
+
+The component renders the ownership model, not a generic form: bound surfaces show the owner once as page context above the list; free surfaces render a required subject chip on every row, and entity-creation candidates appear as NEW RECORD rows that group their claims beneath them. Pickers (Truth State, subject) are combo-edits; when an AI suggestion exists it co-displays in the same control — green when AI and system agree, otherwise the system's value in blue beside the AI's in orange (user ruling 2026-09-21; tokens defined in ui-conventions when built). The DM's pick always wins; suggestions never merge silently into a default.
 
 ## AI support seams (fixed, DM-gated)
 

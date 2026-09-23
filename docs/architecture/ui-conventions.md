@@ -73,3 +73,4 @@ Icon buttons pair with `RecordIcon kind="edit"|"hide"|"show"|"note"`; SVGs are s
 3. Icon actions go in the standard 28px slot, not new bars.
 4. Empty means absent, not "—".
 5. Every list gets a count line (mono, uppercase): "SHOWING 20 OF 129 UNRESOLVED SURFACES".
+6. Workspaces never lose data (user ruling 2026-09-21): every working surface auto-persists its working file — the Lore queue item saves Entity Kind, AI direction, and Description with its evidence; a refresh or accidental navigation loses nothing. New workspace fields join the auto-save, never a manual save step.

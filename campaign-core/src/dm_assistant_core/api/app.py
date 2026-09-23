@@ -428,6 +428,24 @@ def create_app(
     active_claim_reattribution = claim_reattribution or ClaimReattributionService(
         PostgresClaimReattributionRepository(PostgresDatabase(active_settings.database_dsn))
     )
+    from dm_assistant_core.adapters.postgres.promotion import (
+        PostgresPromotionReadRepository,
+    )
+    from dm_assistant_core.application.promotion import (
+        ApprovePromotionCommand,
+        DerivePromotionCommand,
+        PromotionCandidateList,
+        PromotionCommitReceipt,
+        PromotionError,
+        PromotionService,
+    )
+    active_promotion = PromotionService(
+        active_entity_descriptions,
+        active_candidate_proposals,
+        active_change_sets,
+        PostgresPromotionReadRepository(PostgresDatabase(active_settings.database_dsn)),
+        _EntityNameLookup(PostgresDatabase(active_settings.database_dsn)),
+    )
     app = FastAPI(title="DM Assistant Campaign Core", version=__version__)
     if active_settings.allowed_cors_origins:
         app.add_middleware(
@@ -932,6 +950,44 @@ def create_app(
         try:
             return active_entity_descriptions.write(command)
         except ValueError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+
+    @app.post(
+        "/promotion/derive",
+        response_model=PromotionCandidateList,
+        tags=["promotion"],
+    )
+    def derive_promotion(
+        command: DerivePromotionCommand,
+        requester_role: Annotated[RequesterRole, Query()] = RequesterRole.DM,
+    ) -> PromotionCandidateList:
+        """Deterministically derive promotion candidates from a proposal (a read)."""
+        if requester_role is not RequesterRole.DM:
+            raise HTTPException(status_code=403, detail="promotion review is DM-only")
+        try:
+            return active_promotion.derive(command, RequesterVisibility(role=RequesterRole.DM))
+        except PromotionError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+
+    @app.post(
+        "/promotion/approve",
+        response_model=PromotionCommitReceipt,
+        tags=["promotion"],
+    )
+    def approve_promotion(
+        command: ApprovePromotionCommand,
+        requester_role: Annotated[RequesterRole, Query()] = RequesterRole.DM,
+    ) -> PromotionCommitReceipt:
+        """Single-action binding: version + approval + apply in one user action."""
+        if requester_role is not RequesterRole.DM:
+            raise HTTPException(status_code=403, detail="promotion is DM-only")
+        try:
+            return active_promotion.approve_promotion(
+                command, RequesterVisibility(role=RequesterRole.DM)
+            )
+        except PromotionError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        except CandidateProposalError as error:
             raise HTTPException(status_code=409, detail=str(error)) from error
 
     @app.get(

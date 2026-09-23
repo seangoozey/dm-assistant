@@ -4,7 +4,8 @@ Update this file whenever a ticket moves or changes scope.
 
 ## In progress
 
-- [TKT-0099: Lore creation queue with evidence gathering and optional synopsis](in-progress/TKT-0099-lore-creation-queue.md) — V1 + re-attribution + AI direction delivered; remaining = mention queueing in composers, refresh persistence for drafts, 0040 conflict path
+- [TKT-0136: Promotion Pipeline — reusable Proposal → Candidate → Claim review and commit](in-progress/TKT-0136-promotion-pipeline.md) — slice 1 DELIVERED 2026-09-21 (backend facade + Promotion Review list + Description adoption, live-verified); remaining = mandatory-review cutover (ruling 09-21), Lore, Brainstorm (free-subject), repair lane
+- [TKT-0099: Lore creation queue with evidence gathering and optional synopsis](in-progress/TKT-0099-lore-creation-queue.md) — V1 + re-attribution + AI direction delivered; re-attribution canonical write moved to migration 0066 (2026-09-21); remaining = mention queueing in composers, refresh persistence for drafts, 0040 conflict path
 
 ## Ready
 
@@ -19,7 +20,12 @@ Update this file whenever a ticket moves or changes scope.
 
 Active when picked up:
 
-- [TKT-0136: Promotion Pipeline — reusable Proposal → Candidate → Claim review and commit](backlog/TKT-0136-promotion-pipeline.md) — framework doc + ADR-0018 written; Brainstorm → Lore → Description adoption + repair lane
+- [TKT-0142: Unified claim surface — one claim card behind every claim operation](backlog/TKT-0142-unified-claim-surface.md) — the russian-doll fix; Promotion Review row is the seed; phased convergence (replacement editor → Migration steps 3–6 → session review); new surfaces born on it
+- [TKT-0141: Presumed Retcon surface — unopposed established-fact changes auto-accept, editable reason](backlog/TKT-0141-presumed-retcon-surface.md) — refines the retcon invariant (presume when no observed conflict); depends on 0142; attributes inherit it per the 0139 ruling
+- [TKT-0140: Migrate the whole library to Qualified Entities](backlog/TKT-0140-library-qualified-entity-migration.md) — BLOCKED by stable promotion (0136) + the standard (0139); summaries migrate into Descriptions VIA the pipeline; standing unqualified-entities queue
+- [TKT-0139: Define the Qualified Entity standard](backlog/TKT-0139-qualified-entity-standard.md) — the checkable bar (no definition exists today); machine-checkable for the 0140 audit
+- [TKT-0138: Orphaned claims review — standing queue to assign owners to subject-less claims](backlog/TKT-0138-orphaned-claims-review.md) — exposed by Lore's group-by-owner; PRIMARY PATH = checked claims migrate into the Lore creation queue as seeded evidence (Lore creates/links the owner); direct assign + receipted "no owner needed" for ambient history/lore
+- [TKT-0137: AI Promotion Assistant — wand-marked suggestions inside the Promotion Pipeline, tested on Lore first](backlog/TKT-0137-ai-promotion-assistant.md) — PROPOSAL awaiting Sean's rulings (purpose slot, async vs sync, placement); depends on 0136 Lore slice
 - [TKT-0099 remaining: Unmatched @mention queueing in composers](in-progress/TKT-0099-lore-creation-queue.md) — Queue for Lore alongside Keep as text in session notes/brainstorm
 - [TKT-0119: Responsive layout strategy](backlog/TKT-0119-responsive-strategy.md) — named breakpoints, container queries for panels, tested crush path
 - [TKT-0099: Lore creation queue](in-progress/TKT-0099-lore-creation-queue.md) — deferral expired 2026-09-19; V1 shipped

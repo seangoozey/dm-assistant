@@ -162,3 +162,62 @@ Implements Sean's ruling: Link is a declaration that this assertion belongs to t
 - **Margin fixes**: Draft synopsis row gets 14px above/below; step-actions (Back to Queue / Create) gets 18px top / 10px bottom; search row spacing tightened.
 - **AI direction field**: a "AI direction (optional — shapes the draft's emphasis)" textarea between the search row and the evidence list. DM prose direction (e.g. "focus on the statue's significance and the secrecy around it") passes through `ProseDraftCommand.direction` → the prose harness includes it in the user prompt as "DM DIRECTION" between the SUBJECT and MATERIAL sections — shaping emphasis without loosening the evidence contract. Clears when switching queued items.
 - Core: 8/8 prose tests pass (direction is optional; existing tests unaffected). React 137/137.
+
+### Boundary compliance fix (2026-09-21, migration 0066)
+
+- The re-attribution canonical write (UPDATE claims) ran inline in the postgres adapter, failing `test_boundaries::test_canonical_table_writes_exist_only_in_migrations`. Fixed: migration `0066_move_claim_subject_function.sql` owns `move_claim_subject(...)` (idempotent on the receipt, loud on a raced owner change, validates target existence and same-owner); the adapter now calls the function and surfaces P0001 as a readable error. Evidence: boundary test green; all 5 re-attribution tests pass in the docker harness (test-campaign-core-postgres.ps1).
+
+### Evidence-context compliance fixes (2026-09-21, deployed)
+
+Sean's rulings, all delivered:
+- **Truth State on every listed claim** (both the gathered list and the Considered section): all Claims are canonically true, so listing one without its CTS state invites misreading a Considered reference as established fact. State chip now sits beside the authority chip.
+- **Draft synopsis no longer requires a Link** — no Linked or Considered claims are required. With nothing checked, the queued name itself is the seed material ("{name} is a name queued for a new {kind} entry"), satisfying the prose harness's material minimum honestly.
+- **Considered section order corrected** — Consider first, then Link, matching the gathered list (Consider is the primary drafting tool; Link is the ownership action).
+- **Owner title + draft context** — every evidence item shows "About {owner}" when the owning record is known (retrieval evidence carries entity_id; graph evidence carries the entry name; gather-by-name items have no owner to show), and the prose draft material for Considered claims is prefixed `[about {owner}]` with the claim's state attached, so the model can never read a background reference as a fact of the entity being drafted.
+
+Evidence: React 139/139 (new test covers state chip + owner title, zero-selection seed draft, Consider-before-Link order, and `[about owner]` material); deployed via test-stack.
+
+### Workspace overhaul: Brainstorm-style layout + no-data-loss working file (2026-09-21, deployed)
+
+- **Two-column workspace** modeled on the Brainstorm panel: main working file left (Entity Kind, existing matches, AI direction, Draft synopsis, Description, actions), evidence aside right (parchment panel, sticky header, search + Gather by name).
+- **Results/Consider accordion with sticky bars**: one list open at a time; both bars always visible (sticky at 139px/180px below the panel header + search) so switching lists never requires scrolling. Live-verified via getComputedStyle.
+- **Working file auto-save** (the workspace data-loss rule, recorded in ui-conventions #6): Entity Kind, AI Direction, and Description save with the evidence on every change and restore on re-entry — leaving the item, refreshing, or switching away and back loses nothing. React test covers the full round trip (direction + description + considered set).
+- Evidence: React 139/139; deployed; live layout verification in-browser.
+
+### REMAINING — backward ownership link (Sean's reminder, 2026-09-21)
+
+Gather-by-name evidence shows no owner because document claims do not carry their subject entity back — "the claims don't own the entity and thus there's no backward record linking them together." The Source excerpt is the only hint. Fix = Core API: `getSourceDocument` canonical claims include subject_entity_id + canonical name; Lore evidence then titles every item (gather results included), and the AI draft material gains the same context it already has for retrieval/graph evidence. Sean asked to be reminded to deal with this — fold into the 0136 Lore slice or take standalone.
+
+### Working item as an independent page (2026-09-21, deployed)
+
+- "Work this" now opens the item as its own page: queue form/list stay behind a "← Back to Lore" control; the working page renders only the workspace (user ruling: independent page).
+- The Evidence panel scrolls itself: the workspace matches viewport height (calc(100vh - 76px topbar - 40px chrome); live-verified 604px at 720px vh); BOTH columns scroll internally instead of the page.
+- Results/Consider bars moved OUTSIDE the scroll area (flex-column panel: header + search + both bars fixed, one scroll container below) — with 95 live results the Consider bar stays reachable; verified both bars remain visible with the list scrolled deep. This replaced the earlier sticky-in-content approach, which pushed the Consider bar 15k px down on long result sets.
+- React 139/139; deployed; live-verified (layout metrics + scroll behavior + bar switching).
+
+### Backward ownership link + results grouped by entity (2026-09-21, deployed)
+
+The backward-record gap is CLOSED for the document path:
+- **Core**: `SourceDocumentClaim` (canonical + history) now carries `subject_entity_id` + `subject_entity_name` — both claim queries LEFT JOIN entities on `claims.subject_entity_id`. Evidence: `tests/test_source_document_owners_postgres.py` (owned claim returns the pair, owner-less claim returns nulls) green in the docker harness.
+- **Lore gather-by-name** maps `subject_entity_name` into the evidence owner — name-scan results are titled and grouped like retrieval/graph evidence always were.
+- **Results grouped by entity** (user ruling): the Results accordion groups claims under their owning record (mono heading + count, "Exile Camp · 8 claims"); owner-less claims fall into a trailing "No owning record" group; per-item owner chips in Results are replaced by the group heading (the Consider list keeps its per-item "About X" titles). Live-verified against the real campaign: a "Fleurite" search renders 30 owner groups.
+- React 139/139 (grouping test added: two owners → two groups, Truth State chip still per-row).
+
+### Gather preserves Considered; Consider grouped (2026-09-21, deployed)
+
+- **Gather by name no longer dumps the Considered set**: it now merges exactly like search — Considered/Linked claims survive a re-gather, fresh name matches replace the unconsidered pool, deduped by underlying claim id (retrieval `record_id`s and `graph:`-prefixed ids collapse against document claim ids).
+- **Consider is grouped by owning record** like Results (mono heading + count; owner-less → trailing "No owning record" group; per-item owner chips retired in favor of headings in both lists).
+- React 139/139 with the gather-merge covered end-to-end (consider → re-gather → considered claim survives, gathered claim lands in Results under its owner).
+
+### Evidence accordion: sliding branches (2026-09-21, deployed)
+
+- The Results/Consider branches now form a true accordion (user spec): **one branch is always open — clicking the open bar leaves it open** (no collapse-to-none state).
+- **Results open**: Consider's bar slides to the panel bottom and sticks; the Results list is the scroll area between the bars. **Consider open**: its bar slides to just under the Results bar; the Consider list scrolls to the panel bottom. The slide is a real flex-grow transition on the branch containers (fixed DOM order: Results bar → results scroll → Consider bar → consider scroll), so the Consider bar physically travels between its two parked positions.
+- **Searching (or gathering) auto-opens Results** — the branch that receives new content becomes the visible one.
+- Live-verified: Results-open parks Consider at 565px of the 602px panel with the 326px results scroll between; Consider-open slides its bar to 239px (just under Results at 202) with the Consider scroll filling below; aria-expanded tracks; round-trip back to Results restores. (Transition-freeze in the hidden automation tab required disabling the transition for end-state measurement — the animation itself is stylesheet-verified.)
+- React 139/139 with accordion-semantics assertions (always-one-open, no-op reclick, search auto-open).
+
+### Working page is exactly 100vh (2026-09-21, deployed)
+
+- `.lore-working` now computes `height: calc(100vh - 76px)` (viewport minus topbar) as a grid with rows `auto minmax(0, 1fr)`: header row, then the workspace taking every remaining pixel. The workspace's own calc is gone — the grid row sizes it, so the header height can change without re-deriving offsets.
+- Live-verified with a full evidence panel (95 search results): page `scrollHeight - clientHeight = 0` — the page never scrolls; only the workspace columns do. Mobile (≤900px) reverts to natural height.

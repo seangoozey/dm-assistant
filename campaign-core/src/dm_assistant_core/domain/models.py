@@ -10,6 +10,9 @@ class ClaimState(StrEnum):
     ESTABLISHED = "established"
     INTENDED = "intended"
     PREPARED = "prepared"
+    # CTS amendment (ADR-0017): Considered sits below Possible — worked
+    # through, blocked, findable when the blocker clears.
+    CONSIDERED = "considered"
     POSSIBLE = "possible"
     PROPOSED = "proposed"
     DISPUTED = "disputed"

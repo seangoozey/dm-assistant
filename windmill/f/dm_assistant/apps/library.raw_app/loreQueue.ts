@@ -19,7 +19,10 @@ export interface LoreQueueItem {
 }
 
 /** The evidence a working Lore item has accumulated — linked (included as
- * referenced records) and considered (kept for reference) claims. */
+ * referenced records) and considered (kept for reference) claims — plus the
+ * working file itself. Rule of thumb for workspaces (user ruling
+ * 2026-09-21): the user should never have to worry about data loss, so the
+ * kind, direction, and description auto-save with the evidence. */
 export interface SavedEvidence {
   claims: Array<{
     claim_id: string;
@@ -27,9 +30,13 @@ export interface SavedEvidence {
     state: string;
     authority: string;
     source_excerpt?: string;
+    owner_name?: string;
   }>;
   linkedClaimIds: string[];
   consideredClaimIds: string[];
+  chosenKind?: string;
+  direction?: string;
+  prose?: string;
 }
 
 const STORAGE_KEY = "dm-assistant.loreQueue";

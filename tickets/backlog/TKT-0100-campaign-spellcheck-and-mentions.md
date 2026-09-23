@@ -6,7 +6,7 @@ priority: P2
 milestone: trustworthy-librarian
 depends_on: []
 created: 2026-09-09
-updated: 2026-09-09
+updated: 2026-09-21
 ---
 
 # TKT-0100: Shared spellcheck, campaign dictionary, and automatic mention suggestions
@@ -27,6 +27,8 @@ Browser spelling support alone does not provide the app's shared campaign vocabu
 - Recognize multiword names, punctuation, apostrophes, and aliases, including names such as Ishi'go'dan. Do not fragment valid names into repeated false errors.
 - Offer explicit actions: Correct spelling, Link entry, Ignore once, and Add to dictionary. Dictionary acceptance is not entity identity confirmation.
 - Suggest mentions for recognized names without requiring @. Keep existing explicit @ completion available. Ambiguous matches require a choice; no silent entity creation, name replacement, or linking.
+- **Why suggestions matter (audit note 2026-09-21)**: mentions are load-bearing backend provenance, not decoration — `claim_related_entities` feeds the 0097 death-conflict detector on subjectless claims, faction co-mention member fallback, alias evidence sourcing, and entry counts, and (per TKT-0101) should feed retrieval. That is the case for FORCING mentions more aggressively: the dictionary recognizing a known record name in prose is the moment to offer the link, because the link has real consumers. The suggestion-without-@ behavior above is the forcing function; treat capture coverage as a feature, not friction.
+- **Commit-path sequencing**: on surfaces whose prose commits through the Promotion Pipeline (TKT-0136), recognized-name suggestions become claim `related_entity_ids` at promotion time (name-in-text rule). Surface rollout follows those slices.
 - Preserve caret/selection, undo/redo, composition input, multiline formatting, and draft text. Support keyboard navigation and accessible suggestion controls with strong contrast and viewport-contained positioning.
 - Keep typing responsive for long notes; avoid full-document blocking work on each keystroke. Do not trigger paid AI calls or send text to external spelling services as part of ordinary typing.
 - Evaluate browser-native versus application-managed spelling during implementation. Do not assume browser dictionaries can be controlled by the app. Avoid duplicate/conflicting native and custom overlays, and verify both Chrome and the in-app browser.

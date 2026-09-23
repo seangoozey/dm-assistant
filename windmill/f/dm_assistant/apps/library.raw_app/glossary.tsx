@@ -173,6 +173,11 @@ export const TERMS: Record<string, GlossaryEntry> = {
     short: "A statement pulled from a document, waiting for review.",
     definition: "Importers and captures produce candidates — potential claims with their evidence attached. Candidates never become canon by themselves; they wait in the review flow until you decide, word by word.",
   },
+  "promotion-pipeline": {
+    term: "Promotion Pipeline", category: "Workflow and audit",
+    short: "One reusable path from working material to claims: Proposal → Candidate → Approve promotion.",
+    definition: "Every surface that turns working material into canon — descriptions, lore, brainstorm — uses the same progression. The system derives candidate claims from your text (with defaults filled in), you scan the list and fix only what is wrong, and one Approve promotion action commits the claims and files the document together in a single receipted transaction. Restatements of gathered claims stay references, never second claims; a conflict flag means the system found a KNOWN conflict with its current detectors — an unflagged statement is not guaranteed contradiction-free, so your read of the list is still the real check.",
+  },
   proposal: {
     term: "Proposal", category: "Workflow and audit",
     short: "An exact, versioned draft of a canonical change.",

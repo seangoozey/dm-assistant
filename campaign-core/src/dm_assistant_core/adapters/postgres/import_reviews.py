@@ -230,11 +230,13 @@ class PostgresImportReviewRepository:
                 "WHEN c.state = 'intended' AND c.predicts_subject_action THEN 'player_plan' "
                 "ELSE 'lore_fact' END, "
                 "substring(convert_from(sr.raw_content, 'UTF8') "
-                "from ss.start_offset + 1 for ss.end_offset - ss.start_offset) "
+                "from ss.start_offset + 1 for ss.end_offset - ss.start_offset), "
+                "c.subject_entity_id, se.canonical_name "
                 "FROM claims c "
                 "JOIN claim_evidence evidence ON evidence.claim_id = c.id "
                 "JOIN source_spans ss ON ss.id = evidence.source_span_id "
                 "JOIN source_revisions sr ON sr.id = ss.source_revision_id "
+                "LEFT JOIN entities se ON se.id = c.subject_entity_id "
                 "LEFT JOIN claim_conditions cc ON cc.claim_id = c.id "
                 "WHERE sr.source_document_id = %s "
                 "AND NOT EXISTS (SELECT 1 FROM claim_supersessions cs "
@@ -255,12 +257,14 @@ class PostgresImportReviewRepository:
                 "ELSE 'lore_fact' END, "
                 "substring(convert_from(sr.raw_content, 'UTF8') "
                 "from ss.start_offset + 1 for ss.end_offset - ss.start_offset), "
-                "cs.superseding_claim_id, cs.reason "
+                "cs.superseding_claim_id, cs.reason, "
+                "c.subject_entity_id, se.canonical_name "
                 "FROM claims c "
                 "JOIN claim_evidence evidence ON evidence.claim_id = c.id "
                 "JOIN source_spans ss ON ss.id = evidence.source_span_id "
                 "JOIN source_revisions sr ON sr.id = ss.source_revision_id "
                 "JOIN claim_supersessions cs ON cs.superseded_claim_id = c.id "
+                "LEFT JOIN entities se ON se.id = c.subject_entity_id "
                 "LEFT JOIN claim_conditions cc ON cc.claim_id = c.id "
                 "WHERE sr.source_document_id = %s "
                 "ORDER BY c.id, ss.start_offset",
@@ -283,6 +287,8 @@ class PostgresImportReviewRepository:
                         recorded_at=claim[7],
                         projection=cast(ClaimProjection, str(claim[8])),
                         source_excerpt=str(claim[9]) if claim[9] is not None else None,
+                        subject_entity_id=claim[10],
+                        subject_entity_name=str(claim[11]) if claim[11] is not None else None,
                     )
                     for claim in claim_rows
                 ),
@@ -300,6 +306,8 @@ class PostgresImportReviewRepository:
                         source_excerpt=str(claim[9]) if claim[9] is not None else None,
                         superseded_by_claim_id=claim[10],
                         supersession_reason=str(claim[11]),
+                        subject_entity_id=claim[12],
+                        subject_entity_name=str(claim[13]) if claim[13] is not None else None,
                     )
                     for claim in history_rows
                 ),

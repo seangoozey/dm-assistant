@@ -28,6 +28,12 @@ from dm_assistant_core.application.candidate_proposals import (
 )
 from dm_assistant_core.domain.chronology import compare_same_calendar
 
+# moved to the application layer: shared with the Promotion Pipeline derive
+# pre-check (ADR-0018)
+from dm_assistant_core.application.candidate_proposals import (
+    assertions_require_conflict_review,
+)
+
 _BLOCKED_CLASSIFICATIONS = {"template", "navigation_index", "quarantine"}
 _ALLOWED_CLAIM_COORDINATES = {
     ("observed", "real_play"),
@@ -35,6 +41,8 @@ _ALLOWED_CLAIM_COORDINATES = {
     ("intended", "npc_intention"),
     ("prepared", "preparation"),
     ("possible", "brainstorm"),
+    # CTS amendment (ADR-0017): Considered is brainstorm-level speculation.
+    ("considered", "brainstorm"),
 }
 _ALLOWED_AUTHORITY_CORRECTIONS = {
     "real_play": {"real_play"},
@@ -585,7 +593,7 @@ def _validate_claim(
         if decision.predicts_subject_action:
             raise CandidateProposalError("future PC actions cannot be predicted or prescribed")
         if decision.authority.value in {"preparation", "brainstorm"} and (
-            decision.state.value not in {"prepared", "possible"}
+            decision.state.value not in {"prepared", "possible", "considered"}
             or decision.visibility.value != "dm_only"
         ):
             raise CandidateProposalError(
@@ -606,7 +614,7 @@ def _validate_claim(
             (decision.subject_entity_id,),
         ).fetchall()
     if any(
-        _assertions_require_conflict_review(
+        assertions_require_conflict_review(
             proposed_assertion,
             decision.predicate,
             str(existing[0]),
@@ -617,29 +625,6 @@ def _validate_claim(
         raise CandidateProposalError(
             "existing claim with this subject and overlapping assertion requires conflict review"
         )
-
-
-def _assertions_require_conflict_review(
-    proposed: str,
-    proposed_predicate: str | None,
-    existing: str,
-    existing_predicate: str | None,
-) -> bool:
-    import re
-
-    def terms(value: str) -> set[str]:
-        return {word for word in re.findall(r"[a-z0-9]+", value.casefold()) if len(word) > 2}
-
-    proposed_terms = terms(proposed)
-    existing_terms = terms(existing)
-    if proposed_terms == existing_terms:
-        return True
-    if proposed_predicate is None or existing_predicate is None:
-        return False
-    if proposed_predicate.casefold().strip() != existing_predicate.casefold().strip():
-        return False
-    union = proposed_terms | existing_terms
-    return bool(union) and len(proposed_terms & existing_terms) / len(union) >= 0.35
 
 
 def _entity_type(connection: Any, entity_id: UUID, new_entities: dict[UUID, str]) -> str:

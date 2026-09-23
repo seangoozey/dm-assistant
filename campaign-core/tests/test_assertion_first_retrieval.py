@@ -1,7 +1,7 @@
-from dm_assistant_core.adapters.postgres.candidate_proposals import (
-    _assertions_require_conflict_review,
-)
 from dm_assistant_core.adapters.postgres.retrieval import _CANDIDATES_SQL, _CLAIMS_SQL
+from dm_assistant_core.application.candidate_proposals import (
+    assertions_require_conflict_review as _assertions_require_conflict_review,
+)
 
 
 def test_claim_retrieval_searches_assertion_subject_and_aliases() -> None:

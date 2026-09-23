@@ -1046,10 +1046,6 @@ main.page-settings { width: calc(100% - 24px); max-width: 860px; display: grid; 
 .lore-queue-item b { color: #352e27; }
 .lore-queue-item small { color: #8a7d70; }
 .lore-item-actions { display: flex; gap: 6px; }
-.lore-search-row { display: flex; gap: 10px; align-items: flex-end; margin: 16px 0 6px; }
-.lore-search-row label { display: grid; gap: 4px; font-weight: 700; font-size: 11px; flex: 1; }
-.lore-search-row input { padding: 9px 12px; border: 1px solid #c9c3b5; border-radius: 4px; background: #fffefa; font: 12px Manrope, sans-serif; min-width: 0; }
-.lore-search-row button { flex-shrink: 0; height: 37px; }
 .lore-existing-matches { padding: 10px 14px; border: 1px solid #d5cfc2; border-radius: 6px; background: #faf7f0; margin: 10px 0; display: grid; gap: 6px; }
 .lore-match-row { display: flex; align-items: center; gap: 8px; }
 .lore-resolved-history { margin-top: 14px; }
@@ -1059,7 +1055,6 @@ main.page-settings { width: calc(100% - 24px); max-width: 860px; display: grid; 
 .page-lore .lore-evidence-text { font-size: 12px; line-height: 1.55; color: #39352f; }
 .page-lore .lore-evidence-text.clamped { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; cursor: pointer; }
 .page-lore .lore-evidence-source { font: 10px "DM Mono", monospace; color: #8a7d70; overflow-wrap: anywhere; }
-.page-lore .lore-considered-section { margin-top: 10px; padding: 10px; border: 1px dashed #cbc5b7; border-radius: 6px; background: #f8f5ec; }
 .page-lore .step-actions { margin: 18px 0 10px; }
 
 .role-chip.graph-chip { border-style: dashed; color: #82533a; background: #f8f5ec; }
@@ -1075,3 +1070,75 @@ main.page-settings { width: calc(100% - 24px); max-width: 860px; display: grid; 
 .lore-direction-field textarea { display: block; width: 100%; min-height: 64px; box-sizing: border-box; resize: vertical; border: 1px solid #c9c3b5; border-radius: 5px; background: #fffefa; color: #35312b; padding: 12px 14px; font: 400 14px/1.5 "Libre Caslon Display", serif; }
 
 .identity-section-label { display: block; margin: 10px 0 6px; color: #84513b; font: 600 9px "DM Mono", monospace; text-transform: uppercase; letter-spacing: .12em; }
+
+/* ADR-0018 Promotion Pipeline: the reusable candidate review list. */
+.promotion-review { border: 1px solid #cbc5b7; border-radius: 8px; background: #fffefa; padding: 18px 20px; display: grid; gap: 0; margin: 16px 0; }
+.promotion-review > header { display: grid; gap: 4px; padding-bottom: 12px; border-bottom: 1px solid #e3ded3; }
+.promotion-review > header span { font: 700 9px "DM Mono", monospace; text-transform: uppercase; letter-spacing: .12em; color: #84513b; }
+.promotion-review > header h3 { margin: 0; font-family: "Libre Caslon Text", serif; font-size: 17px; color: #2e2a24; }
+.promotion-review > header p { margin: 0; font-size: 12px; color: #6b6459; }
+.promotion-row { display: grid; grid-template-columns: auto 1fr; gap: 12px; padding: 12px 0; border-bottom: 1px solid #efe9dc; align-items: start; }
+.promotion-row:last-of-type { border-bottom: none; }
+.promotion-row.reference { opacity: .75; }
+.promotion-row.has-conflict { background: #f8ebe5; margin: 0 -20px; padding: 12px 20px; }
+.promotion-include { padding-top: 4px; }
+.promotion-row-main { display: grid; gap: 6px; min-width: 0; }
+.promotion-assertion { width: 100%; box-sizing: border-box; border: 1px solid transparent; border-radius: 4px; background: transparent; color: #2e2a24; font: 400 14px/1.5 "Libre Caslon Display", serif; padding: 2px 4px; }
+.promotion-assertion:hover, .promotion-assertion:focus { border-color: #cbc5b7; background: #fdfbf4; }
+.promotion-row-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-size: 11px; }
+.promotion-state { display: inline-flex; align-items: center; gap: 6px; }
+.promotion-state small { font: 600 9px "DM Mono", monospace; text-transform: uppercase; letter-spacing: .1em; color: #8a7d70; }
+.promotion-state select { border: 1px solid #c9c3b5; border-radius: 4px; background: #f8f5ec; color: #5f4335; font: 600 11px "DM Mono", monospace; padding: 2px 4px; }
+.promotion-state-fixed { font: 600 10px "DM Mono", monospace; color: #a08b7a; }
+.promotion-consequence { color: #82533a; font-weight: 600; }
+.promotion-provenance { color: #a08b7a; font: 10px "DM Mono", monospace; }
+.promotion-conflict { margin: 0; color: #81442c; font-size: 12px; background: #f8ebe5; border: 1px solid #d8b5a8; border-radius: 4px; padding: 6px 10px; }
+.promotion-conflict-cleared { margin: 0; color: #6b6459; font-size: 11px; }
+.promotion-stale { margin: 0; color: #81442c; font-size: 12px; font-weight: 600; padding-top: 10px; }
+.promotion-review .step-actions { margin-top: 12px; }
+
+/* TKT-0099 fixes: owner title + Truth State chip on Lore evidence items. */
+.page-lore .lore-evidence-owner { font: 600 10px "DM Mono", monospace; color: #82533a; letter-spacing: .02em; }
+
+/* TKT-0099 Lore workspace overhaul (2026-09-21): Brainstorm-style two-column
+   workspace — main working file left, evidence aside right with search and a
+   Results/Consider accordion whose bars stay visible for switching lists. */
+/* The working page fills the viewport exactly: topbar above, header row,
+   then the workspace taking every remaining pixel — the page itself never
+   scrolls; the workspace columns do (user ruling 2026-09-21). */
+.lore-working { display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 10px; padding: 12px 0 14px; height: calc(100vh - 76px); box-sizing: border-box; }
+.lore-working-header { display: flex; align-items: center; justify-content: space-between; }
+.lore-working .lore-workspace { min-height: 0; }
+.lore-workspace { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(320px, .8fr); border: 1px solid #d8cec0; border-radius: 8px; background: #fffefa; overflow: hidden; }
+.lore-workspace-main { min-width: 0; padding: 22px 26px; border-right: 1px solid #d9d1c4; display: grid; gap: 14px; align-content: start; overflow-y: auto; }
+.lore-workspace-main h3 { margin: 0; color: #493b32; font: 600 19px "Libre Caslon Display", serif; }
+.lore-evidence-panel { min-width: 0; background: #f4f0e7; display: flex; flex-direction: column; overflow: hidden; }
+.lore-evidence-panel > header { flex: none; padding: 18px 20px 14px; border-bottom: 1px solid #d8cec0; background: #eee8dc; }
+.lore-evidence-panel > header span { color: #8a5b42; font: 600 9px "DM Mono", monospace; letter-spacing: .1em; text-transform: uppercase; }
+.lore-evidence-panel > header h2 { margin: 3px 0 0; color: #493b32; font: 600 21px "Libre Caslon Display", serif; }
+.lore-evidence-panel > header p { margin: 6px 0 0; color: #756e63; font-size: 11px; line-height: 1.5; }
+.lore-panel-search { flex: none; display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid #d8cec0; background: #f4f0e7; }
+.lore-panel-search input { flex: 1; min-width: 0; padding: 8px 12px; border: 1px solid #c9c3b5; border-radius: 4px; background: #fffefa; font: 12px Manrope, sans-serif; }
+.lore-panel-search .secondary-button { flex-shrink: 0; height: 34px; }
+.lore-panel-search .text-button { flex-shrink: 0; }
+.lore-panel-bar { flex: none; display: flex; justify-content: space-between; align-items: center; width: 100%; padding: 10px 16px; border: 0; border-bottom: 1px solid #d8cec0; background: #eee8dc; color: #493b32; font: 600 12px "Manrope", sans-serif; letter-spacing: .02em; cursor: pointer; }
+.lore-panel-bar span { min-width: 20px; padding: 1px 7px; border-radius: 9px; background: #d8cec0; color: #493b32; font: 600 10px "DM Mono", monospace; text-align: center; }
+.lore-panel-bar[aria-expanded="true"] { border-left: 3px solid #82533a; padding-left: 13px; }
+.lore-panel-bar[aria-expanded="true"] span { background: #82533a; color: #fffefa; }
+.lore-scroll { flex: 0 1 0px; min-height: 0; overflow-y: auto; visibility: hidden; transition: flex-grow .25s ease; }
+.lore-scroll.open { flex: 1 1 0px; visibility: visible; }
+.lore-panel-section { padding: 14px 16px 18px; display: grid; gap: 8px; align-content: start; }
+@media (max-width: 900px) {
+  .lore-working { height: auto; }
+  .lore-workspace { grid-template-columns: 1fr; height: auto; }
+  .lore-workspace-main { border-right: 0; border-bottom: 1px solid #d9d1c4; overflow-y: visible; }
+  .lore-evidence-panel { overflow: visible; }
+  .lore-scroll { flex: none; visibility: visible; overflow-y: visible; }
+}
+
+/* Results grouped by owning record (user ruling 2026-09-21). */
+.lore-result-group { display: grid; gap: 8px; }
+.lore-result-group + .lore-result-group { margin-top: 14px; }
+.lore-group-heading { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px solid #ddd5c9; padding-bottom: 4px; font: 600 10px "DM Mono", monospace; text-transform: uppercase; letter-spacing: .08em; color: #6b5142; }
+.lore-group-heading b { font-weight: 600; color: #6b5142; }
+.lore-group-heading span { color: #a08b7a; font-size: 9px; }

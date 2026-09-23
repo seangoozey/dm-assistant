@@ -14,7 +14,10 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from dm_assistant_core.domain import ClaimState, Visibility
+from dm_assistant_core.importer import CandidateAuthority
 from dm_assistant_core.importer.models import (
+    ImportCandidate,
     ImportClassification,
     ImportOutcome,
     MarkdownScanBatch,
@@ -31,6 +34,10 @@ class EntityDescriptionCommand(BaseModel):
     referenced_claim_ids: tuple[UUID, ...] = ()
     idempotency_key: str = Field(min_length=1)
     document_id: UUID | None = None  # set when revising an existing description
+    # Promotion Pipeline (ADR-0018): the (start, end) spans of the statements
+    # the DM approved for promotion. Only these become reviewable candidates;
+    # the rest of the prose stays pure authored evidence with no queue residue.
+    statement_spans: tuple[tuple[int, int], ...] = ()
 
 
 class EntityDescriptionReceipt(BaseModel):
@@ -40,6 +47,9 @@ class EntityDescriptionReceipt(BaseModel):
     revision_id: UUID
     path: str
     idempotent_replay: bool
+    # Candidate IDs in the same order as command.statement_spans (empty when
+    # the description filed with no promoted statements).
+    candidate_ids: tuple[UUID, ...] = ()
 
 
 class EntityDescriptionService:
@@ -69,6 +79,31 @@ class EntityDescriptionService:
                 "that document is no longer this entity's page path — "
                 "file a new description rather than a revision"
             )
+        statement_candidates = []
+        for number, (start, end) in enumerate(command.statement_spans, start=1):
+            if end > len(command.text) or start >= end:
+                raise ValueError(
+                    "a promoted statement span does not address the filed prose"
+                )
+            assertion = command.text[start:end]
+            if not assertion.strip():
+                raise ValueError("a promoted statement span is empty")
+            fingerprint = sha256(
+                f"promotion/description-v1\x00{start}\x00{end}\x00{assertion}".encode()
+            ).hexdigest()
+            statement_candidates.append(
+                ImportCandidate(
+                    fingerprint=fingerprint,
+                    section=f"Description / Statement {number}",
+                    assertion_text=assertion,
+                    state=ClaimState.ESTABLISHED,
+                    authority=CandidateAuthority.EXPLICIT_LORE,
+                    visibility=Visibility.DM_ONLY,
+                    start_offset=start,
+                    end_offset=end,
+                    extractor_version="promotion/description-v1",
+                )
+            )
         source = ScannedSource(
             path=path,
             content_hash=sha256(content).hexdigest(),
@@ -86,7 +121,7 @@ class EntityDescriptionService:
             },
             classification=ImportClassification.DURABLE_EVIDENCE,
             proposed_outcome=ImportOutcome.NEW,
-            candidates=(),
+            candidates=tuple(statement_candidates),
             entity_candidates=0,
             warnings=(),
         )
@@ -111,4 +146,5 @@ class EntityDescriptionService:
             revision_id=outcome.source_revision_id,
             path=path,
             idempotent_replay=bool(receipt.idempotent_replay),
+            candidate_ids=tuple(outcome.candidate_ids),
         )

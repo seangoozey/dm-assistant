@@ -16,11 +16,13 @@ import type {
 import type { JobPlatform } from "./jobPlatform";
 import { LAST_EXTRACTION_JOB_KEY, PENDING_JOB_KEY } from "./operationState";
 import { REVIEW_STATE_KEY } from "./reviewState";
+import { queueForLore } from "./loreQueue";
 
 afterEach(() => {
   cleanup();
   toast.resetForTest();
   resetSettingsForTest();
+  resetLoreQueueForTest();
   window.sessionStorage.clear();
   window.localStorage.clear();
   vi.restoreAllMocks();
@@ -154,6 +156,8 @@ const approval: CandidateProposalApproval = {
 
 function makeClient(overrides: Partial<CampaignClient> = {}): CampaignClient {
   return {
+    derivePromotion: vi.fn(),
+    approvePromotion: vi.fn(),
     getAIConfiguration: vi.fn().mockResolvedValue({
       purposes: [
         { key: "extraction", label: "Claim extraction", description: "Reads reviewed documents and proposes candidate claims.", prompt_version: "extraction/8", prompt_text: "Extract grounded claims." },
@@ -2276,6 +2280,223 @@ describe("DM Assistant shell", () => {
       expect.stringMatching(/^entity-description:/), undefined));
     expect(await screen.findByText(/Description filed — Ruh has its page/)).toBeInTheDocument();
   });
+
+  it("reviews promotion candidates inline and approves claims plus description in one action", async () => {
+    const entity = {
+      entry_id: "e1000000-0000-0000-0000-0000000000p1", canonical_name: "Ruh",
+      entity_kind: "location" as const, aliases: [], misspellings: [], tags: [],
+      members: [], current_claim_count: 1, source_count: 0,
+    };
+    const claims = [
+      { claim_id: "c1000000-0000-0000-0000-0000000000p2", assertion_text: "Ruh kept watch after the fall of the city.", state: "observed", authority: "real_play", visibility: "dm_only", conditional: false, recorded_at: "2026-01-01T00:00:00Z", projection: "real_play", sources: [] },
+    ];
+    const prose = "Ruh kept watch after the fall of the city. Its walls still bear the sigils.";
+    const derivePromotion = vi.fn().mockResolvedValue({
+      surface: "description", ownership: "bound_existing",
+      entity_id: entity.entry_id, entity_name: "Ruh",
+      candidates: [
+        { sequence: 1, span_start: 0, span_end: 44, assertion_text: "Ruh kept watch after the fall of the city.",
+          state: "established", authority: "explicit_lore",
+          consequence: { kind: "reference", claim_id: claims[0].claim_id, label: "restates claim — reference only, never a second claim" },
+          conflict: null, included: false },
+        { sequence: 2, span_start: 45, span_end: prose.length, assertion_text: "Its walls still bear the sigils.",
+          state: "established", authority: "explicit_lore",
+          consequence: { kind: "new_claim", claim_id: null, label: "new claim on this record" },
+          conflict: null, included: true },
+      ],
+    });
+    const approvePromotion = vi.fn().mockResolvedValue({
+      entity_id: entity.entry_id, entity_name: "Ruh",
+      document_id: "d1000000-0000-0000-0000-0000000000p3",
+      revision_id: "r1000000-0000-0000-0000-0000000000p4",
+      path: "entities/ruh.md", claims_committed: 1,
+      claim_ids: ["c1000000-0000-0000-0000-0000000000p5"],
+      proposal_id: "pr000000-0000-0000-0000-0000000000001",
+      change_set_id: "cs000000-0000-0000-0000-0000000000001",
+      receipt_id: "rc000000-0000-0000-0000-0000000000001",
+      idempotent_replay: false,
+    });
+    const getLibraryEntry = vi.fn().mockResolvedValue({ ...entity, claims, claim_history: [], sources: [] });
+    const getEntityProfile = vi.fn().mockResolvedValue(null);
+    render(<App campaignClient={makeClient({
+      listLibraryEntries: vi.fn().mockResolvedValue([entity]),
+      getLibraryEntry, getEntityProfile, derivePromotion, approvePromotion,
+      listSourceDocuments: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 500, offset: 0 }),
+    })} jobPlatform={makeQuietJobs()} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Ruh" }));
+    await waitFor(() => expect(getEntityProfile).toHaveBeenCalledWith(entity.entry_id));
+    fireEvent.click(screen.getByRole("button", { name: "Write description for Ruh" }));
+    fireEvent.change(await screen.findByLabelText("Entity description"), { target: { value: prose } });
+    // Derive is on demand — never automatic.
+    expect(derivePromotion).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Review promotion" }));
+    await waitFor(() => expect(derivePromotion).toHaveBeenCalledWith("description", entity.entry_id, prose, [claims[0].claim_id]));
+    const review = await screen.findByRole("region", { name: "Promotion review" });
+    expect(review).toBeInTheDocument();
+    // All approvable elements at a glance: the mirror is a locked reference;
+    // the novel statement is an includable new claim with its consequence line.
+    expect(screen.getByDisplayValue("Ruh kept watch after the fall of the city.")).toBeDisabled();
+    expect(screen.getByText("new claim on Ruh")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Approve promotion · 1 claim + description" }));
+    await waitFor(() => expect(approvePromotion).toHaveBeenCalledTimes(1));
+    const sent = approvePromotion.mock.calls[0][0] as Record<string, unknown>;
+    expect(sent.surface).toBe("description");
+    expect(sent.document_text).toBe(prose);
+    const statements = sent.statements as Array<Record<string, unknown>>;
+    expect(statements).toHaveLength(2);
+    expect(statements[0].included).toBe(false); // the reference never becomes a claim
+    expect(statements[1].included).toBe(true);
+    expect(await screen.findByText(/Promotion approved — Ruh \+1 claims/)).toBeInTheDocument();
+  });
+
+  it("shows Truth State and owner on Lore evidence, groups results by entity, orders Consider before Link, and drafts without any selection", async () => {
+    queueForLore("Fleurite Treasury");
+    const exiles = {
+      entry_id: "e9900000-0000-0000-0000-000000000001", canonical_name: "Fleurite Exiles",
+      entity_kind: "faction" as const, aliases: [], misspellings: [], tags: [],
+      members: [], current_claim_count: 3, source_count: 1,
+    };
+    const inquisitors = {
+      entry_id: "e9900000-0000-0000-0000-000000000003", canonical_name: "Inquisitors",
+      entity_kind: "faction" as const, aliases: [], misspellings: [], tags: [],
+      members: [], current_claim_count: 5, source_count: 2,
+    };
+    const query = vi.fn().mockResolvedValue({
+      answer_mode: "evidence",
+      evidence: [{
+        record_id: "c9900000-0000-0000-0000-000000000002",
+        assertion: "The king sealed the treasury before fleeing.",
+        citation: "sessions/notes/505-11-14.md", state: "considered",
+        authority: "explicit_lore", role: "support", entity_id: exiles.entry_id,
+      }, {
+        record_id: "c9900000-0000-0000-0000-000000000004",
+        assertion: "The Inquisitors audit the crown's ledgers.",
+        citation: "sessions/notes/505-11-20.md", state: "observed",
+        authority: "real_play", role: "support", entity_id: inquisitors.entry_id,
+      }],
+      citations: [], reasons: [],
+    });
+    const startProseDraft = vi.fn().mockResolvedValue({
+      jobId: "lore-draft-1", state: "queued", progress: 5, updatedAt: "2026-09-21T12:00:00Z",
+    });
+    // The drafts tray polls inspect() until a prose job is ready; give it the
+    // prose result shape (cited_keys et al.) the tray renders.
+    const inspect = vi.fn().mockResolvedValue({
+      jobId: "lore-draft-1", state: "succeeded", progress: 100,
+      result: {
+        draft_text: "The Treasury funds the rebellion.",
+        cited_keys: ["claim:c9900000-0000-0000-0000-000000000002"],
+        model_slug: "deepseek-v4-flash", prompt_tokens: 10, completion_tokens: 20,
+      },
+      updatedAt: "2026-09-21T12:00:05Z",
+    });
+    render(<App campaignClient={makeClient({
+      listLibraryEntries: vi.fn().mockResolvedValue([exiles, inquisitors]),
+      searchEntities: vi.fn().mockResolvedValue([]),
+      query,
+      listSourceDocuments: vi.fn().mockResolvedValue({ items: [{ document_id: "d9900000-0000-0000-0000-000000000005", path: "lore/treasury.md" }], total: 1, limit: 500, offset: 0 }),
+      getSourceDocument: vi.fn().mockResolvedValue({
+        document_id: "d9900000-0000-0000-0000-000000000005",
+        source_revision_id: "r9900000-0000-0000-0000-000000000006",
+        path: "lore/treasury.md", content: "notes",
+        canonical_claims: [{
+          claim_id: "c9900000-0000-0000-0000-000000000007",
+          assertion_text: "The Fleurite Treasury funds the rebellion.",
+          state: "established", authority: "explicit_lore", visibility: "dm_only",
+          conditional: false, recorded_at: "2026-01-01T00:00:00Z", projection: "lore_fact",
+          subject_entity_id: "e9900000-0000-0000-0000-000000000008",
+          subject_entity_name: "Fleurite",
+        }],
+        claim_history: [],
+      }),
+    })} jobPlatform={{ ...makeQuietJobs(), startProseDraft, inspect }} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Lore" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Work this" }));
+    fireEvent.change(screen.getByLabelText("Lore evidence search"), { target: { value: "treasury" } });
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+
+    // Results group by the record each claim is ABOUT; the Truth State chip
+    // rides every row so a Considered reference never reads as established.
+    const resultsSection = await screen.findByLabelText("Search results");
+    const headings = [...(resultsSection as HTMLElement).querySelectorAll(".lore-group-heading b")].map((b) => b.textContent);
+    expect(headings).toEqual(["Fleurite Exiles", "Inquisitors"]);
+    const row = within(resultsSection as HTMLElement).getByText("The king sealed the treasury before fleeing.");
+    const item = row.closest(".lore-evidence-item") as HTMLElement;
+    expect(item).not.toBeNull();
+    expect(within(item).getByText("considered")).toBeInTheDocument();
+
+    // Drafting requires no Linked or Considered claims — the queued name is
+    // the seed material when nothing is checked.
+    const draftButton = screen.getByRole("button", { name: /Draft synopsis/ });
+    expect(draftButton).toBeEnabled();
+    fireEvent.click(draftButton);
+    await waitFor(() => expect(startProseDraft).toHaveBeenCalledTimes(1));
+    const command = startProseDraft.mock.calls[0][0] as { material: Array<{ text: string }>; subject: string };
+    expect(command.subject).toBe("Fleurite Treasury");
+    expect(command.material).toHaveLength(1);
+    expect(command.material[0].text).toContain("Fleurite Treasury is a name queued");
+
+    // Considering the claim moves it out of Results; the Consider bar keeps
+    // its count and opens the Consider list — grouped by owning record like
+    // Results, with Consider first, then Link.
+    fireEvent.click(within(item as HTMLElement).getByLabelText(/Consider evidence:/));
+    fireEvent.click(screen.getByRole("button", { name: /^Consider\s+1$/ }));
+    const consideredSection = await screen.findByLabelText("Considered evidence");
+    const consideredHeadings = [...(consideredSection as HTMLElement).querySelectorAll(".lore-group-heading b")].map((b) => b.textContent);
+    expect(consideredHeadings).toEqual(["Fleurite Exiles"]);
+    const labels = [...(consideredSection as HTMLElement).querySelectorAll(".lore-evidence-header label")].map((l) => l.textContent);
+    expect(labels[0]).toContain("Consider");
+    expect(labels[1]).toContain("Link");
+    // The Results bar stays visible and clickable beside it — the second
+    // group's claim is still an unconsidered result.
+    expect(screen.getByRole("button", { name: /^Results\s+1$/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Draft synopsis/ }));
+    await waitFor(() => expect(startProseDraft).toHaveBeenCalledTimes(2));
+    const consideredCommand = startProseDraft.mock.calls[1][0] as { material: Array<{ text: string; state: string }> };
+    expect(consideredCommand.material).toHaveLength(1);
+    expect(consideredCommand.material[0].text).toContain("[about Fleurite Exiles]");
+    expect(consideredCommand.material[0].state).toBe("considered");
+
+    // Gather by name merges like search: the Considered set survives the
+    // re-gather instead of being dumped, and the gathered claim arrives in
+    // Results under its owning record.
+    fireEvent.click(screen.getByRole("button", { name: "Gather by name" }));
+    fireEvent.click(screen.getByRole("button", { name: /^Results\s+1$/ }));
+    const gatheredResults = await screen.findByText("The Fleurite Treasury funds the rebellion.");
+    const gatheredItem = gatheredResults.closest(".lore-evidence-item") as HTMLElement;
+    const gatheredGroup = gatheredItem.closest(".lore-result-group") as HTMLElement;
+    expect(within(gatheredGroup.querySelector(".lore-group-heading") as HTMLElement).getByText("Fleurite")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Consider\s+1$/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /^Consider\s+1$/ }));
+    expect(await screen.findByText("The king sealed the treasury before fleeing.")).toBeInTheDocument();
+
+    // The working file never loses data: kind, direction, description, and
+    // the considered set all survive leaving and re-entering the item —
+    // leaving means the independent page's Back to Lore control.
+    fireEvent.change(screen.getByLabelText("AI direction for the draft"), { target: { value: "Focus on the vault." } });
+    fireEvent.change(screen.getByLabelText("Lore description"), { target: { value: "A sealed treasury beneath the palace." } });
+    fireEvent.click(screen.getByRole("button", { name: "← Back to Lore" }));
+    // Back on the queue page, the pending item is still there to re-enter.
+    expect(await screen.findByRole("button", { name: "Work this" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Work this" }));
+    await waitFor(() => expect(screen.getByLabelText("Lore description")).toHaveValue("A sealed treasury beneath the palace."));
+    expect(screen.getByLabelText("AI direction for the draft")).toHaveValue("Focus on the vault.");
+    fireEvent.click(screen.getByRole("button", { name: /^Consider\s+1$/ }));
+    expect(await screen.findByLabelText("Considered evidence")).toBeInTheDocument();
+    // Accordion semantics: one branch always open; clicking the open bar
+    // leaves it open; a search automatically opens Results.
+    expect(screen.getByRole("button", { name: /^Consider\s+1$/ })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("button", { name: /^Results\s+0$/ })).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(screen.getByRole("button", { name: /^Consider\s+1$/ }));
+    expect(screen.getByRole("button", { name: /^Consider\s+1$/ })).toHaveAttribute("aria-expanded", "true");
+    fireEvent.change(screen.getByLabelText("Lore evidence search"), { target: { value: "vault" } });
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: /^Results\s+\d+$/ })).toHaveAttribute("aria-expanded", "true"));
+    expect(screen.getByRole("button", { name: /^Consider\s+1$/ })).toHaveAttribute("aria-expanded", "false");
+  });
+
   it("flags a stale authored page and revises it as a new revision of the same document", async () => {
     const entity = {
       entry_id: "e3000000-0000-0000-0000-000000000001", canonical_name: "Ruh",
@@ -2542,7 +2763,7 @@ describe("DM Assistant shell", () => {
     // Pick it up
     fireEvent.click(screen.getByRole("button", { name: "Work this" }));
     expect(await screen.findByText(/Creating: Tsunadis/)).toBeInTheDocument();
-    expect(await screen.findByText(/No claims mention this name yet/)).toBeInTheDocument();
+    expect(await screen.findByText(/No results yet — search for evidence or gather by name/)).toBeInTheDocument();
     // Write the description and create
     fireEvent.change(screen.getByLabelText("Lore description"), { target: { value: "A coastal city on the Shandriz Channel." } });
     fireEvent.click(screen.getByRole("button", { name: /Create Tsunadis as location/ }));

@@ -232,6 +232,36 @@ class CandidateProposalError(ValueError):
     """A proposal command failed a deterministic safety or state rule."""
 
 
+def assertions_require_conflict_review(
+    proposed: str,
+    proposed_predicate: str | None,
+    existing: str,
+    existing_predicate: str | None,
+) -> bool:
+    """Deterministic near-restatement gate over claim text.
+
+    Narrow by design (ADR-0018): it catches an identical term set or a
+    heavily overlapping restatement under the same predicate — it does NOT
+    understand semantic contradiction. Shared by proposal validation and the
+    Promotion Pipeline's derive pre-check so preview and commit agree.
+    """
+    import re
+
+    def terms(value: str) -> set[str]:
+        return {word for word in re.findall(r"[a-z0-9]+", value.casefold()) if len(word) > 2}
+
+    proposed_terms = terms(proposed)
+    existing_terms = terms(existing)
+    if proposed_terms == existing_terms:
+        return True
+    if proposed_predicate is None or existing_predicate is None:
+        return False
+    if proposed_predicate.casefold().strip() != existing_predicate.casefold().strip():
+        return False
+    union = proposed_terms | existing_terms
+    return bool(union) and len(proposed_terms & existing_terms) / len(union) >= 0.35
+
+
 class CandidateProposalForbiddenError(PermissionError):
     """Only the DM may make candidate disposition and promotion decisions."""
 

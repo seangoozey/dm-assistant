@@ -1,6 +1,8 @@
 from typing import Any
 from uuid import UUID
 
+import psycopg
+
 from dm_assistant_core.adapters.postgres.database import PostgresDatabase
 from dm_assistant_core.application.claim_reattribution import ReattributionReceipt
 
@@ -17,21 +19,25 @@ class PostgresClaimReattributionRepository:
         return row[0] if row is not None else None
 
     def move(self, receipt: ReattributionReceipt, reason: str) -> None:
-        with self._database.connection() as connection:
-            connection.execute(
-                "UPDATE claims SET subject_entity_id = %s WHERE id = %s",
-                (receipt.new_entity_id, receipt.claim_id),
-            )
-            connection.execute(
-                "INSERT INTO claim_reattributions "
-                "(receipt_id, claim_id, old_entity_id, new_entity_id, reason, moved_at) "
-                "VALUES (%s, %s, %s, %s, %s, %s)",
-                (
-                    receipt.receipt_id, receipt.claim_id,
-                    receipt.old_entity_id, receipt.new_entity_id,
-                    reason, receipt.moved_at,
-                ),
-            )
+        """The canonical subject change runs in the migration-owned DB function
+        (0066): idempotent on the receipt, loud on a raced owner change."""
+        try:
+            with self._database.connection() as connection:
+                connection.execute(
+                    "SELECT move_claim_subject(%s, %s, %s, %s, %s, %s)",
+                    (
+                        receipt.receipt_id,
+                        receipt.claim_id,
+                        receipt.old_entity_id,
+                        receipt.new_entity_id,
+                        reason,
+                        receipt.moved_at,
+                    ),
+                ).fetchone()
+        except psycopg.DatabaseError as error:
+            if error.sqlstate == "P0001":
+                raise ValueError(str(error).splitlines()[0]) from error
+            raise
 
     def moved_from(self, entity_id: UUID) -> list[tuple[Any, ...]]:
         with self._database.connection() as connection:

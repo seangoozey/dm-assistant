@@ -6,7 +6,7 @@ priority: P2
 milestone: trustworthy-librarian
 depends_on: []
 created: 2026-09-09
-updated: 2026-09-09
+updated: 2026-09-21
 ---
 
 # TKT-0101: Mention and navigate to any library entry
@@ -28,6 +28,12 @@ The user wanted to reference an encounter while writing. Existing character/loca
 - Make linked entries open in the existing contextual side panel, with appropriate content for their type. Preserve the current draft, encounter reading position, and surrounding workflow when opening or closing it.
 - Apply consistently to existing mention-enabled editors and the shared editor integration as it expands.
 - Treat a mention as a reference only. It may provide retrieval/navigation context but cannot establish attendance, occurrence, completion, chronology, or any other factual relationship by itself.
+- **Mentions are a search driver (user ruling 2026-09-21)**: retrieval currently ignores `claim_related_entities` entirely — /query never consults the mention table. Wire it in so a record's evidence pool includes claims it is mentioned in, not only claims it owns. Mentions are an obvious ranking/input signal; the audit that motivated this found five load-bearing consumers of the mention table and retrieval is conspicuously not one of them.
+- **Commit-path dependency (agreed recommendation 2026-09-21)**: mention pickers on new prose surfaces (Description, Lore) land with their Promotion Pipeline slices (TKT-0136), where mentions in committed prose ride along as `related_entity_ids` on the promoted statements — same name-in-text provenance rule as session capture. A picker without a commit path writes to nothing.
+
+## Open at ticket time
+
+- **Multiple mentions per claim (user question 2026-09-21)**: does `@Romulus @Romulus` in one claim carry any more value than `@Romulus` once plus a plain-text "Romulus" in the same claim? Working assumption is NO — presence, not multiplicity, is the signal, and a mention plus a plain-text occurrence of the same name are equivalent for linking. Decide whether mention density is ever a retrieval weight, or whether the table stays a set (it does today: primary key per claim+entity+kind, duplicates collapse).
 - Enforce existing visibility rules in suggestions and previews. Handle renamed or unavailable targets without losing original prose or silently retargeting links.
 
 ## Out of scope
