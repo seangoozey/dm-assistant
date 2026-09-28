@@ -422,6 +422,31 @@ def create_app(
     active_template_vocabularies = template_vocabularies or TemplateVocabularyService(
         PostgresTemplateVocabularyRepository(PostgresDatabase(active_settings.database_dsn))
     )
+    from dm_assistant_core.adapters.postgres.unpromoted_audit import (
+        PostgresUnpromotedAuditRepository,
+    )
+    from dm_assistant_core.application.unpromoted_audit import (
+        UnpromotedAuditService,
+    )
+    from dm_assistant_core.adapters.postgres.qualified_entities import (
+        PostgresQualifiedAuditRepository,
+    )
+    from dm_assistant_core.application.qualified_entities import (
+        QualifiedEntityAuditService,
+    )
+    active_qualified_audit = QualifiedEntityAuditService(
+        PostgresQualifiedAuditRepository(PostgresDatabase(active_settings.database_dsn))
+    )
+    from dm_assistant_core.adapters.postgres.exclusive_claims import (
+        PostgresExclusiveClaimsRepository,
+    )
+    from dm_assistant_core.application.exclusive_claims import ExclusiveClaimsService
+    active_exclusive_claims = ExclusiveClaimsService(
+        PostgresExclusiveClaimsRepository(PostgresDatabase(active_settings.database_dsn))
+    )
+    active_unpromoted_audit = UnpromotedAuditService(
+        PostgresUnpromotedAuditRepository(PostgresDatabase(active_settings.database_dsn))
+    )
     active_link_audit = link_audit or LinkAuditService(
         PostgresLinkAuditRepository(PostgresDatabase(active_settings.database_dsn))
     )
@@ -439,12 +464,32 @@ def create_app(
         PromotionError,
         PromotionService,
     )
+    from dm_assistant_core.application.identity_gaps import CreateEntityDecision
+
+    class _IdentityEntityCreator:
+        """Adapt the identity-queue's receipted, idempotent create for the
+        promotion facade's bound-created surface."""
+
+        def __init__(self, queue) -> None:
+            self._queue = queue
+
+        def create(self, surface: str, entity_kind: str, idempotency_key: str):
+            return self._queue.create_entity(
+                CreateEntityDecision(
+                    surface=surface,
+                    entity_kind=entity_kind,
+                    idempotency_key=idempotency_key,
+                )
+            )
+
     active_promotion = PromotionService(
         active_entity_descriptions,
         active_candidate_proposals,
         active_change_sets,
         PostgresPromotionReadRepository(PostgresDatabase(active_settings.database_dsn)),
         _EntityNameLookup(PostgresDatabase(active_settings.database_dsn)),
+        entity_creator=_IdentityEntityCreator(active_identity_queue),
+        reattribution=active_claim_reattribution,
     )
     app = FastAPI(title="DM Assistant Campaign Core", version=__version__)
     if active_settings.allowed_cors_origins:
@@ -989,6 +1034,43 @@ def create_app(
             raise HTTPException(status_code=422, detail=str(error)) from error
         except CandidateProposalError as error:
             raise HTTPException(status_code=409, detail=str(error)) from error
+
+    @app.get(
+        "/campaign/unqualified-exclusive-claims",
+        tags=["operations"],
+    )
+    def get_unqualified_exclusive_claims(
+        requester_role: Annotated[RequesterRole, Query()] = RequesterRole.DM,
+    ) -> dict:
+        """Step 1 of the completion campaign: per unqualified entity, the
+        claims evidenced only on the document that represents it."""
+        if requester_role is not RequesterRole.DM:
+            raise HTTPException(status_code=403, detail="the gather is DM-only")
+        return active_exclusive_claims.gather().model_dump(mode="json")
+
+    @app.get(
+        "/campaign/qualified-entities",
+        tags=["operations"],
+    )
+    def get_qualified_entities(
+        requester_role: Annotated[RequesterRole, Query()] = RequesterRole.DM,
+    ) -> dict:
+        """The Qualified Entity bar (docs/product/qualified-entity.md), computed live."""
+        if requester_role is not RequesterRole.DM:
+            raise HTTPException(status_code=403, detail="the qualification audit is DM-only")
+        return active_qualified_audit.audit().model_dump(mode="json")
+
+    @app.get(
+        "/campaign/unpromoted-material",
+        tags=["operations"],
+    )
+    def get_unpromoted_material(
+        requester_role: Annotated[RequesterRole, Query()] = RequesterRole.DM,
+    ) -> dict:
+        """The repair lane: in-app material written but never promoted."""
+        if requester_role is not RequesterRole.DM:
+            raise HTTPException(status_code=403, detail="the audit is DM-only")
+        return active_unpromoted_audit.audit().model_dump(mode="json")
 
     @app.get(
         "/template-vocabularies/{vocabulary}",

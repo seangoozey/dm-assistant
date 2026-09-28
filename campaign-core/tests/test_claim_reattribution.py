@@ -23,6 +23,9 @@ class MemoryRepository:
     def claim_subject(self, claim_id):
         return self.subjects.get(claim_id)
 
+    def claim_exists(self, claim_id):
+        return claim_id in self.subjects
+
     def move(self, receipt, reason):
         self.subjects[receipt.claim_id] = receipt.new_entity_id
         self.moves.append((receipt, reason))

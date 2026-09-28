@@ -15,6 +15,12 @@ from dm_assistant_core.application.entity_profiles import (
     UpdateEntityProfileCommand,
 )
 
+# Attribute fields whose changes mint backing claims (TKT-0143). Aliases,
+# summary text, and life_status have their own dedicated machinery.
+_MINTED_FIELDS = (
+    "status", "location_type", "race", "sex", "parent_location", "base_location",
+)
+
 PROFILE_NAMESPACE = "profile"
 
 
@@ -55,9 +61,21 @@ class PostgresEntityProfileRepository:
             if entity is None:
                 raise EntityProfileError("no identity matches that entity")
             current = connection.execute(
-                "SELECT version FROM entity_profiles WHERE entity_id = %s FOR UPDATE",
+                "SELECT version, profile_json FROM entity_profiles WHERE entity_id = %s FOR UPDATE",
                 (command.entity_id,)).fetchone()
             current_version = int(current[0]) if current else 0
+            # TKT-0143: changed attribute fields mint dated claims behind the
+            # dropdown (presumed-retcon supersession on change).
+            prior_profile = dict(current[1]) if current else {}
+            for field_name in _MINTED_FIELDS:
+                new_value = (payload.get(field_name) or "").strip()
+                old_value = (prior_profile.get(field_name) or "").strip()
+                if new_value != old_value and new_value:
+                    connection.execute(
+                        "SELECT apply_attribute_claim(%s, %s, %s, %s)",
+                        (command.entity_id, field_name, new_value,
+                         f"{command.idempotency_key}:mint:{field_name}"),
+                    ).fetchone()
             if current_version != command.version:
                 raise EntityProfileError("profile version changed; reload before saving")
             next_version = current_version + 1

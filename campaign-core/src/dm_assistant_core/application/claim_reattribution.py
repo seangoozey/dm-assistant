@@ -25,7 +25,8 @@ class ReattributionReceipt(BaseModel):
     model_config = ConfigDict(frozen=True)
     receipt_id: UUID
     claim_id: UUID
-    old_entity_id: UUID
+    # None on initial attribution (the claim had no owner).
+    old_entity_id: UUID | None
     new_entity_id: UUID
     moved_at: datetime
 
@@ -45,6 +46,7 @@ class MovedAssertion(BaseModel):
 
 class ClaimReattributionRepository(Protocol):
     def claim_subject(self, claim_id: UUID) -> UUID | None: ...
+    def claim_exists(self, claim_id: UUID) -> bool: ...
 
     def move(self, receipt: ReattributionReceipt, reason: str) -> None:
         """Update the claim's subject AND insert the audit row in one transaction."""
@@ -58,9 +60,11 @@ class ClaimReattributionService:
         self._repository = repository
 
     def reattribute(self, command: ReattributeClaim) -> ReattributionReceipt:
-        current = self._repository.claim_subject(command.claim_id)
-        if current is None:
+        # A NULL subject is an orphan awaiting INITIAL attribution (the
+        # migration's provenance-first output); a missing claim is an error.
+        if not self._repository.claim_exists(command.claim_id):
             raise ValueError("that claim does not exist")
+        current = self._repository.claim_subject(command.claim_id)
         if current == command.new_entity_id:
             raise ValueError("the assertion already belongs to that entity")
         receipt = ReattributionReceipt(

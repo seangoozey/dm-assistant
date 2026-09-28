@@ -107,3 +107,7 @@ The original declaration named the states but did not fully define their semanti
 ### Implementation note
 
 The DB `claim_state` enum currently has: observed, established, intended, prepared, possible. `considered` must be added as a new value (below possible). The display rename from 0115/0133 that collapsed Possible into Considered must be undone.
+
+## Amendment: Qualified Entity (2026-09-21)
+
+**Qualified Entity** joins the declared vocabulary: an Entity whose Identity is asserted, evidenced, and owned through the declared machinery — at least one current claim (an Entity with literally no associated data should not exist and should not be allowed to exist); clean ownership (no orphaned claim naming it awaits assignment); correct Kind; claim-minted, dated, vocabulary-backed Attributes (anchoring advises, never gates); and nothing rendering as canon outside claims, Attributes, and authored documents. **Descriptions are advisory polish, not qualification** — absence nudges (no-page flag), never gates. The bar is **binary** and computed live; the Migration → Seeded arc crosses it once system-wide (TKT-0140) and then holds it permanently. Derived record types (Plans, Encounters, Notes) are not Entities but assume this bar as their floor, extending upward where the type requires. Full standard: `docs/product/qualified-entity.md`.

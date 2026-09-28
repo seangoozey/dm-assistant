@@ -18,6 +18,12 @@ class PostgresClaimReattributionRepository:
             ).fetchone()
         return row[0] if row is not None else None
 
+    def claim_exists(self, claim_id: UUID) -> bool:
+        with self._database.connection() as connection:
+            return connection.execute(
+                "SELECT 1 FROM claims WHERE id = %s", (claim_id,)
+            ).fetchone() is not None
+
     def move(self, receipt: ReattributionReceipt, reason: str) -> None:
         """The canonical subject change runs in the migration-owned DB function
         (0066): idempotent on the receipt, loud on a raced owner change."""

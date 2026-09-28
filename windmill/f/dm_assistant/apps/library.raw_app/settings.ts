@@ -28,6 +28,7 @@ export interface Settings {
   hiddenNavPages: string[]; // nav button labels, e.g. ["Migration", "Conventions"]
   trayLayout: TrayLayout;
   recordsVisibility: RecordsVisibility;
+  showLegacyMigration: boolean; // phase-1 import wizard (shelved 2026-09-21; session-note review still lives there until re-homed)
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -37,6 +38,7 @@ export const DEFAULT_SETTINGS: Settings = {
   hiddenNavPages: [],
   trayLayout: { anchor: "right", session: true, drafts: true, search: true },
   recordsVisibility: { sources: false, earlierVersions: false },
+  showLegacyMigration: false,
 };
 
 const STORAGE_KEY = "dm-assistant.settings";

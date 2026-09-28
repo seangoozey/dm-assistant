@@ -22,6 +22,7 @@ ADRs capture durable technical decisions and their consequences.
 - [ADR-0015: Three-layer system — canon under the hood, authored documents, derived presentation](ADR-0015-three-layer-presentation.md) — accepted (user ruling 2026-09-15)
 - [ADR-0016: Every page is editable, and edit mode has a guarded lifecycle](ADR-0016-editable-pages-guarded-lifecycle.md) — accepted (user ruling 2026-09-16)
 - [ADR-0017: Domain Vocabulary Declaration](ADR-0017-domain-vocabulary-declaration.md) — accepted (user ruling 2026-09-19)
+- [ADR-0019: Work Surfaces Never Lose Work](ADR-0019-work-surfaces-never-lose-work.md) — accepted (user ruling 2026-09-24)
 - [ADR-0018: The Promotion Pipeline — one Proposal → Candidate → Claim progression for every surface](ADR-0018-promotion-pipeline.md) — accepted (user ruling 2026-09-20)
 - [ADR-0001: Windmill as application infrastructure](ADR-0001-windmill-infrastructure.md) — proposed
 - [ADR-0002: Dedicated Campaign Core](ADR-0002-dedicated-campaign-core.md) — proposed

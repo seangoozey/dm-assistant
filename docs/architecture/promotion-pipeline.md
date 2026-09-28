@@ -29,6 +29,8 @@ Two hard rules, both paid for during Migration:
 
 ### Stage 2 — Candidate (the atomic preview, derived)
 
+> **Description-surface amendment (2026-09-24):** the Description reviews CLAIMS, not derived statements — the description is an ordered claim composition; prose is the reading layer and never splits into claims. See ADR-0018's amendment.
+
 The system derives atomic candidate claims from the proposal: citation mirrors (Description), statement splits (session notes), selected thoughts (Brainstorm), linked or re-attributable evidence (Lore), corrected assertions (repair). Derivation is **deterministic**. AI may *suggest* candidates — suggestions are visually marked, never auto-included, and never gate the commit path.
 
 Each candidate shows exactly what a DM can judge at a glance:

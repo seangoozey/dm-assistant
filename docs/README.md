@@ -21,6 +21,7 @@ An older document can still reveal intent. Do not silently overwrite a newer dec
 - [Product vision](product/vision.md)
 - [Domain invariants](product/invariants.md)
 - [Truth states and authority decision table](product/truth-state-authority.md)
+- [Qualified Entity standard](product/qualified-entity.md) — the checkable bar, ACCEPTED (TKT-0139 rulings 2026-09-21)
 - [Architecture overview](architecture/overview.md)
 - [Domain model](architecture/domain-model.md)
 - [Campaign Core schema](architecture/campaign-core-schema.md)

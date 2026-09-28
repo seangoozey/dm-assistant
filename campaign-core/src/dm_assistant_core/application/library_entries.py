@@ -69,6 +69,10 @@ class LibraryEntryClaim(BaseModel):
     recorded_at: datetime
     projection: ClaimProjection
     sources: tuple[LibraryEntrySource, ...] = ()
+    # Backward ownership link: whose record this claim is (differs from the
+    # viewed entry on mention-linked claims).
+    subject_entity_id: UUID | None = None
+    subject_entity_name: str | None = None
 
 
 class LibraryEntryClaimHistory(LibraryEntryClaim):

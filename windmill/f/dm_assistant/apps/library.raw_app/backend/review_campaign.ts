@@ -78,6 +78,9 @@ interface ReviewBackendRequest {
     | "get_ai_prompts"
     | "get_template_vocabulary"
     | "get_link_audit"
+    | "get_unpromoted_material"
+    | "get_qualified_entities"
+    | "get_exclusive_claims"
     | "reattribute_claim"
     | "get_moved_assertions"
     | "change_template_vocabulary"
@@ -150,6 +153,12 @@ function route(input: ReviewBackendRequest): { method: "GET" | "POST" | "PUT" | 
       return { method: "GET", path: `entities/${required(input.entity_id, "entity_id")}/moved-assertions` };
     case "get_link_audit":
       return { method: "GET", path: "campaign/link-audit" };
+    case "get_unpromoted_material":
+      return { method: "GET", path: "campaign/unpromoted-material" };
+    case "get_qualified_entities":
+      return { method: "GET", path: "campaign/qualified-entities" };
+    case "get_exclusive_claims":
+      return { method: "GET", path: "campaign/unqualified-exclusive-claims" };
     case "get_template_vocabulary":
       return { method: "GET", path: `template-vocabularies/${required(input.vocabulary, "vocabulary")}` };
     case "change_template_vocabulary":

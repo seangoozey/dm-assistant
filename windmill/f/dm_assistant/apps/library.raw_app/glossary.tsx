@@ -168,6 +168,11 @@ export const TERMS: Record<string, GlossaryEntry> = {
     short: "An honorific attached to a person by an outside authority — an alias, not a faction seat.",
     definition: "'Herald of Arkin, as decreed by the god' belongs to Coreferra: it names her, conferred from outside, with no organization behind it. Titles live as aliases on the person and their conferral as claims — not as roster machinery.",
   },
+  "qualified-entity": {
+    term: "Qualified Entity", category: "Records and truth",
+    short: "The checkable bar every record must clear: asserted, evidenced, owned — nothing outside the machinery.",
+    definition: "An Entity is Qualified when its Identity lives entirely through the declared machinery: at least one current claim (a record with no data at all should not exist), clean ownership of what is about it, a correct Kind, and Attributes that are claim-backed, dated, and vocabulary-backed. Descriptions are polish for reading, not qualification — a record with claims and Attributes and no Description is still Qualified. The bar is binary and computed live; the Migration-to-Seeded campaign crosses it once and then the system never holds an unQualified Entity again.",
+  },
   candidate: {
     term: "Candidate", category: "Workflow and audit",
     short: "A statement pulled from a document, waiting for review.",

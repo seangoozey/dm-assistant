@@ -309,10 +309,40 @@ export interface ApprovePromotionInput {
   statements: PromotionStatementInput[]; referenced_claim_ids: string[];
   document_id?: string | null; idempotency_key: string;
 }
+export interface QualifiedCriterion { criterion: string; status: "pass" | "fail" | "pending"; reason: string; vocabulary?: string | null; value?: string | null; }
+export interface QualifiedEntityFinding { entity_id: string; canonical_name: string; entity_kind: string; qualified: boolean; current_claim_count: number; criteria: QualifiedCriterion[]; }
+export interface QualifiedAuditResult { audited_at: string; total_entities: number; qualified_count: number; unqualified: QualifiedEntityFinding[]; pending_criteria: string[]; }
+export interface ExclusiveClaim { claim_id: string; assertion_text: string; state: string; owner_entity_id?: string | null; owner_name?: string | null; }
+export interface EntityDocumentClaims { entity_id: string; canonical_name: string; entity_kind: string; document_id?: string | null; document_path?: string | null; claims: ExclusiveClaim[]; }
+export interface ExclusiveClaimsResult { entities_with_exclusive_claims: number; total_claims: number; groups: EntityDocumentClaims[]; }
+export interface UnpromotedFinding { kind: "empty_shell" | "pending_capture" | "unpromoted_thoughts"; entity_id?: string | null; entity_name: string; entity_kind?: string | null; document_id?: string | null; document_path?: string | null; session_id?: string | null; count: number; detail: string; }
+export interface UnpromotedAuditResult { audited_at: string; findings: UnpromotedFinding[]; }
+export interface PromotionSubjectInput {
+  entity_id?: string;
+  new_record?: string;
+  name?: string;
+  entity_kind?: string;
+}
+export interface BrainstormStatementInput {
+  span_start: number; span_end: number; assertion_text: string; state: string; included: boolean;
+  subject: PromotionSubjectInput;
+  candidate_id: string; evidence_revision_id: string;
+}
+export interface ApproveBrainstormPromotionInput {
+  surface?: "brainstorm"; document_text: string; workflow_session_id: string;
+  statements: BrainstormStatementInput[]; idempotency_key: string;
+}
+export interface ApproveLorePromotionInput {
+  surface?: "lore"; entity_name: string; entity_kind: string; document_text: string;
+  statements: PromotionStatementInput[]; referenced_claim_ids: string[]; linked_claim_ids: string[];
+  idempotency_key: string;
+}
 export interface PromotionCommitReceipt {
   entity_id: string; entity_name: string; document_id: string; revision_id: string; path: string;
   claims_committed: number; claim_ids: string[];
   proposal_id: string | null; change_set_id: string | null; receipt_id: string | null;
+  moved_claim_ids: string[]; move_errors: string[];
+  created_entity_ids?: string[];
   idempotent_replay: boolean;
 }
 export interface ProseMaterialItem { key: string; kind: string; text: string; state?: string | null; }
@@ -500,6 +530,9 @@ export interface CampaignClient {
   getEntityDossier(entityId: string): Promise<DossierView>;
   getTemplateVocabulary(vocabulary: string): Promise<VocabularyValue[]>;
   getLinkAudit(): Promise<LinkAuditResult>;
+  getUnpromotedMaterial(): Promise<UnpromotedAuditResult>;
+  getQualifiedEntities(): Promise<QualifiedAuditResult>;
+  getExclusiveClaims(): Promise<ExclusiveClaimsResult>;
   reattributeClaim(claimId: string, newEntityId: string, reason: string): Promise<ReattributionReceipt>;
   getMovedAssertions(entityId: string): Promise<MovedAssertion[]>;
   changeTemplateVocabulary(vocabulary: string, action: "add" | "retire", value: string): Promise<VocabularyChangeReceipt>;
@@ -538,7 +571,10 @@ export interface CampaignClient {
   decideConflict(claimAId: string, claimBId: string, action: "dismiss" | "supersede", reason: string): Promise<ConflictDecisionResult>;
   writeEntityDescription(entityId: string, text: string, referencedClaimIds: string[], idempotencyKey: string, documentId?: string | null): Promise<EntityDescriptionReceipt>;
   derivePromotion(surface: "description", entityId: string, documentText: string, referencedClaimIds: string[]): Promise<PromotionCandidateList>;
+  deriveLorePromotion(entityName: string, entityKind: string, documentText: string, referencedClaimIds: string[]): Promise<PromotionCandidateList>;
   approvePromotion(input: ApprovePromotionInput): Promise<PromotionCommitReceipt>;
+  approveLorePromotion(input: ApproveLorePromotionInput): Promise<PromotionCommitReceipt>;
+  approveBrainstormPromotion(input: ApproveBrainstormPromotionInput): Promise<PromotionCommitReceipt>;
   draftProse(command: ProseDraftCommand): Promise<ProseDraftResult>;
   getEntityGraphNeighborhood(entityId: string): Promise<GraphRelationRow[]>;
   getLifeStatusProposals(): Promise<LifeStatusProposal[]>;
@@ -688,6 +724,9 @@ export interface ReviewBackendRequest {
     | "get_entity_dossier"
     | "get_template_vocabulary"
     | "get_link_audit"
+    | "get_unpromoted_material"
+    | "get_qualified_entities"
+    | "get_exclusive_claims"
     | "reattribute_claim"
     | "get_moved_assertions"
     | "change_template_vocabulary"
@@ -796,6 +835,9 @@ export class HttpCampaignClient implements CampaignClient {
   getEntityDossier(entityId: string): Promise<DossierView> { return this.core(`/entities/${entityId}/dossier?requester_role=dm`); }
   getTemplateVocabulary(vocabulary: string): Promise<VocabularyValue[]> { return this.core(`/template-vocabularies/${vocabulary}?requester_role=dm`); }
   getLinkAudit(): Promise<LinkAuditResult> { return this.core("/campaign/link-audit?requester_role=dm"); }
+  getUnpromotedMaterial(): Promise<UnpromotedAuditResult> { return this.core("/campaign/unpromoted-material?requester_role=dm"); }
+  getQualifiedEntities(): Promise<QualifiedAuditResult> { return this.core("/campaign/qualified-entities?requester_role=dm"); }
+  getExclusiveClaims(): Promise<ExclusiveClaimsResult> { return this.core("/campaign/unqualified-exclusive-claims?requester_role=dm"); }
   reattributeClaim(claimId: string, newEntityId: string, reason: string): Promise<ReattributionReceipt> { return this.core(`/claims/${claimId}/reattribute?requester_role=dm`, "POST", { claim_id: claimId, new_entity_id: newEntityId, reason }); }
   getMovedAssertions(entityId: string): Promise<MovedAssertion[]> { return this.core(`/entities/${entityId}/moved-assertions?requester_role=dm`); }
   changeTemplateVocabulary(vocabulary: string, action: "add" | "retire", value: string): Promise<VocabularyChangeReceipt> { return this.core(`/template-vocabularies/${vocabulary}?requester_role=dm`, "POST", { action, value }); }
@@ -862,7 +904,10 @@ export class HttpCampaignClient implements CampaignClient {
   decideConflict(claimAId: string, claimBId: string, action: "dismiss" | "supersede", reason: string): Promise<ConflictDecisionResult> { return this.core("/campaign/conflicts/decisions?requester_role=dm", "POST", { claim_a_id: claimAId, claim_b_id: claimBId, action, reason }); }
   writeEntityDescription(entityId: string, text: string, referencedClaimIds: string[], idempotencyKey: string, documentId?: string | null): Promise<EntityDescriptionReceipt> { return this.core(`/entities/${entityId}/description?requester_role=dm`, "POST", { entity_id: entityId, text, referenced_claim_ids: referencedClaimIds, idempotency_key: idempotencyKey, ...(documentId ? { document_id: documentId } : {}) }); }
   derivePromotion(surface: "description", entityId: string, documentText: string, referencedClaimIds: string[]): Promise<PromotionCandidateList> { return this.core("/promotion/derive?requester_role=dm", "POST", { surface, entity_id: entityId, document_text: documentText, referenced_claim_ids: referencedClaimIds }); }
+  deriveLorePromotion(entityName: string, entityKind: string, documentText: string, referencedClaimIds: string[]): Promise<PromotionCandidateList> { return this.core("/promotion/derive?requester_role=dm", "POST", { surface: "lore", entity_name: entityName, entity_kind: entityKind, document_text: documentText, referenced_claim_ids: referencedClaimIds }); }
   approvePromotion(input: ApprovePromotionInput): Promise<PromotionCommitReceipt> { return this.core("/promotion/approve?requester_role=dm", "POST", input); }
+  approveLorePromotion(input: ApproveLorePromotionInput): Promise<PromotionCommitReceipt> { return this.core("/promotion/approve?requester_role=dm", "POST", { ...input, surface: "lore" }); }
+  approveBrainstormPromotion(input: ApproveBrainstormPromotionInput): Promise<PromotionCommitReceipt> { return this.core("/promotion/approve?requester_role=dm", "POST", { ...input, surface: "brainstorm" }); }
   draftProse(command: ProseDraftCommand): Promise<ProseDraftResult> { return this.core("/prose/draft?requester_role=dm", "POST", command); }
   getEntityGraphNeighborhood(entityId: string): Promise<GraphRelationRow[]> { return this.core(`/entities/${entityId}/graph-neighborhood?requester_role=dm`); }
   getLifeStatusProposals(): Promise<LifeStatusProposal[]> { return this.core("/campaign/life-status/proposals"); }
@@ -1027,6 +1072,9 @@ export class WindmillCampaignClient implements CampaignClient {
   getEntityDossier(entityId: string): Promise<DossierView> { return this.review({ operation: "get_entity_dossier", entity_id: entityId }); }
   getTemplateVocabulary(vocabulary: string): Promise<VocabularyValue[]> { return this.review({ operation: "get_template_vocabulary", vocabulary }); }
   getLinkAudit(): Promise<LinkAuditResult> { return this.review({ operation: "get_link_audit" }); }
+  getUnpromotedMaterial(): Promise<UnpromotedAuditResult> { return this.review({ operation: "get_unpromoted_material" }); }
+  getQualifiedEntities(): Promise<QualifiedAuditResult> { return this.review({ operation: "get_qualified_entities" }); }
+  getExclusiveClaims(): Promise<ExclusiveClaimsResult> { return this.review({ operation: "get_exclusive_claims" }); }
   reattributeClaim(claimId: string, newEntityId: string, reason: string): Promise<ReattributionReceipt> { return this.review({ operation: "reattribute_claim", claim_id: claimId, body: { claim_id: claimId, new_entity_id: newEntityId, reason } }); }
   getMovedAssertions(entityId: string): Promise<MovedAssertion[]> { return this.review({ operation: "get_moved_assertions", entity_id: entityId }); }
   changeTemplateVocabulary(vocabulary: string, action: "add" | "retire", value: string): Promise<VocabularyChangeReceipt> { return this.review({ operation: "change_template_vocabulary", vocabulary, body: { action, value } }); }
@@ -1098,7 +1146,10 @@ export class WindmillCampaignClient implements CampaignClient {
   decideConflict(claimAId: string, claimBId: string, action: "dismiss" | "supersede", reason: string): Promise<ConflictDecisionResult> { return this.review<ConflictDecisionResult>({ operation: "decide_conflict", body: { claim_a_id: claimAId, claim_b_id: claimBId, action, reason } }); }
   writeEntityDescription(entityId: string, text: string, referencedClaimIds: string[], idempotencyKey: string, documentId?: string | null): Promise<EntityDescriptionReceipt> { return this.review<EntityDescriptionReceipt>({ operation: "write_entity_description", entity_id: entityId, body: { entity_id: entityId, text, referenced_claim_ids: referencedClaimIds, idempotency_key: idempotencyKey, ...(documentId ? { document_id: documentId } : {}) } }); }
   derivePromotion(surface: "description", entityId: string, documentText: string, referencedClaimIds: string[]): Promise<PromotionCandidateList> { return this.review<PromotionCandidateList>({ operation: "derive_promotion", entity_id: entityId, body: { surface, entity_id: entityId, document_text: documentText, referenced_claim_ids: referencedClaimIds } }); }
+  deriveLorePromotion(entityName: string, entityKind: string, documentText: string, referencedClaimIds: string[]): Promise<PromotionCandidateList> { return this.review<PromotionCandidateList>({ operation: "derive_promotion", body: { surface: "lore", entity_name: entityName, entity_kind: entityKind, document_text: documentText, referenced_claim_ids: referencedClaimIds } }); }
   approvePromotion(input: ApprovePromotionInput): Promise<PromotionCommitReceipt> { return this.review<PromotionCommitReceipt>({ operation: "approve_promotion", entity_id: input.entity_id, body: input }); }
+  approveLorePromotion(input: ApproveLorePromotionInput): Promise<PromotionCommitReceipt> { return this.review<PromotionCommitReceipt>({ operation: "approve_promotion", body: { ...input, surface: "lore" } }); }
+  approveBrainstormPromotion(input: ApproveBrainstormPromotionInput): Promise<PromotionCommitReceipt> { return this.review<PromotionCommitReceipt>({ operation: "approve_promotion", body: { ...input, surface: "brainstorm" } }); }
   draftProse(command: ProseDraftCommand): Promise<ProseDraftResult> { return this.review<ProseDraftResult>({ operation: "draft_prose", body: command }); }
   getEntityGraphNeighborhood(entityId: string): Promise<GraphRelationRow[]> { return this.review<GraphRelationRow[]>({ operation: "get_entity_graph_neighborhood", entity_id: entityId }); }
   getLifeStatusProposals(): Promise<LifeStatusProposal[]> { return this.review<LifeStatusProposal[]>({ operation: "get_life_status_proposals" }); }

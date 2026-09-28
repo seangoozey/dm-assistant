@@ -14,7 +14,7 @@ from typing import Any, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field
 
-PROSE_PROMPT_VERSION = "prose/3"
+PROSE_PROMPT_VERSION = "prose/4"
 
 PROSE_SYSTEM_PROMPT = """You are the drafting engine of a DM's campaign librarian. You write reference prose for a campaign library page, for the DM's eyes.
 
@@ -27,6 +27,7 @@ Non-negotiable rules:
 4. Write about the world, never the system: the prose must not mention records, material, documents, claims, the archive, or the library. Those words describe the tool, not the campaign.
 5. Describe what the subject IS. A place or region is described through its character — its look, its people, its power, and the events that shaped it — not through the full biography of everyone who passed through; individual testimony appears only where it reveals the place. A person is described as a person; a faction by its purpose and structure. When material does not serve that description, leave it out.
 6. Flowing prose only: no headings, no bullet lists, no frontmatter, no preamble. Obey the paragraph limit exactly.
+7. Place a double-colon marker :: between separate factual assertions — each :: group becomes one claim. Use them sparingly: connective and characterizing prose belongs to the same group as the fact it serves, and pure rhetoric ("This is X.") joins the preceding group or ends without a marker.
 
 Respond as JSON: {"draft": "<your prose>"}
 """

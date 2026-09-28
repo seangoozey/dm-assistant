@@ -1142,3 +1142,35 @@ main.page-settings { width: calc(100% - 24px); max-width: 860px; display: grid; 
 .lore-group-heading { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px solid #ddd5c9; padding-bottom: 4px; font: 600 10px "DM Mono", monospace; text-transform: uppercase; letter-spacing: .08em; color: #6b5142; }
 .lore-group-heading b { font-weight: 600; color: #6b5142; }
 .lore-group-heading span { color: #a08b7a; font-size: 9px; }
+
+/* Free-surface subject resolution: new-record rows under brainstorm drafts. */
+.brainstorm-new-record { border: 1px dashed #cbc5b7; border-radius: 6px; background: #f8f5ec; padding: 10px 12px; display: grid; gap: 8px; }
+.brainstorm-new-record .ai-activation-note { margin: 0; }
+
+/* Phase 2 migrations page. */
+.page-migration2 { display: grid; gap: 18px; }
+
+/* Q1 gather lane on the Phase 2 page. */
+.qualified-gather { border: 1px solid #cbc5b7; border-radius: 8px; background: #fffefa; padding: 16px 18px; display: grid; gap: 10px; margin-top: 14px; }
+.qualified-gather header { display: flex; align-items: baseline; gap: 10px; }
+.qualified-gather header span { font: 600 9px "DM Mono", monospace; text-transform: uppercase; letter-spacing: .1em; color: #84513b; }
+.qualified-gather h4 { margin: 0; font-family: "Libre Caslon Text", serif; font-size: 16px; color: #2e2a24; }
+.qualified-gather header .text-button { margin-left: auto; }
+
+/* Step 1 — Assign Ownership (document-exclusive claims). */
+.qualified-step1 { border: 1px solid #cbc5b7; border-radius: 8px; background: #fffefa; padding: 16px 18px; display: grid; gap: 10px; }
+.qualified-step1 > header { display: flex; align-items: center; justify-content: space-between; }
+.qualified-step1 > header span { font: 600 9px "DM Mono", monospace; text-transform: uppercase; letter-spacing: .1em; color: #84513b; }
+.qualified-step1 h4 { margin: 2px 0 0; font-family: "Libre Caslon Text", serif; font-size: 16px; color: #2e2a24; }
+.qualified-step1-group { border: 1px solid #e3ded3; border-radius: 6px; background: #f8f5ec; padding: 10px 12px; display: grid; gap: 8px; }
+.qualified-step1-group summary { font-weight: 700; font-size: 13px; color: #493b32; cursor: pointer; display: flex; gap: 8px; align-items: baseline; }
+.qualified-step1-group summary small { color: #a08b7a; font: 10px "DM Mono", monospace; }
+.qualified-step1-group .gathered-claim { display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: start; }
+.qualified-step1-group .gathered-claim span { font-size: 13px; line-height: 1.5; }
+
+/* Mention claims: owner title above the assertion. */
+.claim-owner-title { display: block; margin-bottom: 2px; font: 600 9px "DM Mono", monospace; text-transform: uppercase; letter-spacing: .08em; color: #84513b; }
+
+/* Description claim composition rows. */
+.promotion-row.foreign-owned { background: #f8f5ec; }
+.promotion-assertion.edited { border-color: #b58a72; background: #fdfbf4; }

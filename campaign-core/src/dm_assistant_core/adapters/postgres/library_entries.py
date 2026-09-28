@@ -106,6 +106,7 @@ class PostgresLibraryEntryRepository:
                 """
                 SELECT c.id, c.assertion_text, c.state::text, c.authority::text,
                        c.visibility, c.is_conditional, cc.trigger_text, c.recorded_at,
+                       c.subject_entity_id, owner.canonical_name,
                        CASE WHEN c.state = 'intended' AND c.authority IN ('real_play', 'dm_correction')
                                  AND NOT c.predicts_subject_action THEN 'player_plan'
                             WHEN c.authority IN ('real_play', 'dm_correction') THEN 'real_play'
@@ -124,6 +125,7 @@ class PostgresLibraryEntryRepository:
                        ) evidence_sources)
                 FROM claims c
                 LEFT JOIN claim_conditions cc ON cc.claim_id = c.id
+                LEFT JOIN entities owner ON owner.id = c.subject_entity_id
                 WHERE (c.subject_entity_id = %s OR EXISTS (
                     SELECT 1 FROM claim_related_entities cre WHERE cre.claim_id = c.id AND cre.entity_id = %s
                 ))
@@ -136,6 +138,7 @@ class PostgresLibraryEntryRepository:
                 """
                 SELECT c.id, c.assertion_text, c.state::text, c.authority::text,
                        c.visibility, c.is_conditional, cc.trigger_text, c.recorded_at,
+                       c.subject_entity_id, owner.canonical_name,
                        CASE WHEN c.state = 'intended' AND c.authority IN ('real_play', 'dm_correction')
                                  AND NOT c.predicts_subject_action THEN 'player_plan'
                             WHEN c.authority IN ('real_play', 'dm_correction') THEN 'real_play'
@@ -156,6 +159,7 @@ class PostgresLibraryEntryRepository:
                 FROM claims c
                 JOIN claim_supersessions cs ON cs.superseded_claim_id = c.id
                 LEFT JOIN claim_conditions cc ON cc.claim_id = c.id
+                LEFT JOIN entities owner ON owner.id = c.subject_entity_id
                 WHERE c.subject_entity_id = %s OR EXISTS (
                     SELECT 1 FROM claim_related_entities cre WHERE cre.claim_id = c.id AND cre.entity_id = %s
                 )
@@ -211,7 +215,7 @@ class PostgresLibraryEntryRepository:
         )
         claims = []
         for claim in claim_rows:
-            claim_sources = tuple(LibraryEntrySource(**item) for item in (claim[9] or ()))
+            claim_sources = tuple(LibraryEntrySource(**item) for item in (claim[11] or ()))
             claims.append(
                 LibraryEntryClaim(
                     claim_id=claim[0],
@@ -222,13 +226,15 @@ class PostgresLibraryEntryRepository:
                     conditional=bool(claim[5]),
                     condition_text=str(claim[6]) if claim[6] is not None else None,
                     recorded_at=claim[7],
-                    projection=cast(ClaimProjection, str(claim[8])),
+                    subject_entity_id=claim[8],
+                    subject_entity_name=str(claim[9]) if claim[9] is not None else None,
+                    projection=cast(ClaimProjection, str(claim[10])),
                     sources=claim_sources,
                 )
             )
         history = []
         for claim in history_rows:
-            claim_sources = tuple(LibraryEntrySource(**item) for item in (claim[9] or ()))
+            claim_sources = tuple(LibraryEntrySource(**item) for item in (claim[11] or ()))
             history.append(
                 LibraryEntryClaimHistory(
                     claim_id=claim[0],
@@ -239,10 +245,12 @@ class PostgresLibraryEntryRepository:
                     conditional=bool(claim[5]),
                     condition_text=str(claim[6]) if claim[6] is not None else None,
                     recorded_at=claim[7],
-                    projection=cast(ClaimProjection, str(claim[8])),
+                    subject_entity_id=claim[8],
+                    subject_entity_name=str(claim[9]) if claim[9] is not None else None,
+                    projection=cast(ClaimProjection, str(claim[10])),
                     sources=claim_sources,
-                    superseded_by_claim_id=claim[10],
-                    supersession_reason=str(claim[11]),
+                    superseded_by_claim_id=claim[12],
+                    supersession_reason=str(claim[13]),
                 )
             )
         return LibraryEntry(

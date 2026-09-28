@@ -20,6 +20,7 @@ from dm_assistant_core.domain.change_sets import ChangeSetReceipt
 from dm_assistant_core.application.promotion import (
     ApprovePromotionCommand,
     DerivePromotionCommand,
+    PromotionSubject,
     PromotionCandidateList,
     PromotionCommitReceipt,
     PromotionError,
@@ -391,3 +392,124 @@ def test_considered_coordinate_passes_the_shared_gate() -> None:
 
     config = SURFACE_REGISTRY[PromotionSurface.DESCRIPTION]
     assert config.state_overrides[ClaimState.CONSIDERED].value == "brainstorm"
+
+# --- free-surface (brainstorm) ------------------------------------------------
+
+
+def test_free_surface_requires_subjects_and_candidates() -> None:
+    service, _ = _service()
+    command = ApprovePromotionCommand(
+        surface="brainstorm",
+        document_text="irrelevant for free surfaces",
+        statements=(
+            PromotionStatement(
+                span_start=0, span_end=10, assertion_text="A thought.",
+            ),
+        ),
+        idempotency_key="promo:brainstorm:1",
+    )
+    with pytest.raises(PromotionError, match="workflow session"):
+        service.approve_promotion(command, DM)
+    command = command.model_copy(update={"workflow_session_id": uuid4()})
+    with pytest.raises(PromotionError, match="subject"):
+        service.approve_promotion(command, DM)
+
+
+def test_free_surface_rejects_unoffered_state() -> None:
+    service, _ = _service()
+    subject = PromotionSubject(entity_id=uuid4())
+    command = ApprovePromotionCommand(
+        surface="brainstorm",
+        document_text="irrelevant",
+        workflow_session_id=uuid4(),
+        statements=(
+            PromotionStatement(
+                span_start=0, span_end=10, assertion_text="A thought.",
+                state=ClaimState.OBSERVED, subject=subject,
+                candidate_id=uuid4(), evidence_revision_id=uuid4(),
+            ),
+        ),
+        idempotency_key="promo:brainstorm:2",
+    )
+    with pytest.raises(PromotionError, match="not offered"):
+        service.approve_promotion(command, DM)
+
+
+def test_free_surface_mints_records_and_threads_the_workflow_session() -> None:
+    from dm_assistant_core.application.promotion import (
+        ApprovePromotionCommand as _Cmd,
+    )
+
+    descriptions = FakeDescriptions()
+    proposals = FakeProposals()
+    change_sets = FakeChangeSets()
+    reads = FakeReads()
+
+    minted_entities: list[tuple[str, str, str]] = []
+
+    class MappingReads(FakeReads):
+        def claim_targets_for_items(self, item_ids):
+            return tuple((item_id, uuid4()) for item_id in item_ids)
+
+    reads = MappingReads()
+
+    class RecordingCreator:
+        def create(self, surface, entity_kind, idempotency_key):
+            minted_entities.append((surface, entity_kind, idempotency_key))
+            return SimpleNamespace(entity_id=uuid4())
+
+    entity_id = uuid4()
+    service = PromotionService(
+        descriptions,  # type: ignore[arg-type]
+        proposals,  # type: ignore[arg-type]
+        change_sets,  # type: ignore[arg-type]
+        reads,  # type: ignore[arg-type]
+        FakeEntityNames(entity_id),  # type: ignore[arg-type]
+        entity_creator=RecordingCreator(),
+    )
+    workflow = uuid4()
+    new_record_claim = uuid4()
+    command = _Cmd(
+        surface="brainstorm",
+        document_text="joined thoughts",
+        workflow_session_id=workflow,
+        statements=(
+            # An existing record subject.
+            PromotionStatement(
+                span_start=0, span_end=9, assertion_text="Thought A.",
+                state=ClaimState.CONSIDERED,
+                subject=PromotionSubject(entity_id=entity_id),
+                candidate_id=uuid4(), evidence_revision_id=uuid4(),
+            ),
+            # Two statements sharing ONE new record.
+            PromotionStatement(
+                span_start=10, span_end=19, assertion_text="Thought B.",
+                state=ClaimState.ESTABLISHED,
+                subject=PromotionSubject(new_record="r1", name="Vault Guild", entity_kind="faction"),
+                candidate_id=uuid4(), evidence_revision_id=uuid4(),
+            ),
+            PromotionStatement(
+                span_start=20, span_end=29, assertion_text="Thought C.",
+                state=ClaimState.ESTABLISHED,
+                subject=PromotionSubject(new_record="r1", name="Vault Guild", entity_kind="faction"),
+                candidate_id=new_record_claim, evidence_revision_id=uuid4(),
+            ),
+        ),
+        idempotency_key="promo:brainstorm:3",
+    )
+    receipt = service.approve_promotion(command, DM)
+    assert receipt.claims_committed == 1  # fake change set reports one item
+    assert len(receipt.created_entity_ids) == 1  # r1 minted once, shared
+    assert minted_entities == [("Vault Guild", "faction", "promo:brainstorm:3:r1:entity")]
+    assert proposals.created is not None
+    assert proposals.created.workflow_session_id == workflow
+    decisions = proposals.created.items
+    assert decisions[0].subject_entity_id == entity_id
+    assert decisions[1].subject_entity_id == decisions[2].subject_entity_id
+    assert decisions[1].subject_entity_id == receipt.created_entity_ids[0]
+    assert decisions[0].state is ClaimState.CONSIDERED
+    assert decisions[0].authority.value == "brainstorm"
+    assert decisions[1].authority.value == "explicit_lore"
+    # No document is filed on the free surface.
+    assert descriptions.commands == []
+

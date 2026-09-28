@@ -77,3 +77,12 @@ class PostgresPromotionReadRepository:
                 (list(item_ids),),
             ).fetchall()
         return tuple((row[0], row[1]) for row in rows)
+
+    def entity_id_by_canonical_name(self, name: str) -> UUID | None:
+        with self._database.connection() as connection:
+            row = connection.execute(
+                "SELECT id FROM entities WHERE lower(canonical_name) = lower(%s) "
+                "LIMIT 1",
+                (name,),
+            ).fetchone()
+        return row[0] if row is not None else None
