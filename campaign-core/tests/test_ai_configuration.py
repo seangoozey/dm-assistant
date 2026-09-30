@@ -110,7 +110,7 @@ def test_configuration_api_is_dm_only_and_activates_controlled_profile() -> None
     assert forbidden.status_code == 403
     body = snapshot.json()
     assert body["active_profile_by_purpose"]["extraction"] == "deepseek-chat"
-    assert [purpose["key"] for purpose in body["purposes"]] == ["extraction", "prose"]
+    assert [purpose["key"] for purpose in body["purposes"]] == ["extraction", "prose", "promotion"]
     assert activation.status_code == 200
     receipt = activation.json()
     assert receipt["profile_key"] == "deepseek-chat"

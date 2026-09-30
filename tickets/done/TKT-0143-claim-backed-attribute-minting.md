@@ -1,12 +1,12 @@
 ---
 id: TKT-0143
 title: Claim-backed attribute minting — the dropdown mints dated claims behind the fast path
-status: backlog
+status: done
 priority: P2
 milestone: trustworthy-librarian
 depends_on: [TKT-0141]
 created: 2026-09-21
-updated: 2026-09-21
+updated: 2026-09-28
 ---
 
 # TKT-0143: Claim-backed attribute minting — the dropdown mints dated claims behind the fast path
@@ -43,3 +43,7 @@ Ruled during the Qualified Entity work (2026-09-21): **attributes are claim-back
 - **Evidence**: new `tests/test_attribute_claims_postgres.py` 2/2 in the harness (mint → change → presumed retcon with supersession reason asserted → idempotent replay; observed opposition blocks); promotion harness still 8/8; unit suite 514 passed; deployed live.
 
 Remaining (follow-ups): flip the Qualified audit's Q5 from pending to computed against bindings; the Records-view per-attribute affordance (date, anchor, history); anchor attachment lane; presumed-retcon reason editing surface (TKT-0141's UI half).
+
+## Closed 2026-09-28
+
+Delivered 2026-09-24: migration 0069 `apply_attribute_claim` (dated Established/explicit_lore mints, presumed-retcon supersession on change, idempotent per key, bindings + receipts tables), migration 0070 backfill (36 bindings across 19 profiles), editor minting on change for six fields. Live effect: the audit jumped 53 → 63 on the backfill alone; wrong-casing claims normalized in 0072. Remaining tail tracked elsewhere: Q5's flip to computed rides with TKT-0138; the anchor lane (attach unanchored mints to evidence spans) and the retcon-reason editing UI belong to TKT-0141.

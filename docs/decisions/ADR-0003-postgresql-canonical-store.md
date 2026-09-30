@@ -1,6 +1,6 @@
 # ADR-0003: PostgreSQL Canonical Store
 
-- Status: proposed
+- Status: accepted (user ruling 2026-09-28: PostgreSQL is the stack; TrueNAS is the final production state once the system is seeded and built to the point of usable-with-occasional-upgrades — that move is deployment maturity, not a re-decision of the store)
 - Date: 2026-07-31
 
 ## Context

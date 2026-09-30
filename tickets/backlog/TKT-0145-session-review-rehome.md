@@ -6,7 +6,7 @@ priority: P2
 milestone: trustworthy-librarian
 depends_on: [TKT-0142]
 created: 2026-09-22
-updated: 2026-09-22
+updated: 2026-09-28
 ---
 
 # TKT-0145: Re-home the session-note reviewer off the shelved phase-1 Migration workspace
@@ -17,6 +17,9 @@ The phase-1 Migration wizard was shelved behind a Settings flag (2026-09-21, def
 
 ## Scope when taken up
 
+Refined 2026-09-28: serves the ONGOING capture→review flow (every newly captured session note's extracted statements — the daily path; live session runs and encounter notes do not route here) plus any older direct-input captures with pending statements (zero live since Sean's 2026-09-22 review of the five) and the legacy proposal review riding the same page. NOT about old-migration residue (the 374 undated claims are TKT-0118/chronology territory). Entry points already centralized on the wizard page by the 2026-09-22 routing work — this ticket moves the destination.
+
+- **ADR-0019 autosave ships in the first cut**: the reviewer is a work surface — reviewed-so-far statements, skip reasons, and position in the note persist through refresh (today's reviewer loses review state); no retrofit.
 - Build the reviewer as its own surface on the **unified claim card** (0142's component): statement-by-statement review of a session note's pending candidates — the compact session-review idiom (inherited dimensions, observed date, commit-and-continue, skip-with-reason, split) rendered from the claim card's slots, not the wizard's resolution form.
 - Routing: capture-and-review, the unpromoted audit's open-capture, and session-note documents with pending candidates all land on the new surface (documents-page context, the note's provenance alongside).
 - The phase-1 page then serves ONLY the archived wizard: the Settings flag note retires, and the flag itself becomes "archived tooling" rather than "required for session review."

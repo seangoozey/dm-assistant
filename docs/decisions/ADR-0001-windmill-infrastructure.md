@@ -1,6 +1,6 @@
 # ADR-0001: Windmill as Application Infrastructure
 
-- Status: proposed
+- Status: accepted (user ruling 2026-09-28: Windmill is the stack; the original "tentatively as V1" posture is resolved by a year of live use — the boundaries held)
 - Date: 2026-07-31
 
 ## Context

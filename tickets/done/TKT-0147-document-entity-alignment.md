@@ -1,12 +1,12 @@
 ---
 id: TKT-0147
 title: Phase 2 Stage 3 — Document/Entity alignment: sheets demote to evidence, identity lives on the record
-status: backlog
+status: done
 priority: P2
 milestone: trustworthy-librarian
 depends_on: [TKT-0140, TKT-0143]
 created: 2026-09-24
-updated: 2026-09-24
+updated: 2026-09-28
 ---
 
 # TKT-0147: Phase 2 Stage 3 — Document/Entity alignment
@@ -67,3 +67,7 @@ Sean's expanded rulings (2026-09-24): **all Documents render the same** (no back
 - **Migration 0071**: sheet identity fields minted as ANCHORED attribute claims (evidence spans into the sheet text — born anchored, unlike 0070's nudged backfill). Live: 12 anchored bindings (Roccid: status); 48 bindings total.
 - **Records hood claims gained the mention context** (owner titles + mention-anchored clamps render under Records too, not only in the character Known-facts list — which itself retired with the branch).
 - Tests: the five sheet/PC-editor tests replaced with unified equivalents (entity editor dropdowns for PCs, alias trimming through the one save path); Romulus/NPC-document tests rewritten to evidence-document expectations. 11 files / 79 tests green (the retired surfaces removed their tests); harness 8/8; deployed.
+
+## Closed 2026-09-28
+
+Delivered 2026-09-24: all Documents render the same (character branch removed); entityTemplate serves every Kind (Race/Sex/Player in the hero); the page matcher drops pc/npc roots (sheets are Sources evidence, never pages); one editor by Kind with dropdowns + minting; sheet Backgrounds prefill the composer for :: promotion; migration 0071 anchors sheet identity claims (12 anchored/48). Sheets remain visible as a migration consequence only through their evidence — the alignment is done.

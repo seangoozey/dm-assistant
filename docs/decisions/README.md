@@ -24,10 +24,10 @@ ADRs capture durable technical decisions and their consequences.
 - [ADR-0017: Domain Vocabulary Declaration](ADR-0017-domain-vocabulary-declaration.md) — accepted (user ruling 2026-09-19)
 - [ADR-0019: Work Surfaces Never Lose Work](ADR-0019-work-surfaces-never-lose-work.md) — accepted (user ruling 2026-09-24)
 - [ADR-0018: The Promotion Pipeline — one Proposal → Candidate → Claim progression for every surface](ADR-0018-promotion-pipeline.md) — accepted (user ruling 2026-09-20)
-- [ADR-0001: Windmill as application infrastructure](ADR-0001-windmill-infrastructure.md) — proposed
-- [ADR-0002: Dedicated Campaign Core](ADR-0002-dedicated-campaign-core.md) — proposed
-- [ADR-0003: PostgreSQL canonical store](ADR-0003-postgresql-canonical-store.md) — proposed
-- [ADR-0004: Local Git and CLI deployment](ADR-0004-local-git-cli-deployment.md) — proposed
+- [ADR-0001: Windmill as application infrastructure](ADR-0001-windmill-infrastructure.md) — accepted (user ruling 2026-09-28)
+- [ADR-0002: Dedicated Campaign Core](ADR-0002-dedicated-campaign-core.md) — accepted (user ruling 2026-09-28)
+- [ADR-0003: PostgreSQL canonical store](ADR-0003-postgresql-canonical-store.md) — accepted (user ruling 2026-09-28; TrueNAS = the production end-state, not a re-decision)
+- [ADR-0004: Local Git and CLI deployment](ADR-0004-local-git-cli-deployment.md) — proposed (left open 2026-09-28: external remote/pushing irrelevant in development — the local repo is the authority; revisit at the TrueNAS production decision)
 - [ADR-0005: Referenceable records and controlled kinds](ADR-0005-referenceable-records-and-controlled-kinds.md) — accepted
 - [ADR-0006: First-class plans and agency boundaries](ADR-0006-first-class-plans-and-agency.md) — accepted
 - [ADR-0007: Campaign chronology as integer-year values with a calendar spec](ADR-0007-campaign-chronology.md) — accepted

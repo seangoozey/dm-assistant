@@ -1,12 +1,12 @@
 ---
 id: TKT-0131
 title: Terminology and architecture review — ADRs, Help terms, and the Document question
-status: ready
+status: done
 priority: P1
 milestone: trustworthy-librarian
 depends_on: []
 created: 2026-09-19
-updated: 2026-09-19
+updated: 2026-09-28
 ---
 
 # TKT-0131: Terminology and architecture review — ADRs, Help terms, and the Document question
@@ -133,3 +133,7 @@ All information is inherently Canonical. The Truth State tells you WHERE on the 
 
 ### Direct Input provenance
 Direct Input Sources must record WHERE they were input from: Library, Lore, Brainstorm, etc. This is provenance metadata on the Source.
+
+## Closed 2026-09-28
+
+The review's deliverables all exist — the full ADR/glossary audit (recorded in this ticket's body as the working data), Sean's Domain Vocabulary Declaration recorded as **ADR-0017 (accepted)**, and implementation via TKT-0132/0133/0134 (done) and TKT-0135 (ready — the remaining implementation tail: Kind/Attributes editor separation, Direct Input provenance, "Entry" retirement from domain copy). The Document question was answered by the declaration (Document = the viewed page). This ticket tracked the effort; the effort's remainder is 0135 alone.

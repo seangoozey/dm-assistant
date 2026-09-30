@@ -15,6 +15,7 @@ export interface JobPlatform {
   startHealthCheck(): Promise<JobSnapshot>;
   startCandidateExtraction(candidateIds: string[]): Promise<JobSnapshot>;
   startProseDraft(command: unknown): Promise<JobSnapshot>;
+  startPromotionSuggest(command: unknown): Promise<JobSnapshot>;
   inspect(jobId: string): Promise<JobSnapshot>;
   cancel(jobId: string): Promise<void>;
 }
@@ -23,6 +24,7 @@ export interface WindmillBackend {
   start_health_check(input: Record<string, never>): Promise<string>;
   start_candidate_extraction(input: { candidate_ids: string[] }): Promise<string>;
   start_prose_draft(input: { command: unknown }): Promise<string>;
+  start_promotion_suggest(input: { command: unknown }): Promise<string>;
   inspect_job(input: { job_id: string }): Promise<{
     state: JobState;
     progress: number;
@@ -59,6 +61,11 @@ export class WindmillJobPlatform implements JobPlatform {
 
   async startProseDraft(command: unknown): Promise<JobSnapshot> {
     const jobId = requireJobId(await this.backend.start_prose_draft({ command }));
+    return { jobId, state: "queued", progress: 5, updatedAt: new Date().toISOString() };
+  }
+
+  async startPromotionSuggest(command: unknown): Promise<JobSnapshot> {
+    const jobId = requireJobId(await this.backend.start_promotion_suggest({ command }));
     return { jobId, state: "queued", progress: 5, updatedAt: new Date().toISOString() };
   }
 

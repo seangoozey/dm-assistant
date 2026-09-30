@@ -3,17 +3,17 @@ id: TKT-0107
 title: In-app graph view of identities and their evidence associations
 status: backlog
 priority: P2
-milestone: shared-campaign-knowledge
-depends_on: [TKT-0106]
+milestone: trustworthy-librarian
+depends_on: []  # TKT-0106 (identity review) closed 2026-09-13 — satisfied
 created: 2026-09-13
-updated: 2026-09-13
+updated: 2026-09-28
 ---
 
 # TKT-0107: In-app graph view of identities and their evidence associations
 
 ## Context
 
-Sean reviewed the offline graph viewer (`.local/cognee-evaluation/live-pilot-v3/graph.html`, a self-contained D3 force-directed page over the v3 pilot export: 375 nodes / 1,069 edges, entity and structural nodes, `#semantic` embedding tab) served via `python -m http.server 8767`, and wants that kind of view **available from the app in the future** — not yet; regeneration of a fresher snapshot was explicitly deferred ("not yet"). This ticket records the intent so it survives.
+Sean reviewed the offline graph viewer (`.local/cognee-evaluation/live-pilot-v3/graph.html`, a self-contained D3 force-directed page over the v3 pilot export: 375 nodes / 1,069 edges, entity and structural nodes, `#semantic` embedding tab) served via `python -m http.server 8767`, and wants that kind of view **available from the app in the future** — not yet; regeneration of a fresher snapshot was explicitly deferred ("not yet"). This ticket records the intent so it survives. Refiled 2026-09-28: NOT part of the parked Cognee-evaluation track — it renders from Campaign Core canonical data and does not depend on ADR-0014's fate. The deferral is Sean's timing preference ("not yet", 2026-09-13); the graph has since grown denser (roles, memberships, the v4 canonical bundle), so the view would be richer than when deferred.
 
 ## Scope when taken up
 

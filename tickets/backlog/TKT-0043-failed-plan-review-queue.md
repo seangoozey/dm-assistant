@@ -4,9 +4,9 @@ title: Failed-plan review queue
 status: backlog
 priority: P2
 milestone: trustworthy-librarian
-depends_on: [TKT-0031]
+depends_on: []  # TKT-0031 closed long ago — satisfied
 created: 2026-08-04
-updated: 2026-08-05
+updated: 2026-09-28
 ---
 
 # TKT-0043: Failed-Plan Review Queue
@@ -40,3 +40,7 @@ Read `docs/decisions/ADR-0006-first-class-plans-and-agency.md`, `docs/product/tr
 - [ ] The system does not synthesize a reaction or outcome for the disrupted plan.
 - [ ] Player plans are unaffected (they are nonbinding and revocable, not failable).
 - [ ] Sanitized tests and full repository validation pass.
+
+## Refreshed 2026-09-28 (board hygiene)
+
+Still open and still a live non-negotiable invariant (AGENTS.md: "Failed NPC or faction plans are marked for review; the system does not invent reactions"). Current state verified: the plan lifecycle SUPPORTS `failed` and requires a separate observed claim for the transition (application/plans.py), but nothing DETECTS a contradicting observation and queues the review — the invariant is unenforced by the system. Dependency TKT-0031 is long done; nothing blocks this beyond priority. Natural home when built: the detection slot on TKT-0142's unified claim card / the same conflict machinery as 0097 and TKT-0141.

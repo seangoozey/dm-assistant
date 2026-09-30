@@ -6,7 +6,7 @@ priority: P2
 milestone: trustworthy-librarian
 depends_on: []
 created: 2026-09-09
-updated: 2026-09-21
+updated: 2026-09-28
 ---
 
 # TKT-0101: Mention and navigate to any library entry
@@ -29,7 +29,7 @@ The user wanted to reference an encounter while writing. Existing character/loca
 - Apply consistently to existing mention-enabled editors and the shared editor integration as it expands.
 - Treat a mention as a reference only. It may provide retrieval/navigation context but cannot establish attendance, occurrence, completion, chronology, or any other factual relationship by itself.
 - **Mentions are a search driver (user ruling 2026-09-21)**: retrieval currently ignores `claim_related_entities` entirely — /query never consults the mention table. Wire it in so a record's evidence pool includes claims it is mentioned in, not only claims it owns. Mentions are an obvious ranking/input signal; the audit that motivated this found five load-bearing consumers of the mention table and retrieval is conspicuously not one of them.
-- **Commit-path dependency (agreed recommendation 2026-09-21)**: mention pickers on new prose surfaces (Description, Lore) land with their Promotion Pipeline slices (TKT-0136), where mentions in committed prose ride along as `related_entity_ids` on the promoted statements — same name-in-text provenance rule as session capture. A picker without a commit path writes to nothing.
+- **Commit-path dependency (agreed recommendation 2026-09-21; SLIPPED, pinned 2026-09-28)**: the plan was that mention pickers on new prose surfaces (Description, Lore) land with their Promotion Pipeline slices (TKT-0136), where mentions in committed prose ride along as `related_entity_ids` on the promoted statements — same name-in-text provenance rule as session capture. The slices shipped and 0136 closed, but the pickers did NOT ride along: neither surface has a picker today, so prose committed through Description/Lore carries zero mentions. Only session-note capture writes mentions. This ticket (with TKT-0100) now carries that debt explicitly. The retrieval-driver ruling also remains unwired — /query still ignores `claim_related_entities`.
 
 ## Open at ticket time
 

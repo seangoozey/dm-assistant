@@ -1,12 +1,12 @@
 ---
 id: TKT-0136
 title: Promotion Pipeline — reusable Proposal → Candidate → Claim review and commit
-status: in-progress
+status: done
 priority: P2
 milestone: trustworthy-librarian
 depends_on: []
 created: 2026-09-20
-updated: 2026-09-21
+updated: 2026-09-27
 ---
 
 # TKT-0136: Promotion Pipeline — reusable Proposal → Candidate → Claim review and commit
@@ -109,3 +109,7 @@ Live-use ruling from the Far Realm Entity work: the description is **a special g
 - Commit sequence per row: edited wording → receipted correction (supersession via the existing claim-correction path, the replacement id takes the slot); Own + not-owned → re-attribution/initial attribution to the entry; then `writeEntityDescription` files the doc with the FINAL ORDERED claim list (corrections and moves applied). No derive/approve_promotion calls on this surface; statement-splitting derive remains Lore-only.
 - The disabled-button cause was the stale check (prose edited after review disabled the statement flow) — moot under the composition flow, where prose edits don't invalidate the claim list.
 - React 144/144 (composition test: own-marking defaults by ownership, edit→correction→replacement-id ordering, unowned→re-attribute, doc files the final ordered ids, derive/approve never called; the three legacy description tests rewritten onto the flow).
+
+### CLOSED 2026-09-27 (Sean's close review)
+
+All four slices delivered and proven in real use (Osirus = the first DM-run promotion; Lore and Brainstorm promotions live since 09-21; the repair lane drove real findings). The slice-1 boundary-test failure resolved itself when the claim_reattribution write moved behind migration 0066's `move_claim_subject()` — `test_boundaries.py` passes. ADR-0018 and the framework doc carry the 2026-09-24 Description amendment, so the documentation matches the deployed behavior. Follow-ups tracked OUTSIDE this ticket: paraphrase-blind duplicate check → mitigated by TKT-0137's AI restatement suggestions (Lore 09-27, Description dedup slice 09-27); deterministic-gate tightening, semantic conflict detection, and the Migration steps 3–6 collapse (TKT-0131) remain future work by design.

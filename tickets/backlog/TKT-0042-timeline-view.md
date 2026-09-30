@@ -4,9 +4,9 @@ title: Timeline view
 status: backlog
 priority: P2
 milestone: trustworthy-librarian
-depends_on: [TKT-0041]
+depends_on: []  # TKT-0041 closed long ago; natural sibling = TKT-0130 (ready) — 0130 is the query side (day-ordinal retrieval + when-questions), this is the browse side
 created: 2026-08-04
-updated: 2026-08-05
+updated: 2026-09-28
 ---
 
 # TKT-0042: Timeline View

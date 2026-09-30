@@ -6,9 +6,13 @@ priority: P0
 milestone: shared-campaign-knowledge
 depends_on: [TKT-0102]
 created: 2026-09-10
-updated: 2026-09-10
+updated: 2026-09-28
 ---
 
+
+## The decision-track framing (ruling 2026-09-28)
+
+Sean's ruling: **the graph service is foundational to the completion of this project** (see TKT-0094, blocked on the final infrastructure/implementation decision). **Role on the track:** This is the concrete REMAINING BUILD on the decision track: the clean evidence-linked index is the Postgres-native implementation candidate the 0105 decision weighs against native Cognee. This ticket is part of the DECISION TRACK that produces that decision: 0096 (this ticket) + 0103 (build the clean index — the Postgres-native candidate) + 0104 (native-backend comparison) feed 0105 (the call). The 2026-09-14 park stands — "revisit after the DB-completeness front settles" — with a concrete measure now: the DB front is 71/120 qualified with the 186 orphaned claims (TKT-0138) as the remaining mass. When 0138 lands, 0103 → 0105 is the unblock sequence for the foundational service (0094/0095 wait on it).
 # TKT-0103: Build clean evidence-linked relationship indexing and aggregation
 
 ## Outcome

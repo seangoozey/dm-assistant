@@ -22,9 +22,13 @@ LEFT JOIN LATERAL (
 LEFT JOIN entities parent ON lower(parent.canonical_name) = lower(btrim(ep.profile_json->>'parent_location'))
 """
 
+# Offered values = (code-seeded baseline ∪ stored rows) − stored-retired —
+# the same merge TemplateVocabularyService.values() applies, so the audit
+# judges against exactly what Settings and the editor dropdowns offer.
+from dm_assistant_core.application.template_vocabularies import VOCABULARIES
+
 _VOCABULARY_SQL = """
-SELECT vocabulary, value FROM template_vocabularies
-WHERE retired = false
+SELECT vocabulary, value, retired FROM template_vocabularies
 """
 
 
@@ -42,7 +46,19 @@ class PostgresQualifiedAuditRepository:
     def active_vocabulary_values(self) -> dict[str, set[str]]:
         with self._database.connection() as connection:
             rows = connection.execute(_VOCABULARY_SQL).fetchall()
+        stored: dict[str, dict[str, bool]] = {}
+        for vocabulary, value, retired in rows:
+            stored.setdefault(str(vocabulary), {})[str(value)] = bool(retired)
         values: dict[str, set[str]] = {}
-        for vocabulary, value in rows:
-            values.setdefault(str(vocabulary), set()).add(str(value))
+        for vocabulary, seeds in VOCABULARIES.items():
+            merged = {value: False for value in seeds}
+            merged.update(stored.get(vocabulary, {}))
+            offered = {value for value, retired in merged.items() if not retired}
+            values[vocabulary] = offered
+        for vocabulary, overrides in stored.items():
+            if vocabulary in values:
+                continue
+            values[vocabulary] = {
+                value for value, retired in overrides.items() if not retired
+            }
         return values

@@ -1,6 +1,6 @@
 # ADR-0004: Local Git and CLI-Driven Windmill Deployment
 
-- Status: proposed
+- Status: proposed (user review 2026-09-28: the decision content matches current practice — local repo authoritative, Windmill exported in-repo, wmill-push deploys — but its Context concerns are not live during development: an external Git remote is irrelevant while the local repository is the authority, so push/synchronization worries are out of scope. Flip or supersede when the TrueNAS production story makes deployment topology a real decision again)
 - Date: 2026-07-31
 
 ## Context

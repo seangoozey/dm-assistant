@@ -16,6 +16,7 @@ from dm_assistant_core.domain.extraction import EXTRACTION_SYSTEM_PROMPT
 
 EXTRACTION_PURPOSE = "extraction"
 PROSE_PURPOSE = "prose"
+PROMOTION_PURPOSE = "promotion"
 
 
 class PurposeInfo(BaseModel):
@@ -62,6 +63,16 @@ PURPOSES = (
         ),
         label="Prose writing",
     ),
+    PurposeInfo(
+        key=PROMOTION_PURPOSE,
+        description=(
+            "Wand-marked suggestions inside promotion review (TKT-0137): "
+            "restatement matching, statement ideas, Link/Consider pre-sort. "
+            "Suggestions are never auto-included — the DM's review stays the "
+            "decision."
+        ),
+        label="Promotion assistant",
+    ),
 )
 PROFILES = (
     ModelProfile(
@@ -98,6 +109,23 @@ PROFILES = (
             "Sean's first prose pick (2026-09-16): cheap, fast, non-reasoning "
             "flash tier — the drafting rules and selected evidence carry the "
             "quality, so the model spends its budget on fluency."
+        ),
+        reasoning_effort=None,
+        max_tokens=8192,
+        timeout_seconds=90,
+        retry_limit=1,
+        suitability="candidate",
+    ),
+    ModelProfile(
+        key="deepseek-chat",
+        purpose=PROMOTION_PURPOSE,
+        provider="openrouter",
+        model_slug="deepseek/deepseek-chat",
+        description=(
+            "The proven extraction model offered for promotion assistance "
+            "(TKT-0137): restatement matching is an extraction-shaped task — "
+            "precision over voice. Suitability is a candidate until live lore "
+            "runs say otherwise."
         ),
         reasoning_effort=None,
         max_tokens=8192,

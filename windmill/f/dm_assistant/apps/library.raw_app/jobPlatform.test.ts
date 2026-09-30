@@ -11,6 +11,7 @@ describe("WindmillJobPlatform", () => {
       start_health_check: vi.fn().mockResolvedValue(healthJobId),
       start_candidate_extraction: vi.fn().mockResolvedValue(extractionJobId),
       start_prose_draft: vi.fn().mockResolvedValue(proseJobId),
+      start_promotion_suggest: vi.fn().mockResolvedValue(proseJobId),
       cancel_job: vi.fn().mockResolvedValue("cancelled"),
       inspect_job: vi.fn().mockResolvedValue({
         state: "succeeded",
@@ -34,6 +35,11 @@ describe("WindmillJobPlatform", () => {
       state: "queued",
     });
     expect(backend.start_prose_draft).toHaveBeenCalledWith({ command: { subject: "Fleurite" } });
+    expect(await platform.startPromotionSuggest({ subject: "Fleurite" })).toMatchObject({
+      jobId: proseJobId,
+      state: "queued",
+    });
+    expect(backend.start_promotion_suggest).toHaveBeenCalledWith({ command: { subject: "Fleurite" } });
     expect(await platform.inspect(healthJobId)).toMatchObject({
       jobId: healthJobId,
       state: "succeeded",
@@ -49,6 +55,7 @@ describe("WindmillJobPlatform", () => {
       start_health_check: vi.fn().mockResolvedValue("Failed to deserialize query string"),
       start_candidate_extraction: vi.fn().mockResolvedValue("Failed to deserialize query string"),
       start_prose_draft: vi.fn().mockResolvedValue("Failed to deserialize query string"),
+      start_promotion_suggest: vi.fn().mockResolvedValue("Failed to deserialize query string"),
       cancel_job: vi.fn(),
       inspect_job: vi.fn(),
     });
@@ -57,6 +64,9 @@ describe("WindmillJobPlatform", () => {
       "Windmill did not return a valid job ID",
     );
     await expect(platform.startProseDraft({})).rejects.toThrow(
+      "Windmill did not return a valid job ID",
+    );
+    await expect(platform.startPromotionSuggest({})).rejects.toThrow(
       "Windmill did not return a valid job ID",
     );
   });

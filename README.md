@@ -6,9 +6,9 @@ The application captures unstructured notes, retrieves supporting campaign infor
 
 ## Current status
 
-The specification foundation, Campaign Core transaction boundary, typed acceptance harnesses, incremental Markdown connector, deterministic grounded-retrieval boundary, reproducible Windmill workspace deployment, and first full-code React shell are in place. The service preserves source evidence, reconciles repeated scans, records review candidates and immutable receipts, keeps canonical promotion behind exact versioned approval, and enforces citation, visibility, conflict, and non-canon policies on retrieval.
+The specification, Campaign Core transaction boundary, incremental Markdown connector, grounded-retrieval boundary, reproducible Windmill workspace deployment, and full-code React shell are in place and browser-verified. Live Starfall evidence is ingested as immutable, non-canonical provenance with idempotent receipts and zero canonical side effects.
 
-The verified Starfall scope has been ingested into the local development database as immutable, non-canonical evidence with an idempotent receipt and zero canonical mutations. Its review queues and exact, human-controlled candidate proposal, disposition, versioning, and approval commands are implemented. The React review slice is deployed and browser-verified with import totals, quarantine, exact evidence, explicit target resolution, immutable proposal scope, approval, application, and receipts. The next objective is the first deliberately scoped live canonical promotion.
+Every path to canon now runs through the Promotion Pipeline (ADR-0018): mandatory statement review and one receipted Approve action across the Description, Lore, and Brainstorm surfaces, plus a standing unpromoted-material repair audit — no unreviewed write path exists. Claim-backed attribute minting, `::` description claim breakpoints with never-lose-work autosave (ADR-0019), one renderer and one editor per Entity Kind, and an AI promotion assistant (restatement matching, duplicate checking) are delivered. The Qualified Entity standard governs the library through a live audit — 71 of 120 entities qualified, zero vocabulary failures. The active front is the orphaned-claims review: 186 ownerless claims that no surface currently surfaces (TKT-0138). See [docs/plan.md](docs/plan.md) for current execution state.
 
 ## Start here
 
@@ -19,19 +19,19 @@ The verified Starfall scope has been ingested into the local development databas
 5. Read [docs/plan.md](docs/plan.md).
 6. Select work from [tickets/index.md](tickets/index.md).
 
-## Tentative stack
+## Confirmed stack
 
 - Windmill Community Edition for job infrastructure, workers, schedules, retries, progress, webhooks, and optional flows.
-- Windmill full-code React app for the initial interface.
+- Windmill full-code React app for the interface.
 - Python and FastAPI for the dedicated Campaign Core.
 - PostgreSQL for canonical campaign data.
 - A separate PostgreSQL database for Windmill state and its job queue.
-- Docker Compose on TrueNAS.
+- Docker Compose on TrueNAS (the production end-state once the system is seeded and built to occasional-upgrade maturity).
 - Local Git as the authoritative source; Windmill deployment through the CLI.
-- Cognee as an optional, disposable graph/retrieval index.
+- The **graph service is foundational to project completion** (ruled 2026-09-28); its infrastructure is **unconfirmed** — **Cognee is the leading candidate** given evaluation results to date (native Cognee 4/6 vs the deployed stack 2/6 on the shared corpus). The decision is tracked behind TKT-0105; Cognee's evaluation stores are disposable and never the canonical index.
 - OpenRouter as the v1 AI provider, with a DM-visible controlled model profile selector and `deepseek/deepseek-chat` as the recommended extraction profile. See ADR-0008.
 
-All platform choices remain revisable until a vertical slice proves them.
+Windmill, Campaign Core, and PostgreSQL are confirmed as the stack (ADR-0001/0002/0003, accepted 2026-09-28). ADR-0004 (local Git/CLI deployment) remains open pending the production deployment story.
 
 ## Local paths
 

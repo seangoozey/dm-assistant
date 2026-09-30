@@ -1,16 +1,22 @@
 ---
 id: TKT-0095
 title: Connect every campaign workflow to shared knowledge
-status: backlog
+status: blocked
 priority: P0
 milestone: shared-campaign-knowledge
 depends_on: [TKT-0094]
 created: 2026-09-06
+updated: 2026-09-28
+blocked_by: TKT-0094 (the graph service implementation, itself blocked on the infrastructure decision)
 ---
 
 # Outcome
 
-Use the common knowledge service in Ask, encounter runner, Lore preparation, Brainstorm, library and session-note related navigation.
+Connect every campaign workflow — Ask, the encounter runner, Lore preparation, Brainstorm, the Library, and session-note navigation — to the shared knowledge service (the graph service, TKT-0094).
+
+## Context (ruling 2026-09-28)
+
+Sean's ruling: the graph service is **foundational to the completion of this project**; the only unresolved question is its concrete implementation. This consumer-integration ticket follows the engine: BLOCKED behind TKT-0094, which is itself blocked on the final graph infrastructure/implementation decision (TKT-0105's track). Note for when it unblocks: Lore creation now goes through the Promotion Pipeline's mandatory review (ADR-0018; the retired TKT-0040's "conflicting Lore input" scenario is a retrieval scenario, never an auto-application one) — retrieval feeds the review; it never writes.
 
 ## Required reading
 
@@ -28,4 +34,4 @@ Run end-to-end scenarios for all consumers, including encounter participants/loc
 
 ## Migration and rollback
 
-Roll out per consumer behind a flag with existing navigation fallback; no canonical migration. Coordinate Lore UI delivery with TKT-0040.
+Roll out per consumer behind a flag with existing navigation fallback; no canonical migration. Lore UI delivery coordinates with the Promotion Pipeline surfaces (ADR-0018; TKT-0040 retired).

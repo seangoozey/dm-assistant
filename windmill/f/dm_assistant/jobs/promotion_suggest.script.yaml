@@ -1,0 +1,15 @@
+summary: Suggest promotion review annotations with the active AI model
+description: Runs one Campaign Core promotion-suggestion call as durable
+  background work; the app polls the job and applies the suggestions to the
+  working Lore item's review (wand-marked, never auto-included).
+lock: '!inline f/dm_assistant/jobs/promotion_suggest.script.lock'
+kind: script
+schema:
+  $schema: https://json-schema.org/draft/2020-12/schema
+  type: object
+  properties:
+    command:
+      type: object
+      originalType: unknown
+  required:
+    - command

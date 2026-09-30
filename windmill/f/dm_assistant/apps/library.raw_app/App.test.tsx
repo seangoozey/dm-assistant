@@ -32,6 +32,7 @@ function makeQuietJobs(): JobPlatform { return {
   startHealthCheck: vi.fn(),
   cancel: vi.fn(),
   startProseDraft: vi.fn().mockRejectedValue(new Error("drafts are not configured in this test")),
+  startPromotionSuggest: vi.fn().mockRejectedValue(new Error("promotion suggestions are not configured in this test")),
   startCandidateExtraction: vi.fn().mockResolvedValue({
     jobId: "extraction-job-1", state: "queued", progress: 5, updatedAt: "2026-08-01T12:00:00Z",
   }),
@@ -1103,6 +1104,159 @@ describe("DM Assistant shell", () => {
     await waitFor(() => expect(promoteToDossier).toHaveBeenCalledWith(npc.entry_id, claims[0].claim_id));
     // The fact becomes an established-style Dossier card on the page.
     await waitFor(() => expect(screen.getAllByText(/Aris carries a locket/).some((node) => node.closest(".dossier-fact-card") !== null)).toBe(true));
+  });
+  it("opens the description composer straight from a Migration Q1 finding", async () => {
+    // The gather lane is gone; the Q1 row's single affordance is Open entry —
+    // and arriving on the entry must land the writer open, ready for prose.
+    const orphan = {
+      entry_id: "62000000-0000-0000-0000-0000000000f1", canonical_name: "Vane Estate",
+      entity_kind: "location" as const, aliases: [], misspellings: [], tags: [],
+      members: [], current_claim_count: 0, source_count: 0,
+    };
+    render(<App campaignClient={makeClient({
+      getQualifiedEntities: vi.fn().mockResolvedValue({
+        audited_at: "2026-09-27T12:00:00Z", total_entities: 1, qualified_count: 0,
+        unqualified: [{
+          entity_id: orphan.entry_id, canonical_name: orphan.canonical_name,
+          entity_kind: "location", qualified: false, current_claim_count: 0,
+          criteria: [{ criterion: "q1_asserts", status: "fail" as const, reason: "no current claims" }],
+        }],
+        pending_criteria: [],
+      }),
+      getLibraryEntry: vi.fn().mockResolvedValue({ ...orphan, claims: [], claim_history: [], sources: [] }),
+    })} jobPlatform={makeQuietJobs()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Migration" }));
+    fireEvent.click((await screen.findAllByRole("button", { name: "Run audit" }))[0]);
+    expect(screen.queryByRole("button", { name: "Gather claims about this record" })).not.toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("button", { name: "Open entry — write its description" }));
+    expect(await screen.findByLabelText("Description composer")).toBeInTheDocument();
+  });
+  const suggestionSet = {
+    restatements: [
+      { statement_number: 2, statement_text: "The keeper tends the archive.", material_key: "aa000000-0000-0000-0000-000000000001" },
+      { statement_number: 1, statement_text: "The estate was built by Vane in 480.", material_key: "aa000000-0000-0000-0000-000000000001" },
+    ],
+    system_restatements: [
+      { statement_number: 1, statement_text: "The estate was built by Vane in 480.", material_key: "aa000000-0000-0000-0000-000000000001" },
+    ],
+    statements: [
+      { text: "The keeper records every visitor in a ledger.", state: "considered", basis_key: "bb000000-0000-0000-0000-000000000002" },
+    ],
+    links: [
+      { material_key: "cc000000-0000-0000-0000-000000000003", reason: "the claim is really about the archive itself" },
+    ],
+    model_slug: "deepseek/deepseek-chat",
+    prompt_version: "promotion/1",
+  };
+  function makeSuggestJobs(): JobPlatform {
+    return {
+      ...makeQuietJobs(),
+      startPromotionSuggest: vi.fn().mockResolvedValue({ jobId: "suggest-job-1", state: "queued", progress: 5, updatedAt: "2026-09-27T12:00:00Z" }),
+      inspect: vi.fn().mockResolvedValue({
+        jobId: "suggest-job-1", state: "succeeded", progress: 100,
+        result: suggestionSet, updatedAt: "2026-09-27T12:00:01Z",
+      }),
+    };
+  }
+  it("applies AI promotion suggestions wand-marked, never auto-included (TKT-0137)", async () => {
+    queueForLore("Keeper's Archive", "", "");
+    render(<App campaignClient={makeClient({
+      deriveLorePromotion: vi.fn().mockResolvedValue({
+        surface: "lore", ownership: "bound_created", entity_name: "Keeper's Archive",
+        candidates: [
+          { sequence: 1, span_start: 0, span_end: 21, assertion_text: "The archive is quiet.", state: "established", authority: "explicit_lore", consequence: { kind: "new_claim", label: "new claim on this record" }, conflict: null, included: true },
+          { sequence: 2, span_start: 22, span_end: 51, assertion_text: "The keeper tends the archive.", state: "established", authority: "explicit_lore", consequence: { kind: "new_claim", label: "new claim on this record" }, conflict: null, included: true },
+        ],
+      }),
+    })} jobPlatform={makeSuggestJobs()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Lore" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Work this" }));
+    fireEvent.change(await screen.findByLabelText("Lore description"), { target: { value: "The archive is quiet. The keeper tends the archive." } });
+    fireEvent.click(screen.getByRole("button", { name: "Suggest" }));
+
+    // The suggestion set lands asynchronously and renders wand-marked,
+    // excluded: the statement idea offers Insert, never an included checkbox.
+    const block = await screen.findByLabelText("AI-suggested statements", {}, { timeout: 2500 });
+    expect(block).toBeInTheDocument();
+    expect(screen.getByText("The keeper records every visitor in a ledger.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Insert into description" })).toBeInTheDocument();
+
+    // The AI restatement shows on the review row as an orange suggestion;
+    // the DM confirms it with one click and it becomes a reference.
+    fireEvent.click(screen.getByRole("button", { name: "Review promotion — create Keeper's Archive" }));
+    expect(await screen.findByText("AI suggests this restates gathered evidence")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Mark as reference" }));
+    expect(await screen.findByText(/restatement — AI-suggested, DM-confirmed/)).toBeInTheDocument();
+  });
+  it("colors a restatement green when the system mirror and the AI agree", async () => {
+    queueForLore("Mirror Archive", "", "");
+    render(<App campaignClient={makeClient({
+      deriveLorePromotion: vi.fn().mockResolvedValue({
+        surface: "lore", ownership: "bound_created", entity_name: "Mirror Archive",
+        candidates: [
+          { sequence: 1, span_start: 0, span_end: 21, assertion_text: "The archive is quiet.", state: "established", authority: "explicit_lore", consequence: { kind: "new_claim", label: "new claim on this record" }, conflict: null, included: true },
+          { sequence: 2, span_start: 22, span_end: 51, assertion_text: "The keeper tends the archive.", state: "established", authority: "explicit_lore", consequence: { kind: "reference", claim_id: "aa000000-0000-0000-0000-000000000001", label: "restates claim aa000000 — reference only, never a second claim" }, conflict: null, included: false },
+        ],
+      }),
+    })} jobPlatform={makeSuggestJobs()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Lore" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Work this" }));
+    fireEvent.change(await screen.findByLabelText("Lore description"), { target: { value: "The archive is quiet. The keeper tends the archive." } });
+    fireEvent.click(screen.getByRole("button", { name: "Suggest" }));
+    await screen.findByLabelText("AI-suggested statements", {}, { timeout: 2500 });
+    fireEvent.click(screen.getByRole("button", { name: "Review promotion — create Mirror Archive" }));
+
+    // System flagged the restatement and the AI agrees — consensus green;
+    // no orange note, because there is nothing left to decide.
+    const consensus = await screen.findByText(/restates claim aa000000 — reference only/);
+    expect(consensus.closest("span")?.className).toContain("agreement-consensus");
+    expect(screen.queryByText("AI suggests this restates gathered evidence")).not.toBeInTheDocument();
+  });
+  it("flags a duplicate description claim green and lets the DM exclude it (TKT-0137 dedup)", async () => {
+    const existingClaim = {
+      claim_id: "aa000000-0000-0000-0000-000000000001",
+      assertion_text: "The estate was built by Vane in 480.",
+      state: "established", authority: "explicit_lore", visibility: "dm_only",
+      conditional: false, recorded_at: "2026-01-01T00:00:00Z",
+      projection: "real_play" as const, sources: [],
+    };
+    const estate = {
+      entry_id: "62000000-0000-0000-0000-0000000000f2", canonical_name: "Vane Estate",
+      entity_kind: "location" as const, aliases: [], misspellings: [], tags: [],
+      members: [], current_claim_count: 1, source_count: 0,
+    };
+    render(<App campaignClient={makeClient({
+      getQualifiedEntities: vi.fn().mockResolvedValue({
+        audited_at: "2026-09-27T12:00:00Z", total_entities: 1, qualified_count: 0,
+        unqualified: [{
+          entity_id: estate.entry_id, canonical_name: estate.canonical_name,
+          entity_kind: "location", qualified: false, current_claim_count: 1,
+          criteria: [{ criterion: "q4_kind", status: "fail" as const, reason: "wrong kind" }],
+        }],
+        pending_criteria: [],
+      }),
+      getLibraryEntry: vi.fn().mockResolvedValue({ ...estate, claims: [existingClaim], claim_history: [], sources: [] }),
+    })} jobPlatform={makeSuggestJobs()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Migration" }));
+    fireEvent.click((await screen.findAllByRole("button", { name: "Run audit" }))[0]);
+    fireEvent.click(await screen.findByRole("button", { name: "Open entry — write its description" }));
+    fireEvent.change(await screen.findByLabelText("Entity description"), {
+      target: { value: "The estate was built by Vane in 480. :: A new assertion about the gardens." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Review promotion" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Check for duplicates" }));
+
+    // Both opinions flag row 1 against the same existing claim — consensus
+    // green; nothing was excluded automatically, the DM's click does that.
+    expect(await screen.findByText("Restatement — system + AI agree", {}, { timeout: 2500 })).toBeInTheDocument();
+    expect(screen.queryByText("Keep as new claim")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Exclude row" }));
+    const includeBoxes = screen.getAllByRole("checkbox", { name: /^Include claim/ });
+    expect(includeBoxes[0]).not.toBeChecked();
   });
   it("promotes claims to Dossier cards and demotes them back (receipted DM curation)", async () => {
     const entity = {

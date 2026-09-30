@@ -25,6 +25,16 @@ Type stack: **Manrope** (UI, weights 400–700) · **Libre Caslon Display** (ser
 - Page widths: content pages `main.page-documents` / `.page-migration` / `.page-identity` → `width: calc(100% - 24px); max-width: 1600px`. Narrow reading pages use bare `main` (1080px). Pick deliberately.
 - Page header rhythm: kicker (mono, accent) → `h2/h1` (Libre Caslon 34px) → right-aligned muted description → hairline border-bottom → ~56–62px top padding. See `.identity-page-header`, `.operations`, `.section-heading`.
 
+### Agreement semantics (TKT-0137, named tokens — never bare colors)
+
+| Token | Value | Meaning |
+| --- | --- | --- |
+| `--agreement-consensus` | `#3d7a4f` | GREEN — the deterministic system and the AI agree on this value |
+| `--agreement-system` | `#3f6e8e` | BLUE — the deterministic system's value alone |
+| `--agreement-ai` | `#b0611d` | ORANGE — an AI suggestion awaiting the DM's decision |
+
+The placement ruling (2026-09-21): AI suggestions co-display IN the row's own controls — the user never hunts to a separate section. One click adopts either value; the DM's pick wins. Suggestion provenance (`suggested by {model} · {version}`) always travels with the row.
+
 ## Buttons (never style a bare `<button>`)
 
 | Class | Look | Use |

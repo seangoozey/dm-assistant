@@ -1,6 +1,6 @@
 # ADR-0002: Dedicated Campaign Core
 
-- Status: proposed
+- Status: accepted (user ruling 2026-09-28: Campaign Core is the stack)
 - Date: 2026-07-31
 
 ## Context

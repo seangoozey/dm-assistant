@@ -1,7 +1,7 @@
 import { FormEvent, KeyboardEvent as ReactKeyboardEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LogEntry, ToastStack, toast } from "./toasts";
 import { getSettings, useSettings } from "./settings";
-import { queueForLore, resolveLoreItem, dismissLoreItem, subscribeLoreQueue, resetLoreQueueForTest, saveLoreEvidence, type LoreQueueItem } from "./loreQueue";
+import { queueForLore, resolveLoreItem, dismissLoreItem, subscribeLoreQueue, resetLoreQueueForTest, saveLoreEvidence, type LoreQueueItem, type LoreSuggestionSet } from "./loreQueue";
 import { GlossaryHelpPage, Term, registerGlossaryNavigation } from "./glossary";
 import type { CampaignClockChange, CampaignDate, ConflictPair, DeadSeat, LifeStatusProposal, SessionDatingEntry, UndatedClaimEntry } from "./campaignClient";
 import { evidenceTitle } from "./evidenceTitle";
@@ -1149,6 +1149,16 @@ function LoreCreationPage({ campaignClient, jobPlatform, libraryEntries, onOpenE
   const [promotionBusy, setPromotionBusy] = useState(false);
   const [promotionError, setPromotionError] = useState("");
   const promotionKey = useRef<string | null>(null);
+  // AI promotion assistant (TKT-0137): wand-marked suggestions — restatement
+  // matching, statement ideas, Link pre-sort. Queued as async Windmill work;
+  // the set lands in the working item and survives refresh (ADR-0019). Never
+  // auto-included: every suggestion is included, edited, or dismissed by the DM.
+  const [suggestBusy, setSuggestBusy] = useState(false);
+  const [suggestJobId, setSuggestJobId] = useState<string | null>(null);
+  const [suggestion, setSuggestion] = useState<LoreSuggestionSet | null>(null);
+  const [dismissedSuggestions, setDismissedSuggestions] = useState<Set<string>>(() => new Set());
+  const [suggestError, setSuggestError] = useState("");
+  const suggestPollTimer = useRef<number | null>(null);
   // Evidence accordion (user ruling 2026-09-21): one branch is ALWAYS open —
   // clicking the open bar leaves it open. Opening Results parks Consider's
   // bar at the panel bottom; opening Consider slides it up under Results;
@@ -1178,8 +1188,11 @@ function LoreCreationPage({ campaignClient, jobPlatform, libraryEntries, onOpenE
       chosenKind,
       direction,
       prose,
+      suggestionJobId: suggestJobId ?? undefined,
+      suggestion: suggestion ?? undefined,
+      dismissedSuggestions: [...dismissedSuggestions],
     });
-  }, [selectedItem, linkedClaims, consideredClaims, searchResults.claims, chosenKind, direction, prose]);
+  }, [selectedItem, linkedClaims, consideredClaims, searchResults.claims, chosenKind, direction, prose, suggestJobId, suggestion, dismissedSuggestions]);
 
   // Gather evidence for a queued name: claims that mention it, and existing
   // entities that might be what this refers to.
@@ -1367,6 +1380,12 @@ function LoreCreationPage({ campaignClient, jobPlatform, libraryEntries, onOpenE
     setProse(saved?.prose ?? "");
     setDirection(saved?.direction ?? "");
     setChosenKind(saved?.chosenKind ?? "location");
+    // The AI suggestion set rides with the working item (TKT-0137): a queued
+    // job resumes polling; landed suggestions stay until reviewed.
+    setSuggestJobId(saved?.suggestionJobId ?? null);
+    setSuggestion(saved?.suggestion ?? null);
+    setDismissedSuggestions(new Set(saved?.dismissedSuggestions ?? []));
+    setSuggestError("");
     if (saved && saved.claims.length > 0) {
       const restored = saved.claims.map((c) => ({
         ...c,
@@ -1430,6 +1449,81 @@ function LoreCreationPage({ campaignClient, jobPlatform, libraryEntries, onOpenE
       setMessage(detail);
       toast.push("error", detail);
     } finally { setDraftBusy(false); }
+  };
+
+  // AI promotion suggestions (TKT-0137): queue the assistant on the seed
+  // name, the current prose, and the Considered evidence. Async Windmill
+  // work — the result lands in the working item when the model finishes.
+  const queueSuggestions = async () => {
+    if (!selectedItem || suggestBusy || suggestJobId) return;
+    setSuggestBusy(true); setSuggestError("");
+    try {
+      const consideredMaterial = searchResults.claims
+        .filter((claim) => consideredClaims.has(claim.claim_id))
+        .map((claim) => ({
+          key: claim.claim_id,
+          text: claim.owner_name ? `[about ${claim.owner_name}] ${claim.assertion_text}` : claim.assertion_text,
+          state: claim.state,
+        }));
+      const material = consideredMaterial.length > 0 ? consideredMaterial : [
+        {
+          key: `seed:${selectedItem.id}`,
+          text: `${selectedItem.name} is a name queued for a new ${display(chosenKind)} entry${selectedItem.context ? ` (noted from ${selectedItem.context})` : ""}.`,
+          state: "considered",
+        },
+      ];
+      const command = {
+        surface: "lore",
+        subject: selectedItem.name,
+        subject_kind: chosenKind,
+        prose: prose.trim(),
+        material,
+        idempotency_key: `promotion-suggest:${selectedItem.id}:${crypto.randomUUID()}`,
+      };
+      const job = await jobPlatform.startPromotionSuggest(command);
+      setSuggestJobId(job.jobId);
+      toast.push("info", `Suggestions queued for ${selectedItem.name} — they land here when the model finishes`);
+    } catch (cause) {
+      const detail = cause instanceof Error ? cause.message : "The suggestion run could not be queued";
+      setSuggestError(detail);
+      toast.push("error", detail);
+    } finally { setSuggestBusy(false); }
+  };
+
+  // Poll the queued suggestion job to completion; a refresh resumes from the
+  // persisted job id (the working item never loses a queued run).
+  useEffect(() => {
+    if (!selectedItem || !suggestJobId || suggestion) return;
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const next = await jobPlatform.inspect(suggestJobId);
+        if (cancelled) return;
+        if (next.state === "succeeded" && next.result && typeof next.result === "object") {
+          const result = next.result as LoreSuggestionSet;
+          setSuggestion(result);
+          setSuggestJobId(null);
+          toast.push("success", `Suggestions ready for ${selectedItem.name} — review the wand-marked rows`);
+        } else if (next.state === "failed") {
+          const error = next.error ?? "The suggestion job failed";
+          setSuggestError(error);
+          setSuggestJobId(null);
+          toast.push("error", `Suggestions failed for ${selectedItem.name} — ${error}`);
+        }
+      } catch {
+        // Transient inspect failures keep polling until the job resolves.
+      }
+      if (!cancelled) suggestPollTimer.current = window.setTimeout(poll, 2500);
+    };
+    suggestPollTimer.current = window.setTimeout(poll, 800);
+    return () => {
+      cancelled = true;
+      if (suggestPollTimer.current !== null) window.clearTimeout(suggestPollTimer.current);
+    };
+  }, [selectedItem, suggestJobId, suggestion, jobPlatform]);
+
+  const dismissSuggestion = (key: string) => {
+    setDismissedSuggestions((current) => new Set(current).add(key));
   };
 
   // Create a new entity + file a description page for it.
@@ -1529,6 +1623,40 @@ function LoreCreationPage({ campaignClient, jobPlatform, libraryEntries, onOpenE
   const resultsByOwner = groupByOwner(resultsClaims);
   const consideredByOwner = groupByOwner(consideredClaimsList);
 
+  // --- AI suggestion application (TKT-0137) --------------------------------
+  const normalizeStatement = (text: string) => text.toLocaleLowerCase().replace(/\s+/g, " ").trim();
+  const basisText = (key: string) => {
+    const claim = searchResults.claims.find((c) => c.claim_id === key || underlyingClaimId(c.claim_id) === key);
+    return claim ? (claim.owner_name ? `[about ${claim.owner_name}] ${claim.assertion_text}` : claim.assertion_text) : key;
+  };
+  // Restatement annotations keyed by review-row sequence. Agreement coloring
+  // follows the placement ruling: green = system mirror + AI agree, blue =
+  // system only, orange = AI-only suggestion awaiting the DM's confirmation.
+  const aiRestatements: Record<number, { claimId: string | null; materialText: string; agrees: boolean; modelSlug: string }> = {};
+  if (suggestion && promotionRows) {
+    for (const row of promotionRows) {
+      const key = normalizeStatement(row.assertion_text);
+      const restatement = suggestion.restatements.find((r) => normalizeStatement(r.statement_text) === key);
+      if (!restatement || dismissedSuggestions.has(`restatement:${key}`)) continue;
+      const claimId = underlyingClaimId(restatement.material_key);
+      const agrees = row.consequence.kind === "reference"
+        && row.consequence.claim_id !== null
+        && claimId === row.consequence.claim_id;
+      aiRestatements[row.sequence] = {
+        claimId,
+        materialText: basisText(restatement.material_key),
+        agrees,
+        modelSlug: suggestion.model_slug,
+      };
+    }
+  }
+  const visibleStatementSuggestions = suggestion
+    ? suggestion.statements.filter((s) => !dismissedSuggestions.has(`statement:${normalizeStatement(s.text)}`))
+    : [];
+  const linkSuggestionFor = (claimId: string) => suggestion?.links.find((link) =>
+    underlyingClaimId(link.material_key) === underlyingClaimId(claimId)
+    && !dismissedSuggestions.has(`link:${link.material_key}`));
+
   // Working an item is its own page — the queue stays behind the Back button,
   // and both columns scroll inside a viewport-height workspace.
   if (selectedItem) return <main className="page-lore lore-working" aria-label="Lore creation workspace page">
@@ -1559,8 +1687,28 @@ function LoreCreationPage({ campaignClient, jobPlatform, libraryEntries, onOpenE
 
         <div className="composer-draft-row">
           <button className="secondary-button" disabled={draftBusy || busy} onClick={() => void draftSynopsis()} type="button"><WandIcon />{draftBusy ? "Drafting…" : "Draft synopsis"}</button>
-          <small className="ai-activation-note">Drafts from the Considered evidence (each item labeled with the record it is about) — or from the name alone when nothing is checked. Lands in the Drafts tray</small>
+          <button className="secondary-button" disabled={suggestBusy || suggestJobId !== null} onClick={() => void queueSuggestions()} type="button"><WandIcon />{suggestJobId ? "Suggesting…" : "Suggest"}</button>
+          <small className="ai-activation-note">Draft synopsis drafts prose from the Considered evidence into the Drafts tray. Suggest runs the promotion assistant: restatement matches, statement ideas, and a Link pre-sort — wand-marked suggestions, never auto-included.</small>
         </div>
+        {suggestJobId && <p className="ai-activation-note" role="status">Promotion assistant running for {selectedItem.name} — suggestions land here when the model finishes.</p>}
+        {suggestError && <div className="notice error" role="alert" style={{ margin: 0 }}>{suggestError}</div>}
+        {suggestion && visibleStatementSuggestions.length > 0 && <section className="lore-suggestions" aria-label="AI-suggested statements">
+          <header><span><WandIcon /> AI suggestions</span><h4>Statements {selectedItem.name} might assert</h4>
+            <small className="ai-activation-note">suggested by {suggestion.model_slug} · {suggestion.prompt_version} — never auto-included; inserting adds the sentence to your description, where promotion review derives it</small></header>
+          {visibleStatementSuggestions.map((s) => <article className="lore-suggestion-row" key={s.text}>
+            <p className="lore-evidence-text">{s.text}</p>
+            <div className="lore-evidence-header">
+              <span className="role-chip ai-suggestion-chip">{display(s.state)}</span>
+              <span className="ai-suggestion-basis">based on: {basisText(s.basis_key)}</span>
+              <button className="text-button" onClick={() => {
+                setProse((current) => current.trim() ? `${current.trim()} ${s.text}` : s.text);
+                dismissSuggestion(`statement:${normalizeStatement(s.text)}`);
+                toast.push("info", "Inserted — review the promotion again to derive it");
+              }} type="button">Insert into description</button>
+              <button className="text-button" onClick={() => dismissSuggestion(`statement:${normalizeStatement(s.text)}`)} type="button">Dismiss</button>
+            </div>
+          </article>)}
+        </section>}
 
         {pendingDraft && <div className="lore-draft-ready notice" role="status">
           <span>AI draft ready for {selectedItem.name}:</span>
@@ -1576,7 +1724,15 @@ function LoreCreationPage({ campaignClient, jobPlatform, libraryEntries, onOpenE
           error={promotionError}
           bundleLabel={`new ${display(promotionKind || chosenKind)}`}
           emptyLabel={`Create ${selectedItem.name}`}
+          aiRestatements={Object.keys(aiRestatements).length > 0 ? aiRestatements : undefined}
           onRowChange={(sequence, patch) => setPromotionRows((current) => current?.map((row) => row.sequence === sequence ? { ...row, ...patch } : row) ?? null)}
+          onMarkReference={(sequence, claimId, modelSlug) => setPromotionRows((current) => current?.map((row) => row.sequence === sequence
+            ? { ...row, consequence: { kind: "reference", claim_id: claimId, label: `restatement — AI-suggested, DM-confirmed (${modelSlug})` } }
+            : row) ?? null)}
+          onDismissAiNote={(sequence) => {
+            const row = promotionRows.find((r) => r.sequence === sequence);
+            if (row) dismissSuggestion(`restatement:${normalizeStatement(row.assertion_text)}`);
+          }}
           onCommit={() => void commitPromotion()}
           onDismiss={() => { setPromotionRows(null); setPromotionError(""); }}
         />}
@@ -1652,6 +1808,7 @@ function LoreCreationPage({ campaignClient, jobPlatform, libraryEntries, onOpenE
               <span className="role-chip">{display(claim.state)}</span>
               <span className="role-chip">{display(claim.authority)}</span>
               {claim.claim_id.startsWith("graph:") && <span className="role-chip graph-chip">graph</span>}
+              {linkSuggestionFor(claim.claim_id) && !linkedClaims.has(claim.claim_id) && <span className="role-chip ai-suggestion-chip"><WandIcon /> Link — {linkSuggestionFor(claim.claim_id)!.reason}</span>}
             </div>
             <p className={"lore-evidence-text" + (expandedClaims.has(claim.claim_id) ? "" : " clamped")} onClick={() => setExpandedClaims((cur) => {
               const next = new Set(cur);
@@ -1799,7 +1956,7 @@ function AIPromptEditors({ campaignClient }: { campaignClient: CampaignClient })
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState("");
-  const labels: Record<string, string> = { extraction: "Claim extraction", prose: "Prose writing" };
+  const labels: Record<string, string> = { extraction: "Claim extraction", prose: "Prose writing", promotion: "Promotion assistant" };
 
   const load = useCallback(async () => {
     try {
@@ -2068,15 +2225,28 @@ function ActivityLogPage({ campaignClient }: { campaignClient: CampaignClient })
 
 // ADR-0018 Promotion Pipeline: the reusable candidate review list. Compact
 // scan-able rows — every approvable element at a glance, fixed inline, one
-// Approve promotion action (user ruling 2026-09-20).
+// Approve promotion action (user ruling 2026-09-20). TKT-0137: AI
+// restatement suggestions co-display in the row with agreement coloring
+// (green = system + AI agree, blue = system, orange = AI suggestion) — the
+// DM's pick wins, and suggestions never gate or auto-include.
 interface PromotionRow extends PromotionCandidate {
   conflictCleared: boolean;
 }
 
-function PromotionReviewList({ entityName, rows, stale, busy, error, bundleLabel, emptyLabel, onRowChange, onCommit, onDismiss }: {
+interface AIRestatementNote {
+  claimId: string | null;
+  materialText: string;
+  agrees: boolean;
+  modelSlug: string;
+}
+
+function PromotionReviewList({ entityName, rows, stale, busy, error, bundleLabel, emptyLabel, aiRestatements, onRowChange, onMarkReference, onDismissAiNote, onCommit, onDismiss }: {
   entityName: string; rows: PromotionRow[]; stale: boolean; busy: boolean; error: string;
   bundleLabel: string; emptyLabel: string;
+  aiRestatements?: Record<number, AIRestatementNote>;
   onRowChange: (sequence: number, patch: Partial<PromotionRow>) => void;
+  onMarkReference?: (sequence: number, claimId: string, modelSlug: string) => void;
+  onDismissAiNote?: (sequence: number) => void;
   onCommit: () => void; onDismiss: () => void;
 }) {
   const included = rows.filter((row) => row.included && row.consequence.kind === "new_claim");
@@ -2088,7 +2258,9 @@ function PromotionReviewList({ entityName, rows, stale, busy, error, bundleLabel
         ? "No statements found in the prose — filing records the document only."
         : "Scan the list, fix wording or truth state inline, then approve. Restatements of gathered claims stay references — never a second claim."}</p>
     </header>
-    {rows.map((row) => <article className={`promotion-row${row.consequence.kind === "reference" ? " reference" : ""}${row.conflict && !row.conflictCleared ? " has-conflict" : ""}`} key={row.sequence}>
+    {rows.map((row) => {
+      const note = aiRestatements?.[row.sequence];
+      return <article className={`promotion-row${row.consequence.kind === "reference" ? " reference" : ""}${row.conflict && !row.conflictCleared ? " has-conflict" : ""}`} key={row.sequence}>
       <label className="promotion-include"><input
         aria-label={`${row.included ? "Exclude" : "Include"} statement ${row.sequence}`}
         checked={row.included}
@@ -2116,15 +2288,25 @@ function PromotionReviewList({ entityName, rows, stale, busy, error, bundleLabel
                 <option value="prepared">Prepared</option>
               </select></label>
             : <span className="promotion-state-fixed">inherits reference</span>}
-          <span className="promotion-consequence">{row.consequence.kind === "new_claim" ? `new claim on ${entityName}` : row.consequence.label}</span>
+          <span className={"promotion-consequence" + (row.consequence.kind === "reference" ? (note?.agrees ? " agreement-consensus" : " agreement-system") : "")}>{row.consequence.kind === "new_claim" ? `new claim on ${entityName}` : row.consequence.label}</span>
           <small className="promotion-provenance">from the description prose · statement {row.sequence}</small>
         </div>
+        {note && !note.agrees && <div className="promotion-ai-note">
+          <WandIcon /> <b>AI suggests this restates gathered evidence</b>
+          {note.materialText && <span className="promotion-ai-material"> — “{note.materialText}”</span>}
+          <small className="ai-activation-note">suggested by {note.modelSlug}</small>
+          <span className="promotion-ai-actions">
+            {note.claimId && <button className="text-button" onClick={() => onMarkReference?.(row.sequence, note.claimId!, note.modelSlug)} type="button">Mark as reference</button>}
+            <button className="text-button" onClick={() => onDismissAiNote?.(row.sequence)} type="button">Keep as new claim</button>
+          </span>
+        </div>}
         {row.conflict && !row.conflictCleared && <p className="promotion-conflict" role="alert">
           ⚑ known conflict: “{row.conflict.against_text}” — reword the statement or leave it out
         </p>}
         {row.conflict && row.conflictCleared && <p className="promotion-conflict-cleared">reworded — Campaign Core re-checks on commit</p>}
       </div>
-    </article>)}
+      </article>;
+    })}
     {stale && <p className="promotion-stale" role="alert">The prose changed after this review — dismiss and review again.</p>}
     {error && <p className="inline-error" role="alert">{error}</p>}
     <div className="step-actions">
@@ -2168,9 +2350,13 @@ function splitClaimGroups(prose: string): string[] {
   return whole ? [whole] : [];
 }
 
-function DescriptionClaimReview({ entryName, rows, busy, error, onRowChange, onMerge, onSplit, onRowDrop, onRowMove, onCommit, onDismiss }: {
+function DescriptionClaimReview({ entryName, rows, busy, error, aiNotes, materialTextFor, onRowChange, onExcludeRow, onDismissAiNote, onMerge, onSplit, onRowDrop, onRowMove, onCommit, onDismiss }: {
   entryName: string; rows: DescriptionClaimRow[]; busy: boolean; error: string;
+  aiNotes?: Record<string, { systemKey: string | null; aiKey: string | null; agrees: boolean; modelSlug: string }>;
+  materialTextFor?: (key: string) => string;
   onRowChange: (rowId: string, patch: Partial<DescriptionClaimRow>) => void;
+  onExcludeRow?: (rowId: string) => void;
+  onDismissAiNote?: (rowId: string) => void;
   onMerge: (rowId: string) => void;
   onSplit: (rowId: string, caret: number) => void;
   onRowDrop: (rowId: string) => void;
@@ -2183,7 +2369,11 @@ function DescriptionClaimReview({ entryName, rows, busy, error, onRowChange, onM
       <div><span>Description claims</span><h3>{entryName}</h3></div>
       <p>The claims your prose asserts — one row per `::` group. Shape them here: edit wording, merge glue into the claim above, split a row carrying two assertions, drop what isn't canon. Approve promotes the claims and records this order as the description's collection; the prose stays the reading layer.</p>
     </header>
-    {rows.map((row, index) => <article className={"promotion-row" + (row.included ? "" : " excluded")} key={row.rowId}>
+    {rows.map((row, index) => {
+      const note = aiNotes?.[row.rowId];
+      const systemText = note?.systemKey && materialTextFor ? materialTextFor(note.systemKey) : null;
+      const aiText = note?.aiKey && materialTextFor ? materialTextFor(note.aiKey) : null;
+      return <article className={"promotion-row" + (row.included ? "" : " excluded")} key={row.rowId}>
       <label className="promotion-include"><input
         aria-label={`Include claim ${index + 1}`}
         checked={row.included}
@@ -2220,8 +2410,32 @@ function DescriptionClaimReview({ entryName, rows, busy, error, onRowChange, onM
             {index < rows.length - 1 && <button aria-label={`Move claim ${index + 1} down`} onClick={() => onRowMove(row.rowId, 1)} title="Move down" type="button">↓</button>}
           </div>
         </div>
+        {note && (note.agrees || note.systemKey) && <div className={"promotion-ai-note" + (note.agrees ? " consensus" : " system")}>
+          {note.agrees
+            ? <><WandIcon /> <b>Restatement — system + AI agree</b>{systemText && <span className="promotion-ai-material"> — “{systemText}”</span>}</>
+            : <><b>System mirror: restates an existing claim</b>{systemText && <span className="promotion-ai-material"> — “{systemText}”</span>}</>}
+          <span className="promotion-ai-actions">
+            <button className="text-button" onClick={() => onExcludeRow?.(row.rowId)} type="button">Exclude row</button>
+          </span>
+        </div>}
+        {note?.aiKey && !note.agrees && !note.systemKey && <div className="promotion-ai-note">
+          <WandIcon /> <b>AI suggests this restates an existing claim</b>{aiText && <span className="promotion-ai-material"> — “{aiText}”</span>}
+          <small className="ai-activation-note">suggested by {note.modelSlug}</small>
+          <span className="promotion-ai-actions">
+            <button className="text-button" onClick={() => onExcludeRow?.(row.rowId)} type="button">Exclude row</button>
+            <button className="text-button" onClick={() => onDismissAiNote?.(row.rowId)} type="button">Keep as new claim</button>
+          </span>
+        </div>}
+        {note?.aiKey && !note.agrees && note.systemKey && <div className="promotion-ai-note">
+          <WandIcon /> <b>AI names a different match</b>{aiText && <span className="promotion-ai-material"> — “{aiText}”</span>}
+          <small className="ai-activation-note">suggested by {note.modelSlug} — the system's flag stays above; your pick wins</small>
+          <span className="promotion-ai-actions">
+            <button className="text-button" onClick={() => onDismissAiNote?.(row.rowId)} type="button">Keep as new claim</button>
+          </span>
+        </div>}
       </div>
-    </article>)}
+      </article>;
+    })}
     {error && <p className="inline-error" role="alert">{error}</p>}
     <div className="step-actions">
       <button className="text-button" disabled={busy} onClick={onDismiss} type="button">Dismiss review</button>
@@ -2232,9 +2446,9 @@ function DescriptionClaimReview({ entryName, rows, busy, error, onRowChange, onM
   </section>;
 }
 
-function DescriptionComposer({ entry, claims, profile, campaignClient, onClose, onSaved, initialText, documentId, onDirtyChange, onQueueDraft, initialSelected }: {
+function DescriptionComposer({ entry, claims, profile, campaignClient, jobPlatform, onClose, onSaved, initialText, documentId, onDirtyChange, onQueueDraft, initialSelected }: {
   entry: LibraryEntry; claims: SourceDocumentClaim[];
-  profile: EntityProfile | null; campaignClient: CampaignClient; onClose: () => void;
+  profile: EntityProfile | null; campaignClient: CampaignClient; jobPlatform: JobPlatform; onClose: () => void;
   onSaved: () => Promise<void>; initialText?: string | null; documentId?: string | null;
   onDirtyChange?: (dirty: boolean) => void;
   onQueueDraft?: (command: ProseDraftCommand) => Promise<void>;
@@ -2286,19 +2500,31 @@ function DescriptionComposer({ entry, claims, profile, campaignClient, onClose, 
   const [promotionBusy, setPromotionBusy] = useState(false);
   const [promotionError, setPromotionError] = useState("");
   const promotionKey = useRef<string | null>(null);
+  // AI promotion assistant (TKT-0137): the dedup check — the deterministic
+  // mirror AND the AI's paraphrase judgment over the reviewed rows against
+  // this entry's existing claims. Queued async; lands in the working file.
+  const [suggestBusy, setSuggestBusy] = useState(false);
+  const [suggestJobId, setSuggestJobId] = useState<string | null>(null);
+  const [suggestion, setSuggestion] = useState<LoreSuggestionSet | null>(null);
+  const [dismissedSuggestions, setDismissedSuggestions] = useState<Set<string>>(() => new Set());
+  const [suggestError, setSuggestError] = useState("");
+  const suggestPollTimer = useRef<number | null>(null);
   // ADR-0019: the working file — prose AND in-flight review rows — auto-saves
   // continuously per entry; reopening restores both. The user never keeps an
   // external copy out of distrust.
   const workingKey = `dm-assistant.descriptionWork.${entry.entry_id}`;
-  const persist = useCallback((prose: string, rows: DescriptionClaimRow[] | null) => {
+  const persist = useCallback((work: { prose: string; rows: DescriptionClaimRow[] | null; suggestion?: LoreSuggestionSet | null; suggestionJobId?: string | null; dismissedSuggestions?: string[] }) => {
     try {
-      window.localStorage.setItem(workingKey, JSON.stringify({ prose, rows, savedAt: new Date().toISOString() }));
+      window.localStorage.setItem(workingKey, JSON.stringify({ ...work, savedAt: new Date().toISOString() }));
     } catch { /* storage full or unavailable — the in-editor state continues */ }
   }, [workingKey]);
   const restoreWork = () => {
     const work = restoredWork ? restoredWork() : null;
     if (work?.prose) setText(work.prose);
     if (work?.rows) setPromotionRows(work.rows);
+    setSuggestion(work?.suggestion ?? null);
+    setSuggestJobId(work?.suggestionJobId ?? null);
+    setDismissedSuggestions(new Set(work?.dismissedSuggestions ?? []));
     setRestoredWork(null);
     toast.push("info", "Working file restored — nothing was lost");
   };
@@ -2306,20 +2532,20 @@ function DescriptionComposer({ entry, claims, profile, campaignClient, onClose, 
     setRestoredWork(null);
     try { window.localStorage.removeItem(workingKey); } catch { /* already gone */ }
   };
-  const [restoredWork, setRestoredWork] = useState<(() => { prose: string; rows: DescriptionClaimRow[] | null } | null) | null>(null);
+  const [restoredWork, setRestoredWork] = useState<(() => { prose: string; rows: DescriptionClaimRow[] | null; suggestion?: LoreSuggestionSet | null; suggestionJobId?: string | null; dismissedSuggestions?: string[] } | null) | null>(null);
   useEffect(() => {
     try {
       const raw = window.localStorage.getItem(workingKey);
       if (!raw) return;
-      const parsed = JSON.parse(raw) as { prose?: string; rows?: DescriptionClaimRow[] | null };
+      const parsed = JSON.parse(raw) as { prose?: string; rows?: DescriptionClaimRow[] | null; suggestion?: LoreSuggestionSet | null; suggestionJobId?: string | null; dismissedSuggestions?: string[] };
       if ((parsed.prose ?? "").trim() || (parsed.rows ?? null)) {
-        const capture = { prose: parsed.prose ?? "", rows: parsed.rows ?? null };
+        const capture = { prose: parsed.prose ?? "", rows: parsed.rows ?? null, suggestion: parsed.suggestion ?? null, suggestionJobId: parsed.suggestionJobId ?? null, dismissedSuggestions: parsed.dismissedSuggestions ?? [] };
         setRestoredWork(() => () => capture);
       }
     } catch { /* corrupt working file — start fresh */ }
   }, [workingKey]);
   const claimCount = splitClaimGroups(text).length;
-  useEffect(() => { persist(text, promotionRows); }, [text, promotionRows, persist]);
+  useEffect(() => { persist({ prose: text, rows: promotionRows, suggestion, suggestionJobId: suggestJobId, dismissedSuggestions: [...dismissedSuggestions] }); }, [text, promotionRows, persist, suggestion, suggestJobId, dismissedSuggestions]);
   const relationRows = graphRows === null ? baseRelations : [...baseRelations, ...graphRows];
   const [selectedRelations, setSelectedRelations] = useState<Set<string>>(() => new Set(initialSelected?.relationKeys ?? baseRelations.map((row) => row.key)));
 
@@ -2403,6 +2629,95 @@ function DescriptionComposer({ entry, claims, profile, campaignClient, onClose, 
       [next[index], next[target]] = [next[target], next[index]];
       return next;
     });
+
+  // Dedup check (TKT-0137): the reviewed rows against this entry's existing
+  // claims — one async job returns the deterministic mirror AND the AI's
+  // paraphrase judgment; the review joins them into the agreement coloring.
+  const queueSuggestions = async () => {
+    if (promotionRows === null || suggestBusy || suggestJobId) return;
+    setSuggestBusy(true); setSuggestError("");
+    try {
+      const job = await jobPlatform.startPromotionSuggest({
+        surface: "description",
+        subject: entry.canonical_name,
+        subject_kind: entry.entity_kind,
+        statements: promotionRows.map((row) => row.text),
+        material: claims.map((claim) => ({
+          key: claim.claim_id,
+          text: cleanImportedAssertion(claim.assertion_text),
+          state: claim.state,
+        })),
+        idempotency_key: `promotion-suggest:${entry.entry_id}:${crypto.randomUUID()}`,
+      });
+      setSuggestJobId(job.jobId);
+      toast.push("info", `Duplicate check queued for ${entry.canonical_name}`);
+    } catch (cause) {
+      const detail = cause instanceof Error ? cause.message : "The duplicate check could not be queued";
+      setSuggestError(detail);
+      toast.push("error", detail);
+    } finally { setSuggestBusy(false); }
+  };
+  useEffect(() => {
+    if (!suggestJobId || suggestion) return;
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const next = await jobPlatform.inspect(suggestJobId);
+        if (cancelled) return;
+        if (next.state === "succeeded" && next.result && typeof next.result === "object") {
+          setSuggestion(next.result as LoreSuggestionSet);
+          setSuggestJobId(null);
+          toast.push("success", "Duplicate check ready — review the marked rows");
+        } else if (next.state === "failed") {
+          const error = next.error ?? "The duplicate check job failed";
+          setSuggestError(error);
+          setSuggestJobId(null);
+          toast.push("error", error);
+        }
+      } catch {
+        // Transient inspect failures keep polling until the job resolves.
+      }
+      if (!cancelled) suggestPollTimer.current = window.setTimeout(poll, 2500);
+    };
+    suggestPollTimer.current = window.setTimeout(poll, 800);
+    return () => {
+      cancelled = true;
+      if (suggestPollTimer.current !== null) window.clearTimeout(suggestPollTimer.current);
+    };
+  }, [suggestJobId, suggestion, jobPlatform]);
+
+  const dismissSuggestion = (key: string) => {
+    setDismissedSuggestions((current) => new Set(current).add(key));
+  };
+
+  // Join the two opinions per row (matched by normalized row text): the
+  // system mirror's flag is deterministic and stays; the AI-only flag can be
+  // dismissed. Green = both flag the same claim, blue = system only,
+  // orange = AI only.
+  const normalizeRow = (value: string) => value.toLocaleLowerCase().replace(/\s+/g, " ").trim();
+  const materialTextFor = (key: string) => {
+    const claim = claims.find((c) => c.claim_id === key);
+    return claim ? cleanImportedAssertion(claim.assertion_text) : key;
+  };
+  const aiNotes: Record<string, { systemKey: string | null; aiKey: string | null; agrees: boolean; modelSlug: string }> = {};
+  if (suggestion && promotionRows) {
+    for (const row of promotionRows) {
+      const key = normalizeRow(row.text);
+      const ai = suggestion.restatements.find((r) => normalizeRow(r.statement_text) === key);
+      const system = (suggestion.system_restatements ?? []).find((r) => normalizeRow(r.statement_text) === key);
+      if (!ai && !system) continue;
+      // Dismissing the AI's call hides only the orange note; the system's
+      // own flag is deterministic and stays until the wording changes.
+      const aiDismissed = Boolean(ai && dismissedSuggestions.has(`restatement:${key}`));
+      if (aiDismissed && !system) continue;
+      aiNotes[row.rowId] = {
+        systemKey: system?.material_key ?? null,
+        aiKey: aiDismissed ? null : (ai?.material_key ?? null),
+        agrees: Boolean(ai && system && !aiDismissed && ai.material_key === system.material_key),
+        modelSlug: suggestion.model_slug,
+      };
+    }
+  }
 
   // Commit: claims created from rows through the promotion facade; the
   // document files the FINAL ORDERED claim ids with the prose verbatim
@@ -2582,12 +2897,24 @@ function DescriptionComposer({ entry, claims, profile, campaignClient, onClose, 
         })}
         {claims.length === 0 && <p className="empty-section">No claims gathered — the description will be this entry's first canon input.</p>}
       </details>
+      {promotionRows !== null && claims.length > 0 && <div className="composer-draft-row">
+        <button className="secondary-button" disabled={suggestBusy || suggestJobId !== null} onClick={() => void queueSuggestions()} type="button"><WandIcon />{suggestJobId ? "Checking…" : "Check for duplicates"}</button>
+        <small className="ai-activation-note">The promotion assistant checks each row against this entry's existing claims — the deterministic mirror and the AI's paraphrase judgment side by side: green when they agree, blue for the system's own flag, orange for an AI-only catch. Nothing is excluded automatically.</small>
+      </div>}
+      {suggestError && <div className="notice error" role="alert" style={{ margin: 0 }}>{suggestError}</div>}
       {promotionRows !== null && <DescriptionClaimReview
         entryName={entry.canonical_name}
         rows={promotionRows}
         busy={promotionBusy}
         error={promotionError}
+        aiNotes={Object.keys(aiNotes).length > 0 ? aiNotes : undefined}
+        materialTextFor={materialTextFor}
         onRowChange={rowChange}
+        onExcludeRow={(rowId) => rowChange(rowId, { included: false })}
+        onDismissAiNote={(rowId) => {
+          const row = promotionRows.find((r) => r.rowId === rowId);
+          if (row) dismissSuggestion(`restatement:${normalizeRow(row.text)}`);
+        }}
         onMerge={rowMerge}
         onSplit={rowSplit}
         onRowDrop={rowDrop}
@@ -2726,14 +3053,6 @@ function UnpromotedMaterialPanel({ campaignClient, onOpenEntry, onOpenDocument, 
   </section>;
 }
 
-type GatheredClaim = {
-  claim_id: string;
-  assertion_text: string;
-  state: string;
-  owner_name: string | null;
-  source_excerpt?: string;
-};
-
 function QualifiedEntitiesPanel({ campaignClient, onOpenEntry, onOpenProfile }: {
   campaignClient: CampaignClient;
   onOpenEntry?: (entityId: string, entityName: string) => void;
@@ -2743,12 +3062,6 @@ function QualifiedEntitiesPanel({ campaignClient, onOpenEntry, onOpenProfile }: 
   const [loading, setLoading] = useState(false);
   const [notice, setNotice] = useState("");
   const [busyValue, setBusyValue] = useState<string | null>(null);
-  // The Q1 gather lane: entry-scoped material search for a zero-claims
-  // record — claims mentioning its name, grouped by owner, movable home.
-  const [gathering, setGathering] = useState<{ entityId: string; name: string } | null>(null);
-  const [gathered, setGathered] = useState<GatheredClaim[] | null>(null);
-  const [gatherLoading, setGatherLoading] = useState(false);
-  const [movingId, setMovingId] = useState<string | null>(null);
 
   const run = useCallback(async () => {
     setLoading(true);
@@ -2802,47 +3115,6 @@ function QualifiedEntitiesPanel({ campaignClient, onOpenEntry, onOpenProfile }: 
     await gatherDocumentClaims();
     await run();
   }, [campaignClient, checked, assigningFor, gatherDocumentClaims, run]);
-
-  const gatherAbout = useCallback(async (entityId: string, name: string) => {
-    setGathering({ entityId, name });
-    setGathered(null);
-    setGatherLoading(true);
-    try {
-      const page = await campaignClient.listSourceDocuments();
-      const lower = name.toLocaleLowerCase();
-      const found: GatheredClaim[] = [];
-      for (const doc of page.items) {
-        const full = await campaignClient.getSourceDocument(doc.document_id).catch(() => null);
-        if (!full) continue;
-        for (const claim of (full.canonical_claims ?? [])) {
-          if (claim.assertion_text.toLocaleLowerCase().includes(lower)) {
-            found.push({
-              claim_id: claim.claim_id,
-              assertion_text: claim.assertion_text,
-              state: claim.state,
-              owner_name: claim.subject_entity_name ?? null,
-              source_excerpt: claim.source_excerpt ?? undefined,
-            });
-          }
-        }
-      }
-      setGathered(found.slice(0, 40));
-    } catch (cause) {
-      setNotice(cause instanceof Error ? cause.message : "The gather could not run");
-    } finally { setGatherLoading(false); }
-  }, [campaignClient]);
-
-  const moveHome = useCallback(async (claim: GatheredClaim) => {
-    if (!gathering || movingId) return;
-    setMovingId(claim.claim_id);
-    try {
-      await campaignClient.reattributeClaim(claim.claim_id, gathering.entityId, `Qualification campaign: moved to ${gathering.name}`);
-      toast.push("success", `Moved to ${gathering.name} — provenance untouched`);
-      setGathered((current) => current?.filter((item) => item.claim_id !== claim.claim_id) ?? null);
-    } catch (cause) {
-      toast.push("error", cause instanceof Error ? cause.message : "The claim could not move");
-    } finally { setMovingId(null); }
-  }, [campaignClient, gathering, movingId]);
 
   const restoreValue = async (vocabulary: string, value: string) => {
     if (busyValue) return;
@@ -2903,34 +3175,11 @@ function QualifiedEntitiesPanel({ campaignClient, onOpenEntry, onOpenProfile }: 
           {criterion === "q6_vocabulary" && finding.criteria.filter((c) => c.status === "fail" && c.vocabulary && c.value).map((c) => (
             <button disabled={busyValue === `${c.vocabulary}:${c.value}`} key={`${c.vocabulary}:${c.value}`} onClick={() => void restoreValue(c.vocabulary!, c.value!)} type="button">Re-activate "{c.value}"</button>
           ))}
-          {criterion === "q1_asserts" && <button onClick={() => void gatherAbout(finding.entity_id, finding.canonical_name)} type="button">Gather claims about this record</button>}
           {criterion !== "q6_vocabulary" && onOpenEntry && <button onClick={() => onOpenEntry(finding.entity_id, finding.canonical_name)} type="button">Open entry — write its description</button>}
           {criterion === "q4_kind" && onOpenProfile && <button onClick={() => onOpenProfile(finding.entity_id, finding.canonical_name)} type="button">Fix kind</button>}
         </div>
       </article>)}
     </div>)}
-    {gathering && <div className="qualified-gather" aria-label="Gather claims about this record">
-      <header><span>Material about</span><h4>{gathering.name}</h4>
-        <button className="text-button" onClick={() => { setGathering(null); setGathered(null); void run(); }} type="button">Done — re-run audit</button></header>
-      <p className="roles-explainer">Claims that mention this record by name. "Move here" re-attributes the assertion to this record — provenance untouched; the old owner keeps a moved-reference tile. Ownerless assertions need the orphan review (coming with TKT-0138).</p>
-      {gatherLoading && <p className="empty-section">Gathering…</p>}
-      {gathered !== null && gathered.length === 0 && <p className="empty-section">No claims mention "{gathering.name}" — write its description instead; authored prose promotes through review.</p>}
-      {gathered?.map((claim) => <article className="lore-evidence-item" key={claim.claim_id}>
-        <div className="lore-evidence-header">
-          <span className="role-chip">{display(claim.state)}</span>
-          {claim.owner_name
-            ? <span className="lore-evidence-owner">owned by {claim.owner_name}</span>
-            : <span className="role-chip graph-chip">no owner — orphan review (TKT-0138)</span>}
-        </div>
-        <p className="lore-evidence-text">{claim.assertion_text}</p>
-        {claim.source_excerpt && <code className="lore-evidence-source">{claim.source_excerpt}</code>}
-        <div className="lore-item-actions">
-          {claim.owner_name && claim.owner_name.toLocaleLowerCase() !== gathering.name.toLocaleLowerCase()
-            ? <button disabled={movingId !== null} onClick={() => void moveHome(claim)} type="button">{movingId === claim.claim_id ? "Moving…" : "Move here"}</button>
-            : null}
-        </div>
-      </article>)}
-    </div>}
   </section>;
 }
 
@@ -5438,6 +5687,7 @@ async function loadCanonicalEntry(entryId: string, freshSourceDocuments?: Source
         setPCProfile(null); setPCDraft(null);
       }
       setPCEditing(false); setPCPreview(false); setPCSaveKey(""); setPCMessage("");
+      return entry;
     } catch (error) {
       setSelectedEntry(null);
       setDocContent(error instanceof Error ? error.message : "Unable to load canonical entry.");
@@ -5693,7 +5943,7 @@ async function loadCanonicalEntry(entryId: string, freshSourceDocuments?: Source
                   ? (entityProfileDraft
                     ? <EntityProfileEditor entry={selectedEntry} profile={entityProfileDraft} onChange={setEntityProfileDraft} onCancel={() => { setEntityProfileEditing(false); setEntityProfileDraft(entityProfile); setEntityProfileMessage(""); setEntityProfileMessageIsError(false); }} onSave={() => void saveEntityProfile()} message={entityProfileMessage} messageIsError={entityProfileMessageIsError} onKindChange={(kind) => void correctEntityKind(kind)} members={selectedEntry.entity_kind === "faction" ? (selectedEntry.members ?? []) : undefined} roles={selectedEntry.entity_kind === "faction" ? (selectedEntry.roles ?? []) : undefined} memberSearch={memberSearch} memberResults={memberResults} onMemberSearch={(value) => { setMemberSearch(value); if (value.trim().length > 1) { campaignClient.searchEntities(value.trim()).then(setMemberResults).catch(() => setMemberResults([])); } else { setMemberResults([]); } }} onAddMember={(member) => void addFactionMember(member)} onRemoveMember={(member) => void removeFactionMember(member)} onAssignRole={(member, roleName, isLeadership) => void assignFactionRole(member, roleName, isLeadership)} vocabularies={templateVocabularies} locationNames={libraryEntries.filter((item) => item.entity_kind === "location").map((item) => item.canonical_name)} />
                     : <div className="detail-empty">Identity profile could not be loaded.</div>)
-                  : <>{descriptionComposerOpen && selectedEntry && <DescriptionComposer entry={selectedEntry} claims={docCanonicalClaims} profile={entityProfile} campaignClient={campaignClient} initialText={revisionDraft} initialSelected={claimSelection} documentId={revisionDraft !== null && docMetadata?.document_type === "entity-description" ? selectedDocumentId : undefined} onDirtyChange={setComposerDirty} onQueueDraft={selectedEntry ? (command) => queueProseDraft(command, selectedEntry.entry_id, selectedEntry.canonical_name) : undefined} onClose={() => { setDescriptionComposerOpen(false); setRevisionDraft(null); setClaimSelection(null); setComposerDirty(false); }} onSaved={async () => { setDescriptionComposerOpen(false); setRevisionDraft(null); setClaimSelection(null); setComposerDirty(false); // The document list must refresh BEFORE the entry reloads — the page
+                  : <>{descriptionComposerOpen && selectedEntry && <DescriptionComposer entry={selectedEntry} claims={docCanonicalClaims} profile={entityProfile} campaignClient={campaignClient} jobPlatform={jobPlatform} initialText={revisionDraft} initialSelected={claimSelection} documentId={revisionDraft !== null && docMetadata?.document_type === "entity-description" ? selectedDocumentId : undefined} onDirtyChange={setComposerDirty} onQueueDraft={selectedEntry ? (command) => queueProseDraft(command, selectedEntry.entry_id, selectedEntry.canonical_name) : undefined} onClose={() => { setDescriptionComposerOpen(false); setRevisionDraft(null); setClaimSelection(null); setComposerDirty(false); }} onSaved={async () => { setDescriptionComposerOpen(false); setRevisionDraft(null); setClaimSelection(null); setComposerDirty(false); // The document list must refresh BEFORE the entry reloads — the page
           // matcher needs the just-filed authored page in its candidate pool.
           let fresh: SourceDocument[] | undefined;
           try { const page = await campaignClient.listSourceDocuments(); setSourceDocuments(page.items); fresh = page.items; } catch { /* the entry reload still runs */ }
@@ -5796,7 +6046,8 @@ async function loadCanonicalEntry(entryId: string, freshSourceDocuments?: Source
       )}
 
       {activePage === "roles" && <FactionRolesPage campaignClient={campaignClient} factions={libraryEntries.filter((entry) => entry.entity_kind === "faction")} onRefreshLibrary={() => campaignClient.listLibraryEntries().then(setLibraryEntries).catch(() => {})} onOpenFaction={(entryId) => { setActivePage("documents"); leaveEditorGuard(libraryEntries.find((entry) => entry.entry_id === entryId)?.canonical_name ?? "the faction", () => { setSelectedEntryId(entryId); void loadCanonicalEntry(entryId); }); }} />}
-      {activePage === "migration" && <Phase2MigrationsPage campaignClient={campaignClient} onOpenEntry={(entityId, entityName) => { leaveEditorGuard(entityName, () => { setActivePage("documents"); setSelectedEntryId(entityId); void loadCanonicalEntry(entityId); }); }} onOpenProfile={(entityId, entityName) => { leaveEditorGuard(entityName, () => { setActivePage("documents"); setSelectedEntryId(entityId); void loadCanonicalEntry(entityId).then(() => openEntityProfileEditor()); }); }} onOpenDocument={(documentId, documentPath) => { leaveEditorGuard("the capture", async () => { const nextFilters: CandidateFilters = { status: "active", review_status: "pending", ...(documentPath ? { source: documentPath } : {}) }; setFilters(nextFilters); setActivePage("migration-legacy"); try { const page = await campaignClient.listCandidates(nextFilters); await loadReviewWorkspace(nextFilters, false); if (page.items.length > 0) await chooseCandidate(page.items[0].candidate_id); } catch { /* the workspace still renders; selection can be manual */ } }); }} onOpenBrainstorm={() => { leaveEditorGuard("Brainstorm", () => setActivePage("brainstorm")); }} />}
+      {activePage === "migration" && <Phase2MigrationsPage campaignClient={campaignClient} onOpenEntry={(entityId, entityName) => { leaveEditorGuard(entityName, () => { setActivePage("documents"); setSelectedEntryId(entityId); void loadCanonicalEntry(entityId).then((entry) => { // Open after the load: the entry switch inside loadCanonicalEntry resets the composer surfaces (ADR-0016).
+      setRevisionDraft(null); setClaimSelection(null); if (entry) void prefillSheetBackground(entry); setDescriptionComposerOpen(true); }); }); }} onOpenProfile={(entityId, entityName) => { leaveEditorGuard(entityName, () => { setActivePage("documents"); setSelectedEntryId(entityId); void loadCanonicalEntry(entityId).then(() => openEntityProfileEditor()); }); }} onOpenDocument={(documentId, documentPath) => { leaveEditorGuard("the capture", async () => { const nextFilters: CandidateFilters = { status: "active", review_status: "pending", ...(documentPath ? { source: documentPath } : {}) }; setFilters(nextFilters); setActivePage("migration-legacy"); try { const page = await campaignClient.listCandidates(nextFilters); await loadReviewWorkspace(nextFilters, false); if (page.items.length > 0) await chooseCandidate(page.items[0].candidate_id); } catch { /* the workspace still renders; selection can be manual */ } }); }} onOpenBrainstorm={() => { leaveEditorGuard("Brainstorm", () => setActivePage("brainstorm")); }} />}
 
       {activePage === "migration-legacy" && (
       <main className="page-migration">

@@ -22,7 +22,10 @@ export interface LoreQueueItem {
  * referenced records) and considered (kept for reference) claims — plus the
  * working file itself. Rule of thumb for workspaces (user ruling
  * 2026-09-21): the user should never have to worry about data loss, so the
- * kind, direction, and description auto-save with the evidence. */
+ * kind, direction, and description auto-save with the evidence.
+ * TKT-0137: AI promotion suggestions live here too — they wait in the
+ * working item (refresh-safe) until the DM includes, edits, or dismisses
+ * them; they never expire into canon on their own. */
 export interface SavedEvidence {
   claims: Array<{
     claim_id: string;
@@ -37,6 +40,24 @@ export interface SavedEvidence {
   chosenKind?: string;
   direction?: string;
   prose?: string;
+  // The queued suggestion job (polled to completion on reopen) and its
+  // landed result, plus what the DM dismissed so dismissals survive too.
+  suggestionJobId?: string;
+  suggestion?: LoreSuggestionSet;
+  dismissedSuggestions?: string[];
+}
+
+/** AI promotion suggestions (TKT-0137), shaped like the Core response.
+ * system_restatements is the DETERMINISTIC mirror over the same rows — the
+ * system value the agreement coloring joins against (green = both, blue =
+ * system only, orange = AI only). */
+export interface LoreSuggestionSet {
+  restatements: Array<{ statement_number: number; statement_text: string; material_key: string }>;
+  system_restatements?: Array<{ statement_number: number; statement_text: string; material_key: string }>;
+  statements: Array<{ text: string; state: string; basis_key: string }>;
+  links: Array<{ material_key: string; reason: string }>;
+  model_slug: string;
+  prompt_version: string;
 }
 
 const STORAGE_KEY = "dm-assistant.loreQueue";

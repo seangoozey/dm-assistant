@@ -1,12 +1,12 @@
 ---
 id: TKT-0137
 title: AI Promotion Assistant — wand-marked suggestions inside the Promotion Pipeline, tested on Lore first
-status: backlog
+status: in-progress
 priority: P2
 milestone: trustworthy-librarian
 depends_on: [TKT-0136]
 created: 2026-09-21
-updated: 2026-09-21
+updated: 2026-09-27
 ---
 
 # TKT-0137: AI Promotion Assistant — wand-marked suggestions inside the Promotion Pipeline, tested on Lore first
@@ -67,4 +67,28 @@ Sean reviewed the live Promotion Review on Osirus's description (6 prose stateme
 
 ## Validation evidence
 
-(to record when built)
+### Lore-first build delivered 2026-09-27 (deployed; live-data runs await a fresh go per the live-pilot rule)
+
+**Stage 1 + Stage 2 for Lore, per the ruled decisions (dedicated purpose, all-async, shared-space placement, restatement-first emphasis):**
+
+- **Purpose + profile**: `promotion` purpose in Settings → AI models ("Promotion assistant") with a selectable `deepseek-chat` candidate profile (extraction-shaped task: precision over voice). NO default — activation is receipted, like prose. The prompt is editable with the receipted override pattern (TKT-0126) and a JSON-contract guard (malformed/partial output becomes a readable provider fault, never partial suggestions).
+- **Backend** (`application/promotion_assistant.py`, `promotion/1`): `suggest(subject, kind, prose, material) → SuggestionSet` with the Osirus re-weighting — **restatement matching is the headline** (paraphrase judgment, meaning not word overlap, because the deterministic mirror misses exactly those). Positional references only (statement numbers, material numbers — a modest model cannot invent claim IDs); the harness validates every reference against the provided sets and retries once on contract failure. Secondary: 3–6 statement suggestions with suggested Truth State + basis, and the Link pre-sort. State/subject opinions on the DM's own rows stay out of v1 (the defaults carried all six live statements). Non-Lore surfaces refused — Lore proves the pattern first.
+- **Endpoint** `POST /promotion/suggest` (DM-only, non-mutating; 409 with a Settings pointer when no promotion model is active; provider faults read, never 500). **Windmill job** `promotion_suggest` (the prose-draft pattern) + app backend binding — ALL AI calls async per ruling.
+- **Lore UI — shared space, wand-marked, never auto-included**:
+  - **Suggest** button (wand) beside Draft synopsis; runs on seed + current prose + Considered evidence. The queued job id and the landed set persist IN the working Lore item (loreQueue) — a refresh resumes polling, landed suggestions wait until reviewed (ADR-0019; they never expire into canon).
+  - **Restatement suggestions co-display in the review rows** with the ruled agreement coloring, now named tokens (`--agreement-consensus` green / `--agreement-system` blue / `--agreement-ai` orange, documented in ui-conventions): system mirror + AI agree → GREEN consensus label; system-only reference → BLUE; AI-only (mirror missed the paraphrase) → ORANGE wand note quoting the material, with one-click "Mark as reference" (keeps AI origin: "AI-suggested, DM-confirmed") or "Keep as new claim". The DM's pick wins.
+  - **Statement suggestions** arrive in a wand-marked block, excluded, with state chip + basis line and per-row provenance ("suggested by {model} · {version}"). Including = "Insert into description" (appends the sentence to the DM's prose, where promotion review derives it with a real span — the pipeline contract that claims trace to the filed document). Dismiss survives refresh too.
+  - **Link pre-sort**: orange "Link — {reason}" chips on Consider rows for evidence the model judges to be ABOUT the new record; ranked, never pre-checked.
+- **Stage 3 untouched**: no AI at or after the Approve promotion click.
+- **Tests**: backend 11 new (positional-reference validation, retry-then-accept, state refusal, non-JSON refusal, Lore-only guard, DM-only + no-profile 409, purpose/profile shape with no default, prompt JSON guard); React 2 new (orange suggestion → mark-as-reference flow; green consensus coloring with no note when system+AI agree) + jobPlatform passthrough; full suites green (React 82/82, backend full run green). Deployed and verified live (route present, job script registered, bundle carries the suggestion UI).
+
+**Open for Sean**: activate the promotion profile in Settings (AI models) and give a fresh go for a real-data lore run; the success bar is recall for consideration, not top-rank precision.
+
+### Description dedup slice delivered 2026-09-27 (deployed) — the Osirus gap closes
+
+Sean's ruling at the 0136 close review: put the dedup on 0137. The Description claim review (the surface where the paraphrase blindness was found) gained **"Check for duplicates"** — the same async suggestion job, now surface-aware:
+
+- **Backend**: the command accepts explicit `statements` (the reviewed `::` rows as the DM edited them — judged verbatim, not re-split) and the `description` surface. The result now carries **`system_restatements`** — the DETERMINISTIC term-overlap mirror (`restates_claim`) computed server-side over the same rows, so the agreement coloring has a system value that never depends on the model. Non-UUID material keys (Lore graph wrappers) skip the mirror; Lore keeps its derive-time system value and is unchanged behaviorally.
+- **Composer UI**: "Check for duplicates" (wand) sits above the Description claim review (gated on the entry having existing claims — nothing to dedup against otherwise). Notes co-display in the rows per the placement ruling: **green** "Restatement — system + AI agree" quoting the claim; **blue** "System mirror: restates an existing claim" when only the deterministic side catches it; **orange** "AI suggests this restates an existing claim" (with model provenance) when only the AI catches the paraphrase; and when both flag the same row against DIFFERENT claims, the blue system flag stays and the AI's differing match renders beneath it. One-click **"Exclude row"** — nothing is ever excluded automatically (the mirror marks; the DM decides). Dismissing the AI call ("Keep as new claim") keeps the system's blue flag. Editing a row's wording re-keys the match naturally.
+- **Persistence**: the suggestion set, queued job id, and dismissals ride the composer's ADR-0019 working file (`dm-assistant.descriptionWork.{id}`) — a refresh restores prose, rows, and the duplicate check together.
+- **Evidence**: backend 13/13 (new: description surface + explicit rows + mirror correctness incl. non-UUID skip and zero-overlap; refusal text updated); React 83/83 (new: the full composer path — derive :: rows, run the check, consensus green, DM excludes the row); full suites green; deployed and bundle-verified. The commit-time duplicate check itself is unchanged — the AI/mirror notes are the review-time mitigation.

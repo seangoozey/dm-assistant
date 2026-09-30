@@ -1,12 +1,12 @@
 ---
 id: TKT-0040
 title: Lore Entry with conflict-gated direct application
-status: backlog
+status: done
 priority: P1
 milestone: trustworthy-librarian
 depends_on: [TKT-0038, TKT-0091, TKT-0094]
 created: 2026-08-04
-updated: 2026-08-05
+updated: 2026-09-28
 ---
 
 # TKT-0040: Lore Entry with Conflict-Gated Direct Application
@@ -49,3 +49,7 @@ Read `docs/product/truth-state-authority.md`, `docs/architecture/workflows.md`, 
 
 - A sanitized non-conflicting lore entry proving automatic application and receipt.
 - A sanitized conflicting entry proving stop-for-review with zero canonical mutation.
+
+## RETIRED 2026-09-28 — superseded by ADR-0018
+
+This ticket's premise ("safe canonical write WITHOUT a full proposal round-trip"; auto-application with a receipt when the assertion is unambiguous) was superseded by the mandatory-review ruling of 2026-09-21, recorded as ADR-0018 point 8: every authored statement gets an explicit include-or-exclude decision — "claims-from-prose opt-in is a compliance violation." Lore shipped with NO bypass: creation goes through "Review promotion" and the single Approve action. Its dependencies also dissolved (TKT-0091 done; TKT-0094 parked with the graph track). The one surviving concern — surfacing conflicts INSIDE lore creation review rather than only at commit — is absorbed into TKT-0142's unified claim card (the conflict slot), where every claim surface including Lore's review rows converges. Retired per the 2026-09-28 board-hygiene ruling.

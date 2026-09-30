@@ -4,9 +4,9 @@ title: Lore creation queue with evidence gathering and optional synopsis
 status: in-progress
 priority: P2
 milestone: trustworthy-librarian
-depends_on: [TKT-0040, TKT-0094]
+depends_on: []  # 0040 retired (superseded by ADR-0018); 0094 parked with the graph track — Lore shipped without either
 created: 2026-09-09
-updated: 2026-09-09
+updated: 2026-09-28
 ---
 
 # TKT-0099: Lore creation queue with evidence gathering and optional synopsis
@@ -83,7 +83,7 @@ Document the distinction between queued names, non-canonical drafts, and resolve
 
 - Unmatched @mention queueing in the session-note/brainstorm composers (Queue for Lore alongside Keep as text).
 - Refresh persistence testing (the queue IS localStorage, but the creation workspace draft should survive refresh).
-- The 0040 conflict-gated application path (direct create without a description when the evidence is unambiguous).
+- Conflict surfacing inside creation review (was "the 0040 conflict path"; 0040 is retired — the concern now lands with TKT-0142's unified claim card).
 
 ### Post-V1 refinement (2026-09-19, Sean's real-use: Fleurite Treasury)
 

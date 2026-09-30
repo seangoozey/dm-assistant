@@ -166,6 +166,13 @@ from dm_assistant_core.application.prose_drafting import (
     ProseDraftingService,
     ProseHarness,
 )
+from dm_assistant_core.application.promotion_assistant import (
+    PromotionSuggestionCommand,
+    PromotionSuggestionError,
+    PromotionSuggestionHarness,
+    PromotionSuggestionSet,
+    PromotionAssistantService,
+)
 from dm_assistant_core.application.claim_reconciliation import (
     ApplyClaimReconciliationCommand,
     ClaimCorrectionReceipt,
@@ -2276,6 +2283,48 @@ def create_app(
             raise HTTPException(status_code=409, detail=str(error)) from error
 
     @app.post(
+        "/promotion/suggest",
+        response_model=PromotionSuggestionSet,
+        tags=["operations"],
+    )
+    def suggest_promotion(
+        command: PromotionSuggestionCommand,
+        requester_role: Annotated[RequesterRole, Query()] = RequesterRole.DM,
+    ) -> PromotionSuggestionSet:
+        """AI suggestions for a promotion review (TKT-0137): restatement
+        matching, statement ideas, Link/Consider pre-sort.
+
+        Non-mutating: suggestions arrive excluded and wand-marked; the DM's
+        include-or-exclude review (ADR-0018 point 8) stays the decision, and
+        the commit action has no AI involvement.
+        """
+        if requester_role is not RequesterRole.DM:
+            raise HTTPException(status_code=403, detail="promotion suggestions are DM-only")
+        try:
+            profile = active_ai_configuration.active_profile("promotion")
+        except ValueError as error:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "no promotion model is active — activate one in Settings "
+                    "(AI models) first"
+                ),
+            ) from error
+        if not active_settings.openrouter_api_key:
+            raise HTTPException(
+                status_code=503,
+                detail="promotion suggestions are not configured (no AI provider key)",
+            )
+        effective = active_prompt_configuration.effective("promotion")
+        service = _default_promotion_assistant_service(
+            active_settings, profile,
+            system_prompt=effective.prompt_text, prompt_version=effective.version_label)
+        try:
+            return service.suggest(command)
+        except PromotionSuggestionError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+
+    @app.post(
         "/retrieval/query",
         response_model=RetrievalResult,
         tags=["retrieval"],
@@ -2361,6 +2410,36 @@ def _default_prose_drafting_service(
         if system_prompt is not None else ProseHarness(client)
     )
     return ProseDraftingService(
+        harness,
+        model_slug=profile.model_slug,
+        **({"prompt_version": prompt_version} if prompt_version is not None else {}),
+    )
+
+
+def _default_promotion_assistant_service(
+    settings: Settings,
+    profile: ModelProfile,
+    *,
+    system_prompt: str | None = None,
+    prompt_version: str | None = None,
+) -> PromotionAssistantService:
+    """Build the promotion assistant from the active promotion profile (per request)."""
+    from dm_assistant_core.adapters.openrouter import OpenRouterClient
+
+    client = OpenRouterClient(
+        api_key=settings.openrouter_api_key,
+        base_url=settings.openrouter_base_url,
+        model=profile.model_slug,
+        max_tokens=profile.max_tokens,
+        timeout_seconds=profile.timeout_seconds,
+        max_retries=profile.retry_limit,
+        reasoning_effort=profile.reasoning_effort,
+    )
+    harness = (
+        PromotionSuggestionHarness(client, system_prompt=system_prompt)
+        if system_prompt is not None else PromotionSuggestionHarness(client)
+    )
+    return PromotionAssistantService(
         harness,
         model_slug=profile.model_slug,
         **({"prompt_version": prompt_version} if prompt_version is not None else {}),

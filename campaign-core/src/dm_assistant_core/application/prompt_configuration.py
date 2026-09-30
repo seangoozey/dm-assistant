@@ -14,13 +14,19 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from dm_assistant_core.application.ai_configuration import EXTRACTION_PURPOSE, PROSE_PURPOSE
+from dm_assistant_core.application.ai_configuration import (
+    EXTRACTION_PURPOSE,
+    PROSE_PURPOSE,
+    PROMOTION_PURPOSE,
+)
 from dm_assistant_core.domain.extraction import EXTRACTION_SYSTEM_PROMPT
 from dm_assistant_core.application.prose_drafting import PROSE_SYSTEM_PROMPT
+from dm_assistant_core.application.promotion_assistant import PROMOTION_SYSTEM_PROMPT
 
 BUILT_IN_PROMPTS = {
     PROSE_PURPOSE: PROSE_SYSTEM_PROMPT,
     EXTRACTION_PURPOSE: EXTRACTION_SYSTEM_PROMPT,
+    PROMOTION_PURPOSE: PROMOTION_SYSTEM_PROMPT,
 }
 
 
@@ -89,6 +95,8 @@ class PromptConfigurationService:
             raise ValueError(f"no editable prompt for purpose '{command.purpose}'")
         if command.purpose == PROSE_PURPOSE and "Respond as JSON" not in command.prompt_text:
             raise ValueError("the prose prompt must keep its JSON response contract")
+        if command.purpose == PROMOTION_PURPOSE and "Respond as JSON" not in command.prompt_text:
+            raise ValueError("the promotion prompt must keep its JSON response contract")
         version_label = (
             f"{command.purpose}/local-{self._repository.count_receipts(command.purpose) + 1}"
         )

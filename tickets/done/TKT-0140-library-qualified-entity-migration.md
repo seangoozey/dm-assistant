@@ -1,12 +1,12 @@
 ---
 id: TKT-0140
 title: Migrate the whole library to Qualified Entities — everything reaches the bar through the Promotion Pipeline
-status: backlog
+status: done
 priority: P2
 milestone: trustworthy-librarian
 depends_on: [TKT-0136, TKT-0139]
 created: 2026-09-21
-updated: 2026-09-21
+updated: 2026-09-28
 ---
 
 # TKT-0140: Migrate the whole library to Qualified Entities — everything reaches the bar through the Promotion Pipeline
@@ -78,3 +78,37 @@ Two rulings from Sean's Far Realm Entity review:
 - **Mention-anchored clamps + owner titles**: claims owned by another record now render on a Document with an "owned by {owner}" title, and long claims clamp around the FIRST SENTENCE CONTAINING THE MENTION with leading/trailing ellipses covering omitted sentences (the relevance is visible at a glance instead of buried — the statue claim showed its first sentence, which never mentioned the Far Realm Entity). ClaimAssertion gained `contextName`; threaded through the character and structured claim lists. The backward-ownership link extended to the library entries endpoint (claims + history now carry subject_entity_id/name — live-verified: the statue claim reads owner "Fleurite Treasury").
 - **Blank description drafts diagnosed and fixed**: the prose jobs SUCCEED server-side (latest Far Realm Entity draft: 3,563 chars, 781 tokens, 8 citations) — the drafts were never injected. Root cause: two of the three DescriptionComposer call sites (the character-view branch and the unpaged-NPC branch) never passed `initialText`/`initialSelected` — "Return to draft" opened a blank composer for NPCs. Both now seed the composer exactly like the structured branch (initialText, initialSelected, documentId for revisions).
 - React 144/144 (new mention-clamp test asserting the owner title, the anchored sentence with ellipses, and the full text behind the expander); harness 8/8; deployed.
+
+### Data fix (2026-09-24): attribute vocabulary poll + normalization (migration 0072)
+
+Sean's ruling after the PC updates tripped Q6: poll all attribute values — auto-migrate obvious vocabulary equivalents, report the rest. Findings: the vocabularies were nearly empty of the campaign's real values (race knew half-orc/tabaxi/god only; sex was EMPTY; status knew only 'retired'), while profiles carried Capitalized import-era casing ('Human', 'Half-Orc', 'Continent', 'Male', 'Active', 'Dead', 'Disbanded'). Migration 0072:
+- **Created 12 vocabulary values** (receipted, lowercase per existing style): race += dwarf, human, gnome, half-elf, high elf; sex += male, female, unspecified; status += active, dead, disbanded; location_type += region. Every value found in the poll now has a home — nothing unmatched remains to report.
+- **Normalized 28 profile attribute values** to canonical casing (case-insensitive match against active vocabulary).
+- **Normalized 13 automation-minted attribute claims** ("race: Human" → "race: human"); provenance/evidence untouched (casing fix of automation output, not content).
+- **Live effect: Q6 failures 6 → 0; the audit jumped 63 → 71 of 120 qualified** (the six Q6 records plus chains where the profile normalization completed Q1 via minted bindings). Ladir and the PCs clear.
+
+### Correction: the Q6 failures were an audit bug, not missing vocabularies (2026-09-24)
+
+Sean's catch: the Settings page showed the full seeded vocabularies all along. Root cause: the vocabulary system is TWO layers — a code-seeded baseline (`VOCABULARIES` in template_vocabularies.py: 17 location types, 6 statuses, 10 races, 3 sexes) merged with DB-stored overrides (Settings adds/retires like the retired dragonborn) — but **the Qualified audit's Q6 queried only the bare `template_vocabularies` table**, blind to the seed. 'dwarf'/'active' failed Q6 because the audit couldn't see the seed that offered them; migration 0072's value creation was therefore redundant (harmless — the merge dedupes — but unnecessary).
+Fixed: the audit's `active_vocabulary_values` now applies the same merge as `TemplateVocabularyService.values()` — (seed ∪ stored) − stored-retired — so Q6 judges against exactly what Settings and the dropdowns offer. 0072's normalization statements (28 profile casings + 13 claims) remain valid work. Ledger repaired by dropping the 0072 row (statements are idempotent; Core re-applied from its image copy — harness 8/8 green first). Live: 71/120, Q6 = 0.
+
+### Bastok repaired (2026-09-24): 0072's profile rewrite had flattened JSON types
+
+Sean's report: Bastok's editor failed to save ("profile version changed") and the profile GET 500'd. Root cause: 0072's original statement 2 rebuilt profile_json through `jsonb_each_text`, which flattens every value to text — **28 profiles lost their JSON types** (aliases arrays became the string `'["x"]'`, life_status_since objects became text), breaking EntityProfile validation and the editor's load/save cycle. Fixed:
+- **2a repair**: string-typed aliases/life_status_since converted back to real JSON (28 aliases rows + 1 object row); live count of corrupted rows = 0.
+- **2b rewrite**: normalization now uses `jsonb_set` on ONLY the four vocabulary string keys — never rebuilds the object, so types survive by construction.
+- Harness 8/8; deployed; ledger repaired by drop-and-reapply (statements fully idempotent). Live: Bastok profile GET clean (version 1, status active, aliases []); audit holds 71/120, Q6 = 0.
+
+### Q1 gather lane removed; Open Entry auto-opens the composer (2026-09-27, deployed)
+
+Sean's ruling after live use: the Migration page's **"Gather Claims about this Record" button appears to do nothing** (a whole-document scan by name match — slow, and its results duplicated what the step-1 exclusive-claims section already offers) and is "kind of useless anyway". The Q1 lane is now:
+
+- **Removed outright** — the gather handler, the moved-home handler, the drawer, the button, the `GatheredClaim` type, and the dead `.qualified-gather` CSS. Q1 rows keep exactly one affordance: **"Open entry — write its description"**.
+- **Open Entry now lands the writer open**: navigation through the guard loads the entry, then (mirroring the tested Write-Description path) seeds nothing (a Q1 record has no sheet Background to prefill) and opens the DescriptionComposer — `loadCanonicalEntry` now returns the loaded entry so the post-load callback can act on it. Arrival = ready for prose, no second click.
+- React 80/80 (new test: a Migration Q1 finding's page opens the Description composer directly; assert the gather button is gone); tsc clean; deployed and bundle-verified in the Windmill DB (gather strings and CSS absent from the served bundle).
+
+## Closed 2026-09-28 — Sean's ruling: the finite campaign is delivered; Q1 completion is baseline
+
+Delivered: the Phase 2 Migrations page (Qualified Entities panel with re-runnable audit, Q6 one-click restores, Step 1 Assign Ownership over document-exclusive claims with initial attribution), summary retirement, the 0072 vocabulary data fix + audit seed-merge fix, the Bastok corruption repair, and the Q1 gather-lane removal with composer auto-open. Campaign state at close: **71 of 120 qualified; Q6 = 0; 0 corrupted profiles.**
+
+Sean's closing ruling (2026-09-28): "Writing prose for Entities is a baseline purpose of this app and thus has no end." The remaining 49 unqualified records are all Q1 (zero claims of any kind) — finishing them is ongoing app usage (descriptions, Step 1, promotion review), not a campaign deliverable. The standing enforcement stays: the audit holds the bar — an entity whose claims drop to zero reappears as Q1-failed, and nothing new can be created empty (mandatory review + minting). The ORPHANED-CLAIMS side of incomplete migration (186 ownerless claims, invisible today) is the relevant gap and continues as TKT-0138 (ready, P1). Q5's audit flip rides with 0138.

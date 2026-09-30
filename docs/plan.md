@@ -1,93 +1,47 @@
 # Development Plan
 
-## Next execution priority: shared campaign knowledge
-
-2026-09-10 execution refinement: TKT-0102 → TKT-0103 → TKT-0104 → TKT-0105 stages the next work within existing TKT-0090/0091/0092/0094/0096 scope. Define task-dependent truth-aware relevance and freeze comparative tests; build clean evidence-linked indexing; evaluate native Cognee retrieval instead of the exported JSON walker; then make a measured retention/Neo4j decision. Grouping is deferred until relevance works. Truth remains categorical evidence metadata; query-time suitability is one scoring component, never permission to promote plans or bypass visibility/freshness. TKT-0095 integrates accepted retrieval across consumers afterward. Ticket creation does not deploy pending heuristic changes or authorize a backend migration.
-
-TKT-0089 defines the [shared relationship and retrieval layer](architecture/shared-campaign-knowledge.md) for all workflows. Implement TKT-0090 (benchmark), TKT-0091 (comparison policy), TKT-0092 (projection), TKT-0093 (optional links), TKT-0094 (shared retrieval), and TKT-0095 (consumer integration), in dependency order. TKT-0096 evaluates Cognee and alternate graph backends against the resulting contract. This is the next execution priority; older milestone descriptions below are historical planning context, not instructions to prioritize more isolated UI lookup work.
-
 This plan is the maintained execution summary. The earlier, more narrative [DM Assistant App Planning Document](reference/DM%20Assistant%20App%20Planning%20Document.docx) is retained as a planning baseline and source of historical context. If they disagree, the current Markdown specifications, accepted ADRs, and completed tickets take precedence.
 
-## Current milestone: trustworthy librarian live-data onboarding
+## Where the system stands (2026-09-28)
 
-The specification, persistence, importer, retrieval, Windmill, live evidence import, review read model, human-controlled candidate commands, narrow React review workflow, first scoped canonical promotion, campaign-bible coverage audit, path-aware wiki-link resolution, calendar-neutral chronology, and structured rules elements with export profiles are implemented and validated. Import remains non-canonical until explicit review and exact approval.
+**The Promotion Pipeline arc is built and closed.** ADR-0018's four slices (Description, Lore, Brainstorm, repair lane) shipped and were proven in real use; TKT-0136 closed 2026-09-27. Every path to canon goes through mandatory statement review and one receipted Approve action — no bypasses exist (the auto-application premise of the old TKT-0040 was retired as contradicted by this). Later refinements all landed: `::` claim breakpoints with ADR-0019 autosave (0146), claim-backed attribute minting with presumed-retcon supersession (0143), Document/Entity alignment — one renderer and one editor per Kind, sheets as evidence (0147), and the AI Promotion Assistant on Lore plus the Description duplicate check (0137, awaiting model activation for real-data runs).
 
-### Exit criteria
+**The Qualified Entity standard governs** (`docs/product/qualified-entity.md`; TKT-0139/0140 closed): the live audit holds the bar permanently — 71 of 120 entities qualified, zero vocabulary failures, zero corrupted profiles. The finite migration campaign is delivered. Per Sean's 2026-09-28 ruling, finishing the remaining 49 zero-claim entities is baseline ongoing usage ("writing prose for Entities is a baseline purpose of this app and thus has no end"), not a campaign deliverable — the standing enforcement is what matters: nothing new enters empty, and degradation reappears in the audit.
 
-- One read-only live import has an immutable, idempotent receipt in the development database.
-- Import receipts, candidates, quarantine, and review items are inspectable through Campaign Core.
-- Exact candidate proposals, rejection/defer actions, versioned approval, and atomic application are available through typed commands.
-- The React app exposes a narrow evidence-review and scoped-promotion workflow.
-- A representative live fact set has been promoted with receipts and retrieved with exact citations.
-- `gm/campaign-bible.md` has section-level coverage and explicit planning dispositions without default canon promotion.
+**The domain constitution is coherent** — 19 ADRs; every accepted decision is implemented except the deliberately parked graph track (ADR-0014 remains proposed with it).
 
-### Completed tranche
+## Next execution priority: orphaned claims (TKT-0138)
 
-1. TKT-0020 ingested live evidence without canonical mutation.
-2. TKT-0021 exposed the import receipt and review read model.
-3. TKT-0022 added exact proposal, disposition, and approval commands.
-4. TKT-0023 built the narrow React review/promotion slice.
-5. TKT-0024 completed the first scoped live promotion and grounded retrieval proof; TKT-0026 completed the proposal-comparison field fix discovered during that exercise.
-6. TKT-0025 completed the campaign-bible planning coverage audit, and TKT-0027 completed nested parser-version-aware re-extraction without promoting planning material.
-7. TKT-0029 completed the shared referenceable-record identity and kind registry, minimal entity vocabulary migration, PC/NPC agency boundaries, optional extensible tags, exact metadata proposals, and auditable kind evolution.
-8. TKT-0031 completed first-class plans with explicit agency/lifecycle boundaries. TKT-0030 completed calendar-neutral campaign chronology with integer-year storage and a hardcoded Gregorian calendar spec (ADR-0007). TKT-0028 completed path-aware wiki-link target resolution. TKT-0032 completed structured rules elements and the Markdown-card derived-artifact export profile.
+Sean's ruling (2026-09-28): **data that exists but is unassigned and thus invisible is the relevant gap.** 186 non-superseded claims have no owning entity; no surface lists them today; audit Q3 reports pending. TKT-0138 (ready, P1) builds the standing review: the Core list endpoint with deterministic suggested owners, the Lore bridge as the primary migration path (checked orphans seed a lore item, Consider-marked, ready to Link), direct assign-to-record for obvious homes, a receipted "no owner needed" for ambient history — flipping audit Q3 to computed and folding the Q5 flip (attribute minting landed with 0143, but the audit still reports it pending). The initial-attribution write path already landed (migrations 0067/0068); the queue builds on a working write.
 
-## Current milestone: planning workspace and direct capture
+## Then: the unification chain
 
-The provider, grounded extraction pipeline, context-aware extraction validation, source-document browser, and guided editable migration workflow are implemented. Direct capture and the primary thinking workflows (Brainstorm and Lore Entry) follow; chronology and deferred precision/plan-review work form a parallel track.
+1. **TKT-0142 — unified claim surface**: one claim card component behind every claim operation (the "russian doll" fix); the Promotion Review row is the seed; absorbs the conflict-display concern from the retired 0040.
+2. **TKT-0141 — presumed retcon surface** and **TKT-0145 — session-review re-home** (retires the phase-1 flag dependency): both build on the 0142 card.
+3. **TKT-0144 — brainstorm general review**: a rulings conversation with the open Wrath of Romulus session as the living fixture.
 
-### Ordered ticket tranche
+## Standing tracks
 
-1. TKT-0033, TKT-0034, and TKT-0035 completed the AI provider, grounded extraction harness, and assertion-to-canon baseline pipeline.
-2. TKT-0036, TKT-0037, and TKT-0046 completed the source-document browser, initial migration workspace, and page-based navigation.
-3. TKT-0045 completed extraction-context tests and representative PC, NPC, and location validation.
-4. TKT-0047 completed the step-based, editable migration workflow and corrected-value proposal prefill.
-5. TKT-0038 adds direct input capture so a DM can submit free text without a Markdown source.
-6. TKT-0039 builds the Brainstorm workspace; TKT-0040 builds Lore Entry with conflict-gated application.
-7. TKT-0041 makes chronology queryable; TKT-0042 builds the timeline view on top of it.
-8. TKT-0043 closes the failed-plan review-queue invariant gap; TKT-0044 adds the date-precision vocabulary deferred from TKT-0030.
-## Milestone 1: trustworthy librarian
+- **TKT-0137 activation**: the promotion purpose needs Sean's receipted activation in Settings (AI models) and a fresh go for real-data runs; the success bar is recall for consideration, not top-rank precision.
+- **TKT-0099 remainder**: @mention queueing in composers; conflict surfacing in creation review (rides with 0142).
+- Ready when picked up: **TKT-0135** (last vocabulary-implementation tail), **TKT-0130** (retrieval chronology), **TKT-0119** (responsive strategy), **TKT-0100/0101** (dictionary + mentions, carrying the recorded rulings), **TKT-0042** (timeline), **TKT-0043** (failed-plan review queue — a live AGENTS.md invariant awaiting its turn).
+- **Parked with the graph ruling (2026-09-14: promising, not fully ready for a real test; revisit after the DB-completeness front settles)**: TKT-0094/0095 umbrellas and TKT-0096/0103/0104/0105/0107.
 
-- Private TrueNAS Compose stack.
-- Campaign Core skeleton and migrations.
-- Windmill Community Edition and local CLI deployment.
-- Read-only, repeatable Markdown importer.
-- Source hashing, identity matching, and import receipts.
-- Structured entities, claims, relationships, sources, and provenance.
-- Lexical retrieval baseline and exact citations.
-- Canon-versus-planning filters.
-- Full-code React shell and grounded `/ask` experience.
+## Completed foundations (historical context)
 
-Success: the system retrieves correct information without treating brainstorm or preparation as observed canon.
+- **Trustworthy librarian**: TrueNAS Compose stack, Campaign Core + migrations, read-only importer with immutable receipts, structured entities/claims/sources/provenance, lexical retrieval with exact citations, live evidence import, exact proposal/approval/application commands, the first scoped live promotion with grounded retrieval proof.
+- **Planning workspace and direct capture**: OpenRouter provider with controlled model profiles, grounded extraction harness, source browser, session-note direct capture with @mentions, campaign clock, the chronology walk (45 sessions dated).
+- **Identity and presentation arcs**: identity review (281 decisions, 118 identities), faction roles and membership, three-layer presentation (ADR-0015), editable pages with one guarded lifecycle (ADR-0016), domain vocabulary declaration (ADR-0017, implemented via 0132–0134), Dossier curation, conflict surface v1 (0097), the life-status dimension, AI prose writer + async drafting + editable prompts, toasts/Log bus, glossary Help page.
+- **The pipeline arc**: all four ADR-0018 surfaces, the Phase 2 Migrations campaign surface with the qualified-entity audit, attribute minting, `::` breakpoints + autosave, Document/Entity alignment, the AI promotion assistant.
+- **Session support, as built**: live session runs, encounter progress and table notes, session-note capture into reviewed statements, and the campaign calendar. (The original milestone's "automatic unambiguous updates with receipts" was superseded by mandatory review; the retcon comparison workflow exists narrowly via 0097 and generalizes via 0141; the failed-plan queue remains TKT-0043.)
 
-## Milestone 2: planning workspace
+## Future ambitions still standing (unstarted, from the original milestones)
 
-- Two-panel Brainstorm and Lore Entry interface.
-- Continuously refreshed supporting and contradictory context.
-- Versioned proposals with exact affected records.
-- Scoped approval, rejection, and promotion receipts.
-- Initial continuity checks.
-- Direct audio upload, transcript preservation, and Audio Brainstorm synthesis.
-
-## Milestone 3: session support
-
-- Session preparation.
-- Encounter runner and requested read-alouds.
-- Dedicated Real Play environment.
-- Automatic unambiguous updates with receipts.
-- Retcon and timing comparison workflow.
-- Manicured near-verbatim session logs.
-- Failed-plan review queue.
-
-## Milestone 4: deliverables and richer model
-
-- Typed relationships and richer chronology.
-- Versioned deliverable framework.
-- Foundry VTT export proof of concept.
-- Optional campaign calendar.
-- Deeper Cognee integration if testing shows value.
-- Google Recorder or intermediary connector after access verification.
+- Audio upload, transcript preservation, and Audio Brainstorm synthesis.
+- The fuller Real Play environment polish: requested encounter read-alouds (creative generation stays opt-in per the invariants).
+- Foundry VTT export proof of concept; Google Recorder or an intermediary connector after access verification.
+- Deeper knowledge-graph integration if the parked evaluation track ever shows value.
 
 ## Cutover principle
 
-The legacy system remains active until the replacement reaches feature and reliability parity. Development imports are one-way and incremental. Final cutover requires a brief legacy-write freeze, final delta import, parity checks, backup, and rollback plan.
+The legacy system remains active until the replacement reaches feature and reliability parity. Development imports are one-way and incremental. Final cutover requires a brief legacy-write freeze, final delta import, parity checks, backup, and rollback plan. Separately, in-app legacy behavior stays available behind Settings until its replacement proves out in real use, then retires (the phase-1 Migration wizard is shelved behind its flag pending TKT-0145's re-home); nothing canonical is deleted in a cutover — superseded material stays queryable in revision history.

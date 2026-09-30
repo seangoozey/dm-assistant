@@ -1,12 +1,12 @@
 ---
 id: TKT-0139
 title: Define the Qualified Entity standard — the bar every library entity must clear
-status: backlog
+status: done
 priority: P2
 milestone: trustworthy-librarian
 depends_on: []
 created: 2026-09-21
-updated: 2026-09-21
+updated: 2026-09-28
 ---
 
 # TKT-0139: Define the Qualified Entity standard — the bar every library entity must clear
@@ -62,3 +62,7 @@ Shipped with the spec:
 - **Live first run**: 120 entities — 53 qualified, 67 unqualified (65× Q1 zero-claims, 6× Q6 retired vocabulary values; sample: Raven King, Far Realm Entity, Ruh... and Catlantis on vocabulary). The Migration→Seeded distance is now a number.
 
 Remaining in 0139: none — definition, vocabulary, and machine-checkable proof all delivered. Mark ready for close review.
+
+## Closed 2026-09-28
+
+Spec ACCEPTED with all five rulings (2026-09-21); the standard shipped (`docs/product/qualified-entity.md`), the audit endpoint computes it live, and the glossary entry landed with the test-enforced registry rule. The audit's pending criteria (Q3, Q5) are tracking items, not open standard work: Q3 flips with TKT-0138, Q5 flips with 0138's fold-in (minting itself delivered as TKT-0143).

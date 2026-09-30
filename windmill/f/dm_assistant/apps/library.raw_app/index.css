@@ -6,6 +6,12 @@
   font-family: "Manrope", sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
+  /* Agreement semantics (TKT-0137, user ruling 2026-09-21): named tokens,
+   * never bare colors. Green = system + AI agree; blue = the deterministic
+   * system's value; orange = an AI suggestion awaiting the DM's decision. */
+  --agreement-consensus: #3d7a4f;
+  --agreement-system: #3f6e8e;
+  --agreement-ai: #b0611d;
 }
 
 * { box-sizing: border-box; }
@@ -1091,6 +1097,20 @@ main.page-settings { width: calc(100% - 24px); max-width: 860px; display: grid; 
 .promotion-state select { border: 1px solid #c9c3b5; border-radius: 4px; background: #f8f5ec; color: #5f4335; font: 600 11px "DM Mono", monospace; padding: 2px 4px; }
 .promotion-state-fixed { font: 600 10px "DM Mono", monospace; color: #a08b7a; }
 .promotion-consequence { color: #82533a; font-weight: 600; }
+/* Agreement coloring (TKT-0137): the system's and the AI's values co-display
+ * in the row; the DM's pick wins. Named tokens, never bare colors. */
+.promotion-consequence.agreement-consensus { color: var(--agreement-consensus); }
+.promotion-consequence.agreement-system { color: var(--agreement-system); }
+.promotion-ai-note { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; font-size: 11px; color: var(--agreement-ai); background: #faf3e6; border: 1px solid #e8d3ae; border-radius: 4px; padding: 6px 10px; }
+/* Description dedup (TKT-0137): the system's own flag is blue, consensus green. */
+.promotion-ai-note.system { color: var(--agreement-system); background: #edf3f7; border-color: #c5d7e3; }
+.promotion-ai-note.consensus { color: var(--agreement-consensus); background: #edf5ee; border-color: #c3dcc9; }
+.promotion-ai-note.system .promotion-ai-actions .text-button,
+.promotion-ai-note.consensus .promotion-ai-actions .text-button { color: inherit; }
+.promotion-ai-note b { font-weight: 600; }
+.promotion-ai-material { color: #6b6459; font-family: "Libre Caslon Display", serif; font-size: 12.5px; }
+.promotion-ai-actions { margin-left: auto; display: inline-flex; gap: 8px; }
+.promotion-ai-actions .text-button { color: var(--agreement-ai); }
 .promotion-provenance { color: #a08b7a; font: 10px "DM Mono", monospace; }
 .promotion-conflict { margin: 0; color: #81442c; font-size: 12px; background: #f8ebe5; border: 1px solid #d8b5a8; border-radius: 4px; padding: 6px 10px; }
 .promotion-conflict-cleared { margin: 0; color: #6b6459; font-size: 11px; }
@@ -1099,6 +1119,19 @@ main.page-settings { width: calc(100% - 24px); max-width: 860px; display: grid; 
 
 /* TKT-0099 fixes: owner title + Truth State chip on Lore evidence items. */
 .page-lore .lore-evidence-owner { font: 600 10px "DM Mono", monospace; color: #82533a; letter-spacing: .02em; }
+
+/* TKT-0137: AI promotion suggestions in the Lore working view — a
+ * wand-marked suggestions block above the review, plus the orange
+ * suggestion chip on Consider rows for the Link pre-sort. */
+.lore-suggestions { border: 1px solid #e8d3ae; border-radius: 8px; background: #fdf9ef; padding: 14px 16px; display: grid; gap: 10px; margin: 14px 0; }
+.lore-suggestions > header { display: grid; gap: 2px; }
+.lore-suggestions > header span { display: inline-flex; align-items: center; gap: 6px; font: 700 9px "DM Mono", monospace; text-transform: uppercase; letter-spacing: .12em; color: var(--agreement-ai); }
+.lore-suggestions > header h4 { margin: 0; font-family: "Libre Caslon Text", serif; font-size: 15px; color: #2e2a24; }
+.lore-suggestion-row { display: grid; gap: 6px; border-top: 1px solid #efe4cd; padding-top: 10px; }
+.lore-suggestion-row .lore-evidence-header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 11px; }
+.lore-suggestion-row .lore-evidence-header .text-button { color: var(--agreement-ai); }
+.ai-suggestion-chip { background: #faf3e6; border: 1px solid #e8d3ae; color: var(--agreement-ai); display: inline-flex; align-items: center; gap: 4px; }
+.ai-suggestion-basis { color: #6b6459; font-family: "Libre Caslon Display", serif; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 420px; }
 
 /* TKT-0099 Lore workspace overhaul (2026-09-21): Brainstorm-style two-column
    workspace — main working file left, evidence aside right with search and a
@@ -1149,13 +1182,6 @@ main.page-settings { width: calc(100% - 24px); max-width: 860px; display: grid; 
 
 /* Phase 2 migrations page. */
 .page-migration2 { display: grid; gap: 18px; }
-
-/* Q1 gather lane on the Phase 2 page. */
-.qualified-gather { border: 1px solid #cbc5b7; border-radius: 8px; background: #fffefa; padding: 16px 18px; display: grid; gap: 10px; margin-top: 14px; }
-.qualified-gather header { display: flex; align-items: baseline; gap: 10px; }
-.qualified-gather header span { font: 600 9px "DM Mono", monospace; text-transform: uppercase; letter-spacing: .1em; color: #84513b; }
-.qualified-gather h4 { margin: 0; font-family: "Libre Caslon Text", serif; font-size: 16px; color: #2e2a24; }
-.qualified-gather header .text-button { margin-left: auto; }
 
 /* Step 1 — Assign Ownership (document-exclusive claims). */
 .qualified-step1 { border: 1px solid #cbc5b7; border-radius: 8px; background: #fffefa; padding: 16px 18px; display: grid; gap: 10px; }

@@ -1,13 +1,17 @@
 ---
 id: TKT-0096
 title: Evaluate Cognee and graph retrieval backends against shared contract
-status: in-progress
+status: backlog
 priority: P1
 milestone: shared-campaign-knowledge
 depends_on: [TKT-0094]
 created: 2026-09-06
 ---
 
+
+## The decision-track framing (ruling 2026-09-28)
+
+Sean's ruling: **the graph service is foundational to the completion of this project** (see TKT-0094, blocked on the final infrastructure/implementation decision). **Role on the track:** Status of this ticket's own work: corpus runs COMPLETE (judgments confirmed, ledger $0.503758); the evaluation itself is done — what remains under this umbrella is the DECISION, which belongs to 0105 once 0103 exists. This ticket is part of the DECISION TRACK that produces that decision: 0096 (this ticket) + 0103 (build the clean index — the Postgres-native candidate) + 0104 (native-backend comparison) feed 0105 (the call). The 2026-09-14 park stands — "revisit after the DB-completeness front settles" — with a concrete measure now: the DB front is 71/120 qualified with the 186 orphaned claims (TKT-0138) as the remaining mass. When 0138 lands, 0103 → 0105 is the unblock sequence for the foundational service (0094/0095 wait on it).
 # Outcome
 
 Measure whether Cognee or a dedicated graph backend improves the shared campaign knowledge service over the PostgreSQL baseline.

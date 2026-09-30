@@ -1,12 +1,12 @@
 ---
 id: TKT-0146
 title: Description claim breakpoints — the :: authoring notation and the candidate builder
-status: backlog
+status: done
 priority: P2
 milestone: trustworthy-librarian
 depends_on: [TKT-0136]
 created: 2026-09-24
-updated: 2026-09-24
+updated: 2026-09-28
 ---
 
 # TKT-0146: Description claim breakpoints — the `::` authoring notation and the candidate builder
@@ -61,3 +61,7 @@ The :: flow's rows had no prose offsets, so every statement sent span (0, len(ro
 ### Hotfix 3 (2026-09-24): pre-hotfix restored rows lacked spans
 
 The user's working file was saved before the span-tracking hotfix, so its restored rows had no spanStart/spanEnd — JSON.stringify omitted them and FastAPI required them. Commit now re-derives sequential spans for any row missing them (anchored on the row's first word in the prose) before sending. React 144/144; redeployed.
+
+## Closed 2026-09-28
+
+Delivered 2026-09-24 including all three live-commit hotfixes (contract-only payloads; true prose spans through regroup ops; commit-time span re-derivation for pre-hotfix autosaved rows). `::` marker-only split with NO-BREAKS fallback, regroup ops (edit/merge/split-at-caret/drop/move), prose stored verbatim with markers, and ADR-0019 autosave on its first surface. Follow-up AI breakpoint suggestions were noted as a later date; the duplicate-check assistant landed separately under TKT-0137 (Description dedup, 2026-09-27).

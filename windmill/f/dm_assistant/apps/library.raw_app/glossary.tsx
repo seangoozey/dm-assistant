@@ -223,6 +223,11 @@ export const TERMS: Record<string, GlossaryEntry> = {
     short: "The magic-wand icon marks every button that triggers a model call.",
     definition: "Any button that sends a prompt to an AI model — drafting prose, extracting claims, retrying a failed extraction — leads with the wand icon, so AI involvement is visible before you click, not after. Buttons without the wand never call a model: they file, edit, or navigate records on their own. The wand marks the trigger, not the trust: machine output is always marked machine-drafted and waits for your review.",
   },
+  "promotion-assistant": {
+    term: "Promotion assistant", category: "Workflow and audit",
+    short: "Wand-marked AI suggestions inside promotion review — suggestions, never decisions.",
+    definition: "The AI helper behind the Suggest action in the Lore workspace (TKT-0137). It reads the draft prose and the considered evidence and returns three kinds of wand-marked suggestions: restatement matches (which reviewed statements already exist as gathered claims), statement ideas (assertions the new record might establish, each with a suggested Truth State and its basis), and a Link pre-sort (evidence that is really about the new record, not merely context). Agreement coloring follows one rule: green means the system and the AI agree, blue means the deterministic system's value alone, orange means an AI suggestion awaiting your decision. Suggestions arrive excluded, carry their model and prompt version for audit, and never auto-include, gate, or commit — Stage 3 has no AI involvement at all.",
+  },
   "dossier": {
     term: "Dossier", category: "Records and truth",
     short: "The DM-curated fact cards on an entry page — promoted one claim at a time.",

@@ -6,7 +6,7 @@ priority: P2
 milestone: trustworthy-librarian
 depends_on: []
 created: 2026-09-22
-updated: 2026-09-22
+updated: 2026-09-28
 ---
 
 # TKT-0144: Brainstorm general review — unfinished works, library display, and Entity promotion
@@ -19,7 +19,7 @@ Sean's live testing (2026-09-22, the open "Wrath of Romulus" WIP): **the system 
 
 - **Unfinished works (WIP sessions)**: how open brainstorms live over time — visibility (where an open WIP surfaces: Brainstorm page, Migration page audits, Library?), aging/resurfacing (a WIP left for weeks should be findable, not lost), session count hygiene (many open sessions vs one active), and reopening/resuming flow. The Wrath of Romulus stays open deliberately as the test case.
 - **Library display**: brainstorm thought documents currently render as individual rows in the source tree (gm/brainstorming/*, each labeled with the session title → N rows for N thoughts). Rule the display: collapse thoughts under their session (one row, thought count), or hide WIP thought docs from the Library tree entirely until promoted, or another shape — the audit's collapse (one finding per session) is the precedent.
-- **Entity promotion**: review the free-surface promotion path from real use — how an unfinished session's thoughts promote (partial promotion of a WIP: promote some thoughts, keep working?), how promotion interacts with session closing, and whether WIP sessions should appear in the qualified-entities/unpromoted audits differently from abandoned ones (open-for-testing vs stalled — an aging rule may be wanted).
+- **Entity promotion**: review the free-surface promotion path from real use. FACT PINNED 2026-09-28: the current flow CLOSES THE SESSION ON ANY COMMIT ("Approve promotion · N claims + M new records", then close with the applied proposal) — partial promotion of a WIP (promote some thoughts, keep working) is genuinely impossible today, not merely unreviewed. Rulings needed: partial promotion shape, how promotion interacts with session closing, and whether WIP sessions should appear in the qualified-entities/unpromoted audits differently from abandoned ones (open-for-testing vs stalled — an aging rule may be wanted).
 - Deliverable: rulings + implementation slices; the Wrath of Romulus is the living fixture throughout.
 
 ## Out of scope
