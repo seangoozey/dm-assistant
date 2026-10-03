@@ -22,6 +22,9 @@ ADRs capture durable technical decisions and their consequences.
 - [ADR-0015: Three-layer system — canon under the hood, authored documents, derived presentation](ADR-0015-three-layer-presentation.md) — accepted (user ruling 2026-09-15)
 - [ADR-0016: Every page is editable, and edit mode has a guarded lifecycle](ADR-0016-editable-pages-guarded-lifecycle.md) — accepted (user ruling 2026-09-16)
 - [ADR-0017: Domain Vocabulary Declaration](ADR-0017-domain-vocabulary-declaration.md) — accepted (user ruling 2026-09-19)
+- [ADR-0022: The Library Reflects Every Change — no refresh required](ADR-0022-library-reflects-every-change.md) — accepted (user ruling 2026-10-02)
+- [ADR-0021: Encounters own their claims; sessions and brainstorms assign ownership at commit](ADR-0021-encounters-own-their-claims.md) — proposed (user ruling 2026-09-28, marked WIP: the ownership mechanism for encounter documents is the open part)
+- [ADR-0020: The Current Database Is the Only Working Database](ADR-0020-current-database-is-the-working-database.md) — accepted (user ruling 2026-09-28); supersedes the legacy-cutover/re-import path
 - [ADR-0019: Work Surfaces Never Lose Work](ADR-0019-work-surfaces-never-lose-work.md) — accepted (user ruling 2026-09-24)
 - [ADR-0018: The Promotion Pipeline — one Proposal → Candidate → Claim progression for every surface](ADR-0018-promotion-pipeline.md) — accepted (user ruling 2026-09-20)
 - [ADR-0001: Windmill as application infrastructure](ADR-0001-windmill-infrastructure.md) — accepted (user ruling 2026-09-28)

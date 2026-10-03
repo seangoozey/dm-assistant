@@ -14,6 +14,7 @@ class EntityKind(StrEnum):
     FACTION = "faction"
     ITEM = "item"
     EVENT = "event"
+    ENCOUNTER = "encounter"
     WORLDBUILDING = "worldbuilding"
     RULES_ELEMENT = "rules_element"
 
@@ -28,6 +29,11 @@ class EntityKindGuidance(BaseModel):
 
 ENTITY_KIND_GUIDANCE = (
     EntityKindGuidance(kind=EntityKind.NPC, label="NPC", description="A DM-controlled character."),
+    EntityKindGuidance(
+        kind=EntityKind.ENCOUNTER,
+        label="Encounter",
+        description="A table event: an authored encounter that owns its own claims (ADR-0021).",
+    ),
     EntityKindGuidance(
         kind=EntityKind.PC,
         label="PC",

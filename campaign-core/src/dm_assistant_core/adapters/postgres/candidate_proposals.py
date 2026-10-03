@@ -544,6 +544,13 @@ def _validate_claim(
     coordinates = (decision.state.value, decision.authority.value)
     if coordinates not in _ALLOWED_CLAIM_COORDINATES:
         raise CandidateProposalError("claim state and authority are not a valid pair")
+    # TKT-0148 promotion guardrail: no claim enters canon ownerless by
+    # omission — a subject is required unless the explicit no-owner choice
+    # (owner_disposition, the receipted ambient disposition) is present.
+    if decision.subject_entity_id is None and decision.owner_disposition is None:
+        raise CandidateProposalError(
+            "a claim needs its owning record — resolve the subject or choose 'no single record'"
+        )
     authority_allowed = (
         decision.authority.value in _ALLOWED_AUTHORITY_CORRECTIONS[str(candidate[3])]
     )

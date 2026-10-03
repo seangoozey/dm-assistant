@@ -22,6 +22,16 @@ Sean's live testing (2026-09-22, the open "Wrath of Romulus" WIP): **the system 
 - **Entity promotion**: review the free-surface promotion path from real use. FACT PINNED 2026-09-28: the current flow CLOSES THE SESSION ON ANY COMMIT ("Approve promotion · N claims + M new records", then close with the applied proposal) — partial promotion of a WIP (promote some thoughts, keep working) is genuinely impossible today, not merely unreviewed. Rulings needed: partial promotion shape, how promotion interacts with session closing, and whether WIP sessions should appear in the qualified-entities/unpromoted audits differently from abandoned ones (open-for-testing vs stalled — an aging rule may be wanted).
 - Deliverable: rulings + implementation slices; the Wrath of Romulus is the living fixture throughout.
 
+### Library display DELIVERED (2026-10-02, deployed, from Sean's live ruling)
+
+"Let's rename GM Planning to Brainstorms, Group all the current Brainstorm The Wrath of Romulus into a single listing, we'll need a template for it at some point. Give it an in-progress icon."
+
+- **The family renamed**: `gm/brainstorming/` is its own **"Brainstorms"** family in the Library's entries view (gm/ stragglers — campaign-bible.md, plot-threads.md — keep "GM Planning" until they migrate to Campaign, TKT-0151).
+- **One listing per brainstorm session**: the direct thought docs (`gm/brainstorming/direct/{sessionId}/{thoughtId}`) group under their session title from a new `GET /campaign/brainstorm-sessions` read (title, open state, thought count). Single-file legacy brainstorms (dated .md files) list individually. **The Wrath of Romulus = one listing, "5 thoughts."**
+- **In-progress icon**: a new `draft` RecordIcon (pencil-on-paper, stroked) marks OPEN sessions; tooltip "Open brainstorm — in progress." ADR-0022's refreshLibrary also refreshes the brainstorm sessions read.
+- **Template noted for 0144's later scope**: a dedicated brainstorm template joins the Campaign/Timeline template family when picked up.
+- React 93/93 (the grouping + icon + family split + gm/ stragglers test); backend brainstorm tests green.
+
 ## Out of scope
 
 - The fixed audit double-count (already collapsed, same day).

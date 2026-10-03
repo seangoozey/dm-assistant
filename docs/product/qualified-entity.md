@@ -39,7 +39,7 @@ A Description is authored prose for *reading* (ADR-0015 layer 2) — it is not p
 
 ### Derived record types (ruling 2026-09-21)
 
-Plans, Encounters, Notes, and the like are not Entities — an Entity is the structured representation of an Identity. They may be extended or derived versions of an Entity. **For the sake of completing migration: the Qualified Entity bar is assumed to be the floor of these types** — each must at least clear this standard, and where a type needs more (a plan's lifecycle and evidence spans, an encounter's notes), the type extends upward from the floor.
+Plans, Notes, and the like are not Entities — an Entity is the structured representation of an Identity. *Amended 2026-09-28 (ADR-0021): Encounters ARE Entities (kind `encounter`) — a table event is an identity: authored document, participants as mentions, outcomes as owned claims. The Timeline is likewise a unique event Entity — it CAN own date records (its own document's history) while dating elsewhere is carried by DATE MENTIONS for viewing, ownership untouched (TKT-0042).* They may be extended or derived versions of an Entity. **For the sake of completing migration: the Qualified Entity bar is assumed to be the floor of these types** — each must at least clear this standard, and where a type needs more (a plan's lifecycle and evidence spans, an encounter's notes), the type extends upward from the floor.
 
 ### The Migration → Seeded arc
 

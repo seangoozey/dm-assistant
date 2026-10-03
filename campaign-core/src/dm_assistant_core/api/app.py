@@ -186,6 +186,11 @@ from dm_assistant_core.application.claim_reconciliation import (
     CorrectClaimCommand,
     ReplaceClaimCommand,
 )
+from dm_assistant_core.application.authored_encounters import (
+    EncounterDocumentCommand,
+    EncounterDocumentReceipt,
+    EncounterDocumentService,
+)
 from dm_assistant_core.application.direct_capture import (
     SessionNoteCaptureCommand,
     SessionNoteCaptureReceipt,
@@ -277,6 +282,26 @@ class UpdatePCProfileRequest(BaseModel):
 class DeleteSessionRunNoteResponse(BaseModel):
     note_id: UUID
     deleted: bool = True
+
+
+class MintEncounterEntityCommand(BaseModel):
+    """Mint an encounter entity and assign its orphaned claims (ADR-0021)."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    name: str = Field(min_length=1, max_length=200)
+    claim_ids: tuple[UUID, ...] = Field(min_length=1)
+    # `encounter` is the default (ADR-0021); the Timeline mints as `event`
+    # (the unique-event amendment).
+    kind: str = Field(default="encounter", pattern=r"^(encounter|event)$")
+    idempotency_key: str = Field(min_length=1)
+
+
+class OwnerDispositionCommand(BaseModel):
+    """The explicit no-owner choice for an existing orphaned claim."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    claim_id: UUID
+    reason: str = Field(min_length=1, max_length=500)
 
 
 def create_app(
@@ -382,6 +407,7 @@ def create_app(
             _EntityNameLookup(PostgresDatabase(active_settings.database_dsn)),
         )
     active_direct_capture = SessionNoteCaptureService(active_imports, active_clock)
+    active_encounter_documents = EncounterDocumentService(active_imports)
     active_brainstorms = brainstorms or BrainstormService(
         PostgresBrainstormRepository(PostgresDatabase(active_settings.database_dsn)),
         active_imports,
@@ -451,6 +477,23 @@ def create_app(
     active_exclusive_claims = ExclusiveClaimsService(
         PostgresExclusiveClaimsRepository(PostgresDatabase(active_settings.database_dsn))
     )
+    from dm_assistant_core.adapters.postgres.orphaned_claims import (
+        PostgresOrphanedClaimsRepository,
+    )
+    from dm_assistant_core.application.orphaned_claims import OrphanedClaimsService
+    active_orphan_claims_repository = PostgresOrphanedClaimsRepository(
+        PostgresDatabase(active_settings.database_dsn)
+    )
+    active_orphaned_claims = OrphanedClaimsService(active_orphan_claims_repository)
+    from dm_assistant_core.application.owner_suggestions import OwnerSuggestionService
+    active_owner_suggestions = OwnerSuggestionService(active_orphan_claims_repository)
+    from dm_assistant_core.adapters.postgres.orphan_dispositions import (
+        OrphanDispositionError,
+        PostgresOrphanDispositionRepository,
+    )
+    active_orphan_dispositions = PostgresOrphanDispositionRepository(
+        PostgresDatabase(active_settings.database_dsn)
+    )
     active_unpromoted_audit = UnpromotedAuditService(
         PostgresUnpromotedAuditRepository(PostgresDatabase(active_settings.database_dsn))
     )
@@ -471,7 +514,10 @@ def create_app(
         PromotionError,
         PromotionService,
     )
-    from dm_assistant_core.application.identity_gaps import CreateEntityDecision
+    from dm_assistant_core.application.identity_gaps import (
+        CorrectCanonicalNameDecision,
+        CreateEntityDecision,
+    )
 
     class _IdentityEntityCreator:
         """Adapt the identity-queue's receipted, idempotent create for the
@@ -947,6 +993,26 @@ def create_app(
         except (ImportRejectedError, ValueError) as error:
             raise HTTPException(status_code=409, detail=str(error)) from error
 
+    @app.post(
+        "/capture/encounters",
+        response_model=EncounterDocumentReceipt,
+        tags=["capture"],
+    )
+    def capture_encounter_document(
+        command: EncounterDocumentCommand,
+        requester_role: Annotated[RequesterRole, Query()] = RequesterRole.DM,
+    ) -> EncounterDocumentReceipt:
+        """Author an encounter document (ADR-0021): the encounter's record,
+        filed as authored evidence with NO statement extraction — claims
+        promote through reviewed surfaces and are owned by the encounter
+        once that mechanism lands. Session-independent."""
+        if requester_role is not RequesterRole.DM:
+            raise HTTPException(status_code=403, detail="encounter authoring is DM-only")
+        try:
+            return active_encounter_documents.write(command)
+        except (ImportRejectedError, ValueError) as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+
     class CampaignDateSetting(BaseModel):
         """DM-set current in-game date with an optional reason (TKT-0117)."""
 
@@ -1054,6 +1120,129 @@ def create_app(
         if requester_role is not RequesterRole.DM:
             raise HTTPException(status_code=403, detail="the gather is DM-only")
         return active_exclusive_claims.gather().model_dump(mode="json")
+
+    @app.get(
+        "/campaign/brainstorm-sessions",
+        tags=["operations"],
+    )
+    def list_brainstorm_sessions(
+        requester_role: Annotated[RequesterRole, Query()] = RequesterRole.DM,
+    ) -> dict:
+        """The Library's Brainstorms grouping read (TKT-0144 display ruling):
+        one row per brainstorm session — title, open state, thought count."""
+        if requester_role is not RequesterRole.DM:
+            raise HTTPException(status_code=403, detail="the brainstorm list is DM-only")
+        return {"sessions": [
+            {"session_id": str(s.session_id), "title": s.title,
+             "open": s.open, "thought_count": s.thought_count}
+            for s in active_brainstorms.list_sessions()
+        ]}
+
+    @app.get(
+        "/campaign/orphaned-claims",
+        tags=["operations"],
+    )
+    def get_orphaned_claims(
+        requester_role: Annotated[RequesterRole, Query()] = RequesterRole.DM,
+    ) -> dict:
+        """The orphaned-claims review list (TKT-0138): current subject-less
+        claims with evidence paths and deterministic suggested owners —
+        co-mention links first, then name-in-text matches. Read-only."""
+        if requester_role is not RequesterRole.DM:
+            raise HTTPException(status_code=403, detail="the orphan review is DM-only")
+        return active_orphaned_claims.gather().model_dump(mode="json")
+
+    @app.get(
+        "/campaign/owner-suggestions",
+        tags=["operations"],
+    )
+    def get_owner_suggestions(
+        text: str,
+        limit: int = 3,
+        requester_role: Annotated[RequesterRole, Query()] = RequesterRole.DM,
+    ) -> dict:
+        """Deterministic owner suggestions for a statement/claim text (TKT-0148):
+        canonical names and aliases matched word-boundary, longest-first. The
+        preselection for the reviewer's subject decision — never authoritative."""
+        if requester_role is not RequesterRole.DM:
+            raise HTTPException(status_code=403, detail="owner suggestions are DM-only")
+        if not text.strip():
+            return {"text": text, "suggestions": []}
+        return active_owner_suggestions.suggest(text, max(1, min(limit, 8))).model_dump(mode="json")
+
+    @app.post(
+        "/claims/{claim_id}/owner-disposition",
+        tags=["claims"],
+    )
+    def dispose_claim_owner(
+        request: OwnerDispositionCommand,
+        claim_id: Annotated[UUID, Path()],
+        requester_role: Annotated[RequesterRole, Query()] = RequesterRole.DM,
+    ) -> dict:
+        """The receipted "no owner needed" choice for an orphaned claim
+        (TKT-0138): ambient history with no owning record leaves the review
+        by explicit, reasoned decision — never deletion, never invention."""
+        if requester_role is not RequesterRole.DM:
+            raise HTTPException(status_code=403, detail="owner dispositions are DM-only")
+        if request.claim_id != claim_id:
+            raise HTTPException(status_code=409, detail="disposition target does not match path")
+        try:
+            return active_orphan_dispositions.dispose(claim_id, request.reason)
+        except OrphanDispositionError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+
+    @app.post(
+        "/campaign/encounter-entities",
+        tags=["operations"],
+    )
+    def mint_encounter_entity(
+        command: MintEncounterEntityCommand,
+        requester_role: Annotated[RequesterRole, Query()] = RequesterRole.DM,
+    ) -> dict:
+        """Mint an encounter Entity (kind ``encounter``) and assign its
+        orphaned claims to it in one reviewed action (ADR-0021 / TKT-0138's
+        encounter slice): the identity-queue's receipted idempotent create,
+        then receipted initial attributions — provenance untouched."""
+        if requester_role is not RequesterRole.DM:
+            raise HTTPException(status_code=403, detail="encounter minting is DM-only")
+        from dm_assistant_core.application.claim_reattribution import ReattributeClaim
+
+        try:
+            receipt = active_identity_queue.create_entity(
+                CreateEntityDecision(
+                    surface=command.name.strip(),
+                    entity_kind=command.kind,
+                    idempotency_key=f"{command.idempotency_key}:entity",
+                )
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+        entity_id = getattr(receipt, "entity_id", None)
+        if entity_id is None:
+            raise HTTPException(status_code=500, detail="entity creation returned no id")
+        assigned: list[str] = []
+        errors: list[str] = []
+        for claim_id in command.claim_ids:
+            try:
+                active_claim_reattribution.reattribute(
+                    ReattributeClaim(
+                        claim_id=claim_id,
+                        new_entity_id=entity_id,
+                        reason=f"Encounter entity mint: assigned to {command.name.strip()} (ADR-0021)",
+                    )
+                )
+                assigned.append(str(claim_id))
+            except ValueError as error:
+                if "already belongs" in str(error):
+                    assigned.append(str(claim_id))
+                else:
+                    errors.append(f"{claim_id}: {error}")
+        return {
+            "entity_id": str(entity_id),
+            "entity_name": command.name.strip(),
+            "claims_assigned": len(assigned),
+            "move_errors": errors,
+        }
 
     @app.get(
         "/campaign/qualified-entities",
@@ -1843,6 +2032,25 @@ def create_app(
             raise HTTPException(status_code=403, detail=str(error)) from error
         except IdentityQueueError as error:
             raise HTTPException(status_code=409, detail=str(error)) from error
+
+    @app.post(
+        "/identity/decisions/correct-name",
+        tags=["identity"],
+    )
+    def identity_correct_name(
+        request: CorrectCanonicalNameDecision,
+        requester_role: Annotated[RequesterRole, Query()] = RequesterRole.DM,
+    ) -> IdentityDecisionReceipt:
+        """Receipted canonical-name correction: the old name survives as an
+        alias (surfaces keep resolving); the decision is on the audit."""
+        try:
+            _identity_dm(requester_role)
+            return active_identity_queue.correct_canonical_name(request)
+        except PermissionError as error:
+            raise HTTPException(status_code=403, detail=str(error)) from error
+        except IdentityQueueError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+
 
     @app.post("/identity/decisions/revert",
               response_model=IdentityDecisionReceipt, tags=["identity"])

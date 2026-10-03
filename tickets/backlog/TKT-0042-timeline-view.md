@@ -21,7 +21,16 @@ The canonical timeline (including BCE content) is viewable as a structured, orde
 
 Read `docs/decisions/ADR-0007-campaign-chronology.md`, `docs/product/vision.md`, and TKT-0041.
 
-## Scope
+## Ruling enrichment (ADR-0021, 2026-09-28): the Timeline is a unique event Entity
+
+Sean's rulings (2026-09-28, refined): the Timeline is a UNIQUE event — all historical lore — with a dedicated document template. REFERENCE FIRST: it is not an ownership absorber. Dates everywhere are tagged as MENTIONS; the Timeline picks up date-mentioned claims for VIEWING with ownership left alone; it CAN own date records — its own document's history (the 36 `lore/timeline.md` orphans route to its ownership) — but dated claims elsewhere stay owned by their entities and merely appear in the view. Scope additions beyond the original browsing view:
+
+- **The Timeline Entity**: minted once (its kind ruled at build time), owning its document's historical records — the 36 timeline.md orphans (TKT-0138's timeline slice).
+- **Date mentions**: the recognition machinery (0100/0101) tags dates as mention targets wherever prose is captured; a date-mentioned claim enters the timeline view at that date. Complements structured campaign dates (the chronology fields claims already carry).
+- **A dedicated document template with REFERENCE VIEWING** (the templated-presentation system, ADR-0015): renders owned records AND referenced dated claims from across the library, ordered by campaign date (BCE/CE, approximate, era-level) — the template IS the ordered view.
+- Kind registry + glossary entry land with the build (test-enforced vocabulary rule).
+
+## Scope (original)
 
 - A retrieval/browsing view that orders events by campaign date using the chronology model.
 - Rendering of BCE, CE, approximate, and era-level dates.

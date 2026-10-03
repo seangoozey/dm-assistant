@@ -53,6 +53,9 @@ class QualifiedAuditResult(BaseModel):
     qualified_count: int
     unqualified: tuple[EntityQualification, ...]
     pending_criteria: tuple[str, ...]
+    # Global computed criteria (TKT-0138 close, 2026-10-02): campaign-level
+    # checks that belong to no single entity — Q3 ownership and Q5 minting.
+    global_criteria: tuple[CriterionResult, ...] = ()
 
 
 class QualifiedAuditRepository(Protocol):
@@ -64,11 +67,11 @@ class QualifiedAuditRepository(Protocol):
     def active_vocabulary_values(self) -> dict[str, set[str]]:
         """Active (non-retired) values per vocabulary name."""
 
+    def ownership_counts(self) -> tuple[int, int]:
+        """(orphaned current claims, receipted no-owner dispositions)."""
 
-_PENDING = {
-    "q3_ownership": "pending the orphan review (TKT-0138)",
-    "q5_attributes_minted": "pending claim-backed minting (TKT-0143)",
-}
+    def unminted_attribute_profiles(self) -> int:
+        """Attribute-bearing profiles with no claim binding at all."""
 
 
 class QualifiedEntityAuditService:
@@ -101,11 +104,6 @@ class QualifiedEntityAuditService:
             criteria.append(CriterionResult(
                 criterion="q2_claims_real", status="pass",
                 reason="claims carry Truth State, authority, provenance by construction"))
-
-            # Q3 / Q5 — pending their mechanisms, never silently passed.
-            for criterion, reason in _PENDING.items():
-                criteria.append(CriterionResult(
-                    criterion=criterion, status="pending", reason=reason))
 
             # Q4 — kind structural sanity: parent_location must be a location.
             if kind == "location" and parent_name and parent_kind and parent_kind != "location":
@@ -149,10 +147,36 @@ class QualifiedEntityAuditService:
                 unqualified.append(record)
             else:
                 qualified += 1
+        # Q3 / Q5 — GLOBAL computed criteria (2026-10-02): campaign-level
+        # ownership and minting health, computed live, never silently passed.
+        orphaned, disposed = self._repository.ownership_counts()
+        unminted = self._repository.unminted_attribute_profiles()
+        globals_: list[CriterionResult] = [
+            CriterionResult(
+                criterion="q3_ownership",
+                status="pass" if orphaned == 0 else "fail",
+                reason=(
+                    "every current claim has an owning record"
+                    if orphaned == 0
+                    else f"{orphaned} current claim{orphaned == 1 and '' or 's'} without an owning record "
+                         f"({disposed} dispositioned as no-owner) — the orphan review drains these"
+                ),
+            ),
+            CriterionResult(
+                criterion="q5_attributes_minted",
+                status="pass" if unminted == 0 else "fail",
+                reason=(
+                    "every attribute-bearing profile has claim-backed bindings"
+                    if unminted == 0
+                    else f"{unminted} attribute-bearing profile{unminted == 1 and '' or 's'} with no claim binding"
+                ),
+            ),
+        ]
         return QualifiedAuditResult(
             audited_at=datetime.now(UTC),
             total_entities=total,
             qualified_count=qualified,
             unqualified=tuple(unqualified),
-            pending_criteria=tuple(_PENDING.values()),
+            pending_criteria=(),
+            global_criteria=tuple(globals_),
         )

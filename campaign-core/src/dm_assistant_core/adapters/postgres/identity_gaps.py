@@ -220,6 +220,31 @@ class PostgresIdentityQueueRepository:
                                 {"linked_claims": linked,
                                  "alias_kind": "misspelling" if decision_kind == "mark_misspelling" else "queue_decision"})
 
+    def correct_canonical_name(self, decision) -> "IdentityDecisionReceipt":
+        """Receipted canonical-name correction through the migration-owned
+        write (0076): the entity row updates, the old name survives as an
+        alias so surfaces keep resolving, the decision is on the audit."""
+        new_name = decision.new_name.strip()
+        normalized = normalize_surface(new_name)
+        with self._database.connection() as connection:
+            replay = self._replay(connection, decision.idempotency_key)
+            if replay:
+                return replay
+            try:
+                row = connection.execute(
+                    "SELECT correct_identity_canonical_name(%s, %s)",
+                    (decision.entity_id, new_name),
+                ).fetchone()
+            except psycopg.DatabaseError as error:
+                if error.sqlstate == "P0001":
+                    raise IdentityQueueError(str(error).splitlines()[0]) from error
+                raise
+            payload = row[0]
+            return self._record(connection, "correct_name", new_name, normalized,
+                                decision.entity_id, decision.idempotency_key,
+                                {"old_name": payload["old_name"],
+                                 "new_name": payload["new_name"]})
+
     def create_entity(self, decision: CreateEntityDecision) -> IdentityDecisionReceipt:
         """Entity creation (optionally merging related surfaces) stays behind
         the database's auditable write boundary."""

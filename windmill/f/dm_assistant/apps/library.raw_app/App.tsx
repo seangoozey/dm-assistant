@@ -63,6 +63,9 @@ import type {
   UnpromotedAuditResult,
   QualifiedAuditResult,
   ExclusiveClaimsResult,
+  OrphanedClaimsResult,
+  EncounterGroup,
+  OwnerSuggestion,
   EntityDocumentClaims,
 } from "./campaignClient";
 import type { JobPlatform, JobSnapshot } from "./jobPlatform";
@@ -262,7 +265,8 @@ function ClaimAssertion({ claim, contextName }: { claim: SourceDocumentClaim; co
   return <>{ownerTitle}<p>{summary}</p><details className="full-assertion"><summary>Read full canonical assertion</summary><p>{claim.assertion_text}</p></details></>;
 }
 
-function RecordIcon({ kind }: { kind: "edit" | "source" | "hide" | "show" | "note" | "unpaged" | "page" | "records" | "dossier" }) {
+function RecordIcon({ kind }: { kind: "edit" | "source" | "hide" | "show" | "note" | "unpaged" | "page" | "records" | "dossier" | "draft" }) {
+  if (kind === "draft") return <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 3h9l3 3v15H6V3Z" /><path d="M13.5 16.5 16 9l3 3-7.5 1.5" /><path d="m13.5 16.5-3 .9.9-3" /></svg>;
   if (kind === "dossier") return <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 3h9l3 3v15H6V3Z" /><path d="m12 8.2 1 2.3 2.5.4-1.8 1.7.4 2.5-2.1-1.1-2.1 1.1.4-2.5-1.8-1.7 2.5-.4L12 8.2Z" /></svg>;
   if (kind === "records") return <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 6h16M4 12h10M4 18h13" /><path d="M17 15l3 3-3 3" /></svg>;
   if (kind === "unpaged") return <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 3h9l3 3v15H6V3Z" strokeDasharray="3 2.6" /><path d="M9.5 11h5M9.5 15h5" strokeDasharray="2 2.4" /></svg>;
@@ -590,7 +594,7 @@ export function selectEntrySource(entry: Pick<LibraryEntrySummary, "canonical_na
   // descriptions and (transitionally) location writeups render as pages.
   const preferredRoot = ({ location: "locations/" } as Partial<Record<EntityKind, string>>)[entry.entity_kind];
   const normalizedName = entry.canonical_name.toLocaleLowerCase().replace(/['’]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
-  const nameTokens = new Set(normalizedName.split(" ").filter((token) => token.length > 2 && !["the", "of", "and", "for"].includes(token)));
+  const nameTokens = new Set(normalizedName.split(" ").filter((token) => (/^\d+$/.test(token) || token.length > 2) && !["the", "of", "and", "for"].includes(token)));
   const stemOf = (source: { path: string }) =>
     source.path.toLocaleLowerCase().split("/").pop()!.replace(/\.md$/, "").replace(/['’]/g, "");
   // Generic words a lore writeup may append to the entity's name
@@ -620,6 +624,30 @@ export function selectEntrySource(entry: Pick<LibraryEntrySummary, "canonical_na
     return [...exact].sort((left, right) => score(right) - score(left) || left.path.localeCompare(right.path))[0];
   }
   const stemTokensOf = (source: { path: string }) => distinctive(stemOf(source).split(/[^a-z0-9']+/));
+  // ADR-0021 (2026-10-02 unification): an encounter entity's page is its
+  // encounter document — ANY document of its group (directory for multi-doc
+  // dungeons, file stem otherwise; "Ishirala Tower" claims the Ishirala/
+  // docs, first by path). The exact-name flow above already honored authored
+  // pages and clean stems (the-descent.md).
+  if (entry.entity_kind === "encounter") {
+    // 1 encounter per DOCUMENT (2026-10-02): the entity's page is its own
+    // document (stem tokens ⊆ its name, digit-split — "ishirala-floor2.md"
+    // is Ishirala Floor 2's page), with the directory group as fallback for
+    // overview-style docs. First match by path wins.
+    const mine = sources.filter((source) => /^encounters\//i.test(source.path));
+    const own = mine.filter((source) => {
+      const stem = (source.path.split("/").pop() ?? "").replace(/\.md$/i, "");
+      return encounterStemTokens(stem)
+        .filter((token) => nameTokens.has(token))
+        .length > 0
+        && encounterStemTokens(stem).every((token) => nameTokens.has(token));
+    });
+    if (own.length > 0) return [...own].sort((left, right) => left.path.localeCompare(right.path))[0];
+    const byGroup = mine.filter((source) => encounterDocumentClaimed(source.path, [
+      { entry_id: "", canonical_name: entry.canonical_name, entity_kind: "encounter", aliases: [], tags: [], current_claim_count: 0, source_count: 0 },
+    ]));
+    if (byGroup.length > 0) return [...byGroup].sort((left, right) => left.path.localeCompare(right.path))[0];
+  }
   const named = sources.filter((source) => {
     const stem = stemOf(source).replace(/-/g, " ");
     if (otherEntityNames.has(stem)) return false;
@@ -892,12 +920,13 @@ function encounterCollection(document: SourceDocument): string | null {
     : null;
 }
 
-function SourceBackedFamily({ family, documents, selectedDocumentId, onSelect, onEditSession }: {
+function SourceBackedFamily({ family, documents, selectedDocumentId, onSelect, onEditSession, brainstormSessions }: {
   family: string;
   documents: SourceDocument[];
   selectedDocumentId: string | null;
   onSelect: (document: SourceDocument) => void;
   onEditSession: (document: SourceDocument) => void;
+  brainstormSessions?: Array<{ session_id: string; title: string; open: boolean; thought_count: number }>;
 }) {
   const row = (document: SourceDocument) => <div className="source-entry-row" key={document.document_id}>
     <button className={`tree-doc canonical-entry-link ${selectedDocumentId === document.document_id ? "selected" : ""}`} onClick={() => onSelect(document)} type="button"><span className="tree-doc-name">{sourceDocumentLabel(document)}</span></button>
@@ -905,6 +934,38 @@ function SourceBackedFamily({ family, documents, selectedDocumentId, onSelect, o
   </div>;
   const sorted = [...documents].sort(sourceDocumentOrder);
   const heading = ({ "GM planning": "GM planning", Worldbuilding: "Worldbuilding sources", Session: "Sessions", Handout: "Handouts" } as Record<string, string>)[family] ?? `${family}s`;
+  // 2026-10-02 ruling: ONE listing per brainstorm session — the direct
+  // thought docs group under their session title, an in-progress (draft)
+  // icon while open, thought count beside. Single-file legacy brainstorms
+  // (gm/brainstorming/*.md) list individually.
+  if (family === "Brainstorms") {
+    const sessionDocs = new Map<string, SourceDocument[]>();
+    const singles: SourceDocument[] = [];
+    for (const document of sorted) {
+      const match = document.path.match(/^gm\/brainstorming\/direct\/([0-9a-f-]{36})\//i);
+      if (match) {
+        const bucket = sessionDocs.get(match[1]) ?? [];
+        bucket.push(document);
+        sessionDocs.set(match[1], bucket);
+      } else singles.push(document);
+    }
+    const sessionById = new Map((brainstormSessions ?? []).map((session) => [session.session_id, session]));
+    return <details className="canonical-entry-group source-backed-group"><summary>Brainstorms</summary><div>
+      {singles.map(row)}
+      {Array.from(sessionDocs.entries()).map(([sessionId, docs]) => {
+        const session = sessionById.get(sessionId);
+        const label = session?.title ?? `Brainstorm ${sessionId.slice(0, 8)}`;
+        const open = session?.open ?? false;
+        return <div className="source-entry-row" key={sessionId}>
+          <button className={`tree-doc canonical-entry-link ${docs.some((d) => d.document_id === selectedDocumentId) ? "selected" : ""}`} onClick={() => onSelect(docs[0])} title={open ? "Open brainstorm — in progress" : "Closed brainstorm"} type="button">
+            <span aria-hidden="true" className="tree-doc-flag">{open && <RecordIcon kind="draft" />}</span>
+            <span className="tree-doc-name">{label}</span>
+            <small> · {docs.length} thought{docs.length === 1 ? "" : "s"}</small>
+          </button>
+        </div>;
+      })}
+    </div></details>;
+  }
   if (family !== "Encounter") return <details className="canonical-entry-group source-backed-group"><summary>{heading}</summary><div>{sorted.map(row)}</div></details>;
   const collections = new Map<string, SourceDocument[]>();
   sorted.forEach((document) => {
@@ -920,7 +981,56 @@ function SourceBackedFamily({ family, documents, selectedDocumentId, onSelect, o
 
 function pathEntryType(path: string): string {
   const root = path.split("/")[0];
-  return ({ pcs: "PC", npcs: "NPC", encounters: "Encounter", locations: "Location", lore: "Worldbuilding", gm: "GM planning", handouts: "Handout", sessions: "Session" } as Record<string, string>)[root] ?? "Source";
+  if (root === "gm") {
+    // 2026-10-02 ruling: the brainstorm material is its own family.
+    return path.startsWith("gm/brainstorming/") ? "Brainstorms" : "GM planning";
+  }
+  return ({ pcs: "PC", npcs: "NPC", encounters: "Encounter", locations: "Location", lore: "Worldbuilding", handouts: "Handout", sessions: "Session" } as Record<string, string>)[root] ?? "Source";
+}
+
+// One Encounters block (ruling 2026-10-02): an encounter document is CLAIMED
+// by the encounter entity whose name carries its distinctive tokens — per
+// DOCUMENT (1 encounter per floor: "ishirala-floor2.md" claims to
+// "Ishirala Floor 2"), with the directory group as fallback ("overview.md"
+// claims to "Return To The Monastery"). Claimed documents render through
+// their entity; only unclaimed ones keep the document family.
+function encounterStemTokens(value: string): string[] {
+  return value
+    .replace(/[_-]+/g, " ")
+    .replace(/([a-z])([0-9])/gi, "$1 $2")
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    // Digits stay even though short — "floor 2" vs "floor 3" is exactly the
+    // distinction between sibling floor encounters.
+    .filter((token) => (/^\d+$/.test(token) || token.length > 2) && !["the", "of", "and", "for", "overview"].includes(token));
+}
+
+function encounterNameTokens(name: string): Set<string> {
+  return new Set(name.toLowerCase().replace(/['’]/g, "").split(/[^a-z0-9]+/).filter((token) => token.length > 1));
+}
+
+function encounterDocumentClaimed(path: string, entries: LibraryEntrySummary[]): boolean {
+  if (!/^encounters\//i.test(path)) return false;
+  const parts = path.slice("encounters/".length).toLowerCase().split("/");
+  const stem = (parts[parts.length - 1] || "").replace(/\.md$/i, "");
+  const parent = parts.length > 1 ? parts[0] : "";
+  const stemTokens = encounterStemTokens(stem);
+  const parentTokens = encounterStemTokens(parent);
+  const candidates = entries.filter((entry) => entry.entity_kind === "encounter");
+  const subset = (need: string[], nameTokens: Set<string>) => need.length > 0 && need.every((token) => nameTokens.has(token));
+  return candidates.some((entry) => {
+    const nameTokens = encounterNameTokens(entry.canonical_name);
+    // Per-document claim first (the floor's own encounter)…
+    if (stemTokens.length > 0 && subset(stemTokens, nameTokens)) {
+      // …unless the stem is only the shared parent name (the directory doc
+      // itself, "ishirala.md", claims nothing per-floor).
+      return !parentTokens.every((token) => stemTokens.includes(token)) || stemTokens.length > parentTokens.length;
+    }
+    // …then the group fallback (an overview-style doc under the group — its
+    // stem carries no distinctive tokens, so the parent group claims it).
+    return parentTokens.length > 0
+      && subset([...parentTokens, ...stemTokens.filter((t) => !parentTokens.includes(t))], nameTokens);
+  });
 }
 
 function isSourceBackedEntry(doc: SourceDocument): boolean {
@@ -1108,6 +1218,52 @@ function underlyingClaimId(id: string): string | null {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(underlying)
     ? underlying
     : null;
+}
+
+// TKT-0148: the owning-record decision on session statement commits (ADR-0021
+// — sessions assign ownership AT COMMIT). Preselected from deterministic
+// suggestions; the DM confirms, searches another record, or chooses the
+// explicit receipted no-owner disposition. Never subjectless by omission.
+function SubjectChoiceField({ choice, onChange, campaignClient, partyPick }: {
+  choice: { entityId: string | null; entityName: string; ambient: boolean; suggestions: OwnerSuggestion[]; searchQuery: string; searchResults: EntityIdentity[] };
+  onChange: (next: { entityId: string | null; entityName: string; ambient: boolean; suggestions: OwnerSuggestion[]; searchQuery: string; searchResults: EntityIdentity[] }) => void;
+  campaignClient: CampaignClient;
+  partyPick?: { entityId: string; entityName: string };
+}) {
+  return <fieldset className="subject-choice" aria-label="Owning record">
+    <legend>Owning record <small>assigned at commit</small></legend>
+    {partyPick && choice.entityId !== partyPick.entityId && <button className="role-chip subject-party-pick" onClick={() => onChange({ ...choice, entityId: partyPick.entityId, entityName: partyPick.entityName, ambient: false, searchQuery: "", searchResults: [] })} type="button"><b>The Party</b> {partyPick.entityName}</button>}
+    {choice.entityId
+      ? <div className="subject-choice-resolved">
+        <span className="role-chip">→ {choice.entityName}</span>
+        <button className="text-button" onClick={() => onChange({ ...choice, entityId: null, entityName: "", ambient: false })} type="button">Change</button>
+      </div>
+      : <div className="subject-choice-open">
+        {choice.suggestions.length > 0 && <div className="subject-choice-suggested">
+          {choice.suggestions.map((suggestion) => <button className="role-chip ai-suggestion-chip" key={suggestion.entity_id} onClick={() => onChange({ ...choice, entityId: suggestion.entity_id, entityName: suggestion.entity_name, ambient: false, searchQuery: "", searchResults: [] })} type="button">{suggestion.entity_name} <small>({display(suggestion.entity_kind)})</small></button>)}
+        </div>}
+        <div className="subject-choice-search">
+          <input aria-label="Find an owning record" onChange={(event) => {
+            const query = event.target.value;
+            onChange({ ...choice, searchQuery: query, ambient: false });
+            if (query.trim().length >= 2) {
+              void campaignClient.searchEntities(query)
+                .then((results) => onChange({ ...choice, searchQuery: query, ambient: false, searchResults: results.slice(0, 6) }))
+                .catch(() => { /* manual retry by typing again */ });
+            }
+          }} placeholder="Search records…" value={choice.searchQuery} />
+          {choice.searchResults.length > 0 && <div className="mention-suggestions subject-choice-results" role="listbox">
+            {choice.searchResults.map((entity) => <button aria-selected={entity.entity_id === choice.entityId} key={entity.entity_id} onClick={() => onChange({ ...choice, entityId: entity.entity_id, entityName: entity.canonical_name, ambient: false, searchQuery: "", searchResults: [] })} role="option" type="button"><b>{entity.canonical_name}</b><span>{display(entity.entity_kind)}</span></button>)}
+          </div>}
+        </div>
+        <label className="subject-choice-ambient"><input checked={choice.ambient} onChange={(event) => onChange({
+          ...choice, ambient: event.target.checked,
+          entityId: event.target.checked ? null : choice.entityId,
+          entityName: event.target.checked ? "" : choice.entityName,
+          searchQuery: "", searchResults: [],
+        })} type="checkbox" /> No single record — ambient lore <small>(receipted; the claim files without an owner by explicit choice)</small></label>
+      </div>}
+  </fieldset>;
 }
 
 // Lore workspace evidence: a claim plus the record it belongs to. The owner
@@ -3004,6 +3160,335 @@ function LifeStatusPanel({ campaignClient }: { campaignClient: CampaignClient })
   </section>;
 }
 
+// TKT-0138 slice 1 — THE ORPHAN LIST: claims that exist with evidence and
+// provenance but no owning record (incomplete migration's invisible
+// residue). Read-only for now: see the population, with deterministic
+// suggested owners (co-mention links first, then name-in-text). The
+// assignment actions (Lore bridge, direct assign, no-owner-needed) are the
+// next slices; nothing here mutates.
+function OrphanedClaimsPanel({ campaignClient, onCanonicalChange }: { campaignClient: CampaignClient; onCanonicalChange?: () => void }) {
+  const [result, setResult] = useState<OrphanedClaimsResult | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [notice, setNotice] = useState("");
+  // Slice 2 — the drain actions (TKT-0138): one-click assign on a suggested
+  // owner (receipted initial attribution — the write path has handled the
+  // no-owner case since 0067/0068), assign-checked-to-searched-record, the
+  // receipted no-owner disposition (0073/0074), and the Lore bridge for
+  // records that don't exist yet (checked claims seed a lore item's working
+  // file, Consider-marked and ready to Link).
+  const [checked, setChecked] = useState<Record<string, boolean>>({});
+  const [busyClaim, setBusyClaim] = useState<string | null>(null);
+  const [assignQuery, setAssignQuery] = useState("");
+  const [assignResults, setAssignResults] = useState<EntityIdentity[]>([]);
+  const [noOwnerFor, setNoOwnerFor] = useState<string | null>(null);
+  const [noOwnerReason, setNoOwnerReason] = useState("");
+  const [loreName, setLoreName] = useState("");
+  const [loreOpen, setLoreOpen] = useState(false);
+  const [sentToLore, setSentToLore] = useState<Set<string>>(() => new Set());
+  // The session backlog review (0138's final slice — the pre-0148 residue):
+  // walk the session-rooted orphans sequentially with the SubjectChoiceField
+  // treatment — preselected suggestions, searchable, or the receipted ambient
+  // choice. Same UX the session reviewer gives new captures.
+  // The Party quick-pick (Sean's ruling 2026-10-02): Carpet Rollers is
+  // always one click away for session statements — looked up once on mount,
+  // independent of what the current orphan suggestions happen to contain.
+  const [partyPick, setPartyPick] = useState<{ entityId: string; entityName: string } | undefined>(undefined);
+  useEffect(() => {
+    void campaignClient.searchEntities("Carpet Rollers")
+      .then((matches) => {
+        const party = matches.find((m) => m.canonical_name === "Carpet Rollers");
+        if (party) setPartyPick({ entityId: party.entity_id, entityName: party.canonical_name });
+      })
+      .catch(() => { /* the chip is optional; search still works */ });
+  }, [campaignClient]);
+
+  const [backlogOpen, setBacklogOpen] = useState(false);
+  const [backlogIndex, setBacklogIndex] = useState(0);
+  const [backlogSubject, setBacklogSubject] = useState<{ entityId: string | null; entityName: string; ambient: boolean; suggestions: OwnerSuggestion[]; searchQuery: string; searchResults: EntityIdentity[] }>({ entityId: null, entityName: "", ambient: false, suggestions: [], searchQuery: "", searchResults: [] });
+  const sessionOrphans = useMemo(
+    () => (result?.claims ?? []).filter((c) => c.source_paths.length > 0 && c.source_paths[0].startsWith("sessions/") && !sentToLore.has(c.claim_id)),
+    [result, sentToLore],
+  );
+  const currentBacklog = sessionOrphans[backlogIndex] ?? null;
+
+  // When a statement opens, preload its suggestions and preselect the lead.
+  useEffect(() => {
+    if (!backlogOpen || !currentBacklog) return;
+    setBacklogSubject({ entityId: null, entityName: "", ambient: false, suggestions: currentBacklog.suggestions, searchQuery: "", searchResults: [] });
+    if (currentBacklog.suggestions[0]) {
+      setBacklogSubject((current) => ({ ...current, entityId: currentBacklog.suggestions[0].entity_id, entityName: currentBacklog.suggestions[0].entity_name }));
+    }
+  }, [backlogOpen, currentBacklog?.claim_id]);
+
+  const assignBacklog = async () => {
+    if (!currentBacklog || busyClaim) return;
+    if (!backlogSubject.entityId && !backlogSubject.ambient) {
+      setNotice("This statement needs its owning record — pick a subject or choose 'No single record'.");
+      return;
+    }
+    setBusyClaim("backlog");
+    setNotice("");
+    try {
+      if (backlogSubject.ambient) {
+        await campaignClient.disposeClaimOwner(currentBacklog.claim_id, "Session backlog review: ambient statement — no single owning record.");
+      } else {
+        await campaignClient.reattributeClaim(currentBacklog.claim_id, backlogSubject.entityId!,
+          `Session backlog review: assigned to ${backlogSubject.entityName} — Sean's 2026-10-02 session drain.`);
+      }
+      toast.push("success", `${backlogSubject.ambient ? "Dispositioned" : `Assigned to ${backlogSubject.entityName}`} — provenance untouched`);
+      onCanonicalChange?.();
+      setBacklogIndex((current) => current); // stay — the re-gather refreshes
+      await run();
+    } catch (cause) {
+      setNotice(cause instanceof Error ? cause.message : "The statement could not be resolved");
+      toast.push("error", cause instanceof Error ? cause.message : "The statement could not be resolved");
+    } finally { setBusyClaim(null); }
+  };
+
+
+  // Encounter group names are proposals — editable before minting (the
+  // derived name can collide with an existing identity: "Ishirala" vs
+  // "Ishi'ra'la"). Keyed by the derived name.
+  const [groupNames, setGroupNames] = useState<Record<string, string>>({});
+
+  const run = useCallback(async () => {
+    setLoading(true);
+    try {
+      setResult(await campaignClient.getOrphanedClaims());
+      setNotice("");
+    } catch (cause) {
+      setNotice(cause instanceof Error ? cause.message : "The orphan gather could not run");
+    } finally { setLoading(false); }
+  }, [campaignClient]);
+
+  const mintEncounter = async (group: EncounterGroup) => {
+    if (busyClaim) return;
+    const name = (groupNames[group.name] ?? group.name).trim();
+    if (!name) {
+      setNotice("Name the encounter before minting.");
+      return;
+    }
+    setBusyClaim("encounter:" + group.name);
+    setNotice("");
+    try {
+      const receipt = await campaignClient.mintEncounterEntity({
+        name,
+        claim_ids: group.claim_ids,
+        idempotency_key: `encounter-mint:${group.name}:${crypto.randomUUID()}`,
+      });
+      toast.push("success", `Minted ${receipt.entity_name} (encounter) — ${receipt.claims_assigned} claim${receipt.claims_assigned === 1 ? "" : "s"} assigned${receipt.move_errors.length > 0 ? ` · ${receipt.move_errors.length} failed (see Log)` : ""}`);
+      onCanonicalChange?.();
+      await run();
+    } catch (cause) {
+      setNotice(cause instanceof Error ? cause.message : "The encounter entity could not be minted");
+      toast.push("error", cause instanceof Error ? cause.message : "The encounter entity could not be minted");
+    } finally { setBusyClaim(null); }
+  };
+
+  // The 2026-09-30 ruling: page-backed orphans default to the entity their
+  // evidence document is attached to — the mechanical drain, one confirmation.
+  const assignPageBacked = async () => {
+    const pageBacked = (result?.claims ?? []).filter((c) => c.document_owner_id && !sentToLore.has(c.claim_id));
+    if (pageBacked.length === 0 || busyClaim) return;
+    setBusyClaim("page-backed");
+    setNotice("");
+    let moved = 0;
+    const errors: string[] = [];
+    for (const claim of pageBacked) {
+      try {
+        await campaignClient.reattributeClaim(claim.claim_id, claim.document_owner_id!,
+          `Orphan review: assigned to ${claim.document_owner_name} — evidenced on their page (DM-confirmed batch)`);
+        moved += 1;
+      } catch (cause) {
+        errors.push(cause instanceof Error ? cause.message : String(cause));
+      }
+    }
+    setBusyClaim(null);
+    toast.push(moved > 0 ? "success" : "error",
+      `Assigned ${moved} of ${pageBacked.length} page-backed claim${pageBacked.length === 1 ? "" : "s"} to their documents' records${errors.length > 0 ? ` — ${errors.length} failed (see Log)` : ""}`);
+    onCanonicalChange?.();
+    await run();
+  };
+
+  const assign = async (claimId: string, entityId: string, entityName: string, basis: string) => {
+    if (busyClaim) return;
+    setBusyClaim(claimId);
+    setNotice("");
+    try {
+      await campaignClient.reattributeClaim(claimId, entityId,
+        basis === "suggestion"
+          ? `Orphan review: initial attribution to ${entityName} (suggested owner, DM-confirmed)`
+          : `Orphan review: initial attribution to ${entityName} (DM-chosen record)`);
+      toast.push("success", `Assigned to ${entityName} — provenance untouched`);
+      setChecked((current) => ({ ...current, [claimId]: false }));
+      onCanonicalChange?.();
+      await run();
+    } catch (cause) {
+      setNotice(cause instanceof Error ? cause.message : "The claim could not be assigned");
+      toast.push("error", cause instanceof Error ? cause.message : "The claim could not be assigned");
+    } finally { setBusyClaim(null); }
+  };
+
+  const assignCheckedTo = async (entity: EntityIdentity) => {
+    const ids = (result?.claims ?? []).filter((c) => checked[c.claim_id] && !sentToLore.has(c.claim_id)).map((c) => c.claim_id);
+    if (ids.length === 0 || busyClaim) return;
+    setBusyClaim("batch");
+    setNotice("");
+    let moved = 0;
+    const errors: string[] = [];
+    for (const claimId of ids) {
+      try {
+        await campaignClient.reattributeClaim(claimId, entity.entity_id,
+          `Orphan review: initial attribution to ${entity.canonical_name} (DM-chosen record)`);
+        moved += 1;
+      } catch (cause) {
+        errors.push(cause instanceof Error ? cause.message : String(cause));
+      }
+    }
+    setBusyClaim(null);
+    setChecked({});
+    setAssignQuery(""); setAssignResults([]);
+    toast.push(moved > 0 ? "success" : "error",
+      `Assigned ${moved} of ${ids.length} claim${ids.length === 1 ? "" : "s"} to ${entity.canonical_name}${errors.length > 0 ? ` — ${errors.length} failed (see Log)` : ""}`);
+    onCanonicalChange?.();
+    await run();
+  };
+
+  const disposeNoOwner = async (claimId: string) => {
+    if (!noOwnerReason.trim() || busyClaim) return;
+    setBusyClaim(claimId);
+    setNotice("");
+    try {
+      await campaignClient.disposeClaimOwner(claimId, noOwnerReason.trim());
+      toast.push("success", "No owner needed — receipted disposition filed");
+      setNoOwnerFor(null); setNoOwnerReason("");
+      onCanonicalChange?.();
+      await run();
+    } catch (cause) {
+      setNotice(cause instanceof Error ? cause.message : "The disposition could not be filed");
+      toast.push("error", cause instanceof Error ? cause.message : "The disposition could not be filed");
+    } finally { setBusyClaim(null); }
+  };
+
+  const migrateCheckedToLore = () => {
+    const selected = (result?.claims ?? []).filter((c) => checked[c.claim_id] && !sentToLore.has(c.claim_id));
+    if (selected.length === 0) return;
+    const name = loreName.trim() || selected.find((c) => c.suggestions.length > 0)?.suggestions[0]?.entity_name || "";
+    if (!name.trim()) {
+      setNotice("Name the record these claims belong to — or pick a suggested owner's name.");
+      return;
+    }
+    const item = queueForLore(name, "orphan review");
+    saveLoreEvidence(item.id, {
+      claims: selected.map((c) => ({
+        claim_id: c.claim_id,
+        assertion_text: c.assertion_text,
+        state: c.state,
+        authority: c.authority,
+        source_excerpt: c.source_paths[0],
+        owner_name: undefined,
+      })),
+      linkedClaimIds: [],
+      consideredClaimIds: selected.map((c) => c.claim_id),
+    });
+    setSentToLore((current) => new Set([...current, ...selected.map((c) => c.claim_id)]));
+    setChecked({});
+    setLoreOpen(false); setLoreName("");
+    toast.push("success", `Seeded "${name}" in the Lore queue — ${selected.length} claim${selected.length === 1 ? "" : "s"} Consider-marked, ready to Link`);
+  };
+
+  return <section className="page-panel" aria-label="Orphaned claims review">
+    <h3>Orphaned claims</h3>
+    <p className="roles-explainer">Claims with evidence and provenance but no owning record — the migration's unassigned residue, invisible until now. Rows with a suggested owner are one decision away from a home; suggestions are deterministic (co-mention links first, then name-in-text), never authoritative. Assignment actions arrive with the next slices.</p>
+    <button className="secondary-button" disabled={loading} onClick={() => void run()} type="button">{loading ? "Gathering…" : result ? "Re-run gather" : "List orphaned claims"}</button>
+    {notice && <div className="notice error" role="alert">{notice}</div>}
+    {result && <p className="identity-count">{result.total_claims} orphaned claim{result.total_claims === 1 ? "" : "s"} · {result.claims_with_suggestions} with a suggested owner · actions: assign · Lore bridge · no-owner</p>}
+    {result && (result.encounter_groups?.length ?? 0) > 0 && <div className="qualified-encounter-groups" aria-label="Encounter groups">
+      <header><span>Encounters (ADR-0021)</span><h4>Mint the table event, take its claims</h4></header>
+      <p className="roles-explainer">These orphans live on encounter documents — an encounter is an Entity of its own kind that owns its claims, with mentions carrying every cross-reference. Minting creates the record (receipted) and assigns its claims in the same action; rename later if the derived name isn't right.</p>
+      {result.encounter_groups!.map((group) => <div className="lore-queue-item" key={group.name}>
+        <div className="encounter-group-main">
+          <input aria-label={"Encounter name for " + group.name} className="encounter-group-name" onChange={(event) => setGroupNames((current) => ({ ...current, [group.name]: event.target.value }))} value={groupNames[group.name] ?? group.name} />
+          <small>{group.claim_ids.length} claim{group.claim_ids.length === 1 ? "" : "s"} · {group.document_paths.length} document{group.document_paths.length === 1 ? "" : "s"}</small>
+          {group.name_available === false && <small className="inline-error">That name already resolves to an identity — edit it before minting (the encounter is its own record, distinct from the entity it's named for).</small>}
+        </div>
+        <div className="lore-item-actions">
+          <button disabled={busyClaim !== null || !(groupNames[group.name] ?? group.name).trim()} onClick={() => void mintEncounter(group)} type="button">{busyClaim === "encounter:" + group.name ? "Minting…" : "Mint & assign"}</button>
+        </div>
+      </div>)}
+    </div>}
+    {result && result.claims.length > 0 && <>
+      <div className="lore-panel-search qualified-orphan-actions" aria-label="Orphan review actions">
+        <input aria-label="Assign checked to a record" onChange={(event) => {
+          const query = event.target.value;
+          setAssignQuery(query);
+          if (query.trim().length >= 2) {
+            void campaignClient.searchEntities(query).then((results) => setAssignResults(results.slice(0, 6))).catch(() => setAssignResults([]));
+          } else setAssignResults([]);
+        }} placeholder="Search a record for the checked claims…" value={assignQuery} />
+        {assignResults.length > 0 && <div className="mention-suggestions subject-choice-results" role="listbox">
+          {assignResults.map((entity) => <button key={entity.entity_id} onClick={() => void assignCheckedTo(entity)} role="option" type="button"><b>{entity.canonical_name}</b><span>{display(entity.entity_kind)}</span></button>)}
+        </div>}
+        {sessionOrphans.length > 0 && !backlogOpen && (
+          <button className="decision-button" onClick={() => { setBacklogOpen(true); setBacklogIndex(0); }} type="button">Review session backlog ({sessionOrphans.length})</button>
+        )}
+        {(result.claims.some((c) => c.document_owner_id && !sentToLore.has(c.claim_id)))
+          ? <button className="decision-button" disabled={busyClaim !== null} onClick={() => void assignPageBacked()} type="button">{busyClaim === "page-backed" ? "Assigning…" : `Assign page-backed (${result.claims.filter((c) => c.document_owner_id && !sentToLore.has(c.claim_id)).length})`}</button>
+          : null}
+        <button className="secondary-button" disabled={Object.values(checked).every((v) => !v) || loreOpen} onClick={() => { setLoreOpen(true); setLoreName((result.claims.find((c) => checked[c.claim_id])?.suggestions[0]?.entity_name) ?? ""); }} type="button">Migrate checked to Lore</button>
+      </div>
+      {loreOpen && <div className="lore-suggestions" aria-label="Seed a Lore queue item" role="form">
+        <header><span>Lore bridge</span><h4>Create the record that owns these claims</h4></header>
+        <label>Record name<input aria-label="Lore record name" onChange={(event) => setLoreName(event.target.value)} placeholder="The Original White Cloaks" value={loreName} /></label>
+        <div className="step-actions">
+          <button className="text-button" onClick={() => setLoreOpen(false)} type="button">Cancel</button>
+          <button className="decision-button" disabled={!Object.values(checked).some(Boolean)} onClick={migrateCheckedToLore} type="button">Seed Lore item</button>
+        </div>
+        <small className="ai-activation-note">The checked claims arrive as Considered evidence in the item's working file — Link them at creation, or match an existing record. They leave this list when Lore assigns them.</small>
+      </div>}
+      {backlogOpen && currentBacklog && <section className="session-backlog-review" aria-label="Session backlog review">
+        <header>
+          <span>Session backlog · statement {backlogIndex + 1} of {sessionOrphans.length}</span>
+          <button className="text-button" onClick={() => setBacklogOpen(false)} type="button">Close backlog review</button>
+        </header>
+        <p className="roles-explainer">These are pre-review session statements — captured before ownership-at-commit (TKT-0148). Assign each to its owning record, or mark it ambient. Same treatment the session reviewer gives new captures.</p>
+        <article className="lore-evidence-item">
+          <div className="lore-evidence-header">
+            <span className="role-chip">{display(currentBacklog.state)}</span>
+            <span className="role-chip">{display(currentBacklog.authority)}</span>
+            <code className="lore-evidence-source">{currentBacklog.source_paths[0]}</code>
+          </div>
+          <p className="lore-evidence-text">{currentBacklog.assertion_text}</p>
+        </article>
+        <SubjectChoiceField choice={backlogSubject} onChange={setBacklogSubject} campaignClient={campaignClient} partyPick={partyPick} />
+        <div className="step-actions">
+          <button className="text-button" disabled={busyClaim !== null || backlogIndex >= sessionOrphans.length - 1} onClick={() => setBacklogIndex((i) => Math.min(i + 1, sessionOrphans.length - 1))} type="button">Skip →</button>
+          <button className="decision-button" disabled={busyClaim !== null || (!backlogSubject.entityId && !backlogSubject.ambient)} onClick={() => void assignBacklog()} type="button">{busyClaim === "backlog" ? "Assigning…" : backlogSubject.ambient ? "File ambient disposition" : `Assign to ${backlogSubject.entityName || "…"}`}</button>
+        </div>
+      </section>}
+      <div className="qualified-orphan-scroll" aria-label="Orphaned claims list">
+        {result.claims.filter((claim) => !sentToLore.has(claim.claim_id)).map((claim) => <article className="lore-evidence-item" key={claim.claim_id}>
+          <div className="lore-evidence-header">
+            <label><input aria-label={"Include orphan: " + claim.assertion_text.slice(0, 40)} checked={Boolean(checked[claim.claim_id])} onChange={(event) => setChecked((current) => ({ ...current, [claim.claim_id]: event.target.checked }))} type="checkbox" /></label>
+            <span className="role-chip">{display(claim.state)}</span>
+            <span className="role-chip">{display(claim.authority)}</span>
+            {claim.document_owner_id && <button className="role-chip" disabled={busyClaim !== null} onClick={() => void assign(claim.claim_id, claim.document_owner_id!, claim.document_owner_name ?? "", "document")} title={"Assign to " + claim.document_owner_name + " — evidenced on their page"} type="button">{busyClaim === claim.claim_id ? "…" : "→"} {claim.document_owner_name} <small>(their page)</small></button>}
+            {claim.suggestions.map((s) => <button className="role-chip ai-suggestion-chip" disabled={busyClaim !== null} key={s.entity_id} onClick={() => void assign(claim.claim_id, s.entity_id, s.entity_name, "suggestion")} title={"Assign to " + s.entity_name} type="button">{busyClaim === claim.claim_id ? "…" : "→"} {s.entity_name} <small>({s.basis})</small></button>)}
+            <button className="text-button" disabled={busyClaim !== null} onClick={() => { setNoOwnerFor(noOwnerFor === claim.claim_id ? null : claim.claim_id); setNoOwnerReason(""); }} type="button">No owner needed</button>
+          </div>
+          <p className="lore-evidence-text">{claim.assertion_text}</p>
+          {claim.source_paths.length > 0 && <code className="lore-evidence-source">{claim.source_paths.join(" · ")}</code>}
+          {noOwnerFor === claim.claim_id && <div className="orphan-dispose-row">
+            <input aria-label="No-owner reason" onChange={(event) => setNoOwnerReason(event.target.value)} placeholder="Why no owning record? (ambient history, prep residue…)" value={noOwnerReason} />
+            <button className="decision-button" disabled={!noOwnerReason.trim() || busyClaim !== null} onClick={() => void disposeNoOwner(claim.claim_id)} type="button">File disposition</button>
+          </div>}
+        </article>)}
+      </div>
+    </>}
+    {result && result.claims.length === 0 && <p className="empty-section">No orphaned claims — every current claim has an owning record or a receipted disposition.</p>}
+  </section>;
+}
+
 function UnpromotedMaterialPanel({ campaignClient, onOpenEntry, onOpenDocument, onOpenBrainstorm }: {
   campaignClient: CampaignClient;
   onOpenEntry?: (entityId: string, entityName: string) => void;
@@ -3053,10 +3538,11 @@ function UnpromotedMaterialPanel({ campaignClient, onOpenEntry, onOpenDocument, 
   </section>;
 }
 
-function QualifiedEntitiesPanel({ campaignClient, onOpenEntry, onOpenProfile }: {
+function QualifiedEntitiesPanel({ campaignClient, onOpenEntry, onOpenProfile, onCanonicalChange }: {
   campaignClient: CampaignClient;
   onOpenEntry?: (entityId: string, entityName: string) => void;
   onOpenProfile?: (entityId: string, entityName: string) => void;
+  onCanonicalChange?: () => void;
 }) {
   const [result, setResult] = useState<QualifiedAuditResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -3112,6 +3598,7 @@ function QualifiedEntitiesPanel({ campaignClient, onOpenEntry, onOpenProfile }: 
     setAssigningFor(null);
     toast.push(moved > 0 ? "success" : "error",
       "Assigned " + moved + " of " + claimIds.length + " claim" + (claimIds.length === 1 ? "" : "s") + " to " + group.canonical_name + (errors.length > 0 ? " — " + errors.length + " failed (see Log)" : ""));
+    onCanonicalChange?.();
     await gatherDocumentClaims();
     await run();
   }, [campaignClient, checked, assigningFor, gatherDocumentClaims, run]);
@@ -3146,7 +3633,10 @@ function QualifiedEntitiesPanel({ campaignClient, onOpenEntry, onOpenProfile }: 
     <p className="roles-explainer">The bar, computed live: every record asserts, is evidenced, is owned — binary, per the standard. Drive the count to zero and the audit holds it there. Pending criteria (orphan ownership, claim-backed attributes) report as pending until their mechanisms land.</p>
     <button className="secondary-button" disabled={loading} onClick={() => void run()} type="button">{loading ? "Auditing…" : result ? "Re-run audit" : "Run audit"}</button>
     {notice && <div className="notice error" role="alert">{notice}</div>}
-    {result && <p className="identity-count">{result.qualified_count} of {result.total_entities} qualified · {findings.length} unqualified · {new Date(result.audited_at).toLocaleTimeString()}</p>}
+    {result && <>
+      <p className="identity-count">{result.qualified_count} of {result.total_entities} qualified · {findings.length} unqualified · {new Date(result.audited_at).toLocaleTimeString()}</p>
+      {(result.global_criteria ?? []).map((criterion) => <p key={criterion.criterion} className={"identity-count" + (criterion.status === "fail" ? " qualified-global-fail" : "")}>{criterion.status === "pass" ? "✓" : "⚑"} {criterion.reason}</p>)}
+    </>}
     <div className="qualified-step1" aria-label="Document-exclusive claims">
       <header><div><span>Step 1 — Assign Ownership</span><h4>Claims that live only on the record's document</h4></div>
         <button className="secondary-button" disabled={docClaimsLoading} onClick={() => void gatherDocumentClaims()} type="button">{docClaimsLoading ? "Gathering…" : docClaims ? "Re-gather" : "Gather document claims"}</button></header>
@@ -3183,8 +3673,9 @@ function QualifiedEntitiesPanel({ campaignClient, onOpenEntry, onOpenProfile }: 
   </section>;
 }
 
-function Phase2MigrationsPage({ campaignClient, onOpenEntry, onOpenProfile, onOpenDocument, onOpenBrainstorm }: {
+function Phase2MigrationsPage({ campaignClient, onCanonicalChange, onOpenEntry, onOpenProfile, onOpenDocument, onOpenBrainstorm }: {
   campaignClient: CampaignClient;
+  onCanonicalChange?: () => void;
   onOpenEntry: (entityId: string, entityName: string) => void;
   onOpenProfile: (entityId: string, entityName: string) => void;
   onOpenDocument: (documentId: string, documentPath: string) => void;
@@ -3195,7 +3686,8 @@ function Phase2MigrationsPage({ campaignClient, onOpenEntry, onOpenProfile, onOp
       <div className="section-heading"><div><p className="kicker">Migration phase 2</p><h2>Migrations</h2></div>
         <p>The completion campaign: force every Entity-shaped record through to the Qualified bar — then never hold an unQualified Entity again. Phase 1 (the Starfall import) closed 2026-08-22; its wizard is shelved (Settings).</p></div>
     </section>
-    <QualifiedEntitiesPanel campaignClient={campaignClient} onOpenEntry={onOpenEntry} onOpenProfile={onOpenProfile} />
+    <OrphanedClaimsPanel campaignClient={campaignClient} onCanonicalChange={onCanonicalChange} />
+    <QualifiedEntitiesPanel campaignClient={campaignClient} onOpenEntry={onOpenEntry} onOpenProfile={onOpenProfile} onCanonicalChange={onCanonicalChange} />
     <UnpromotedMaterialPanel campaignClient={campaignClient} onOpenEntry={onOpenEntry} onOpenDocument={onOpenDocument} onOpenBrainstorm={onOpenBrainstorm} />
   </main>;
 }
@@ -3555,6 +4047,7 @@ const ENTITY_KINDS: EntityKindGuidance[] = [
   { kind: "faction", label: "Faction", description: "An organized group with shared identity." },
   { kind: "item", label: "Item", description: "An in-world object with canonical identity." },
   { kind: "event", label: "Event", description: "A distinct historical, mythical, or cosmological occurrence." },
+  { kind: "encounter", label: "Encounter", description: "A table event: an authored encounter that owns its own claims (ADR-0021)." },
   { kind: "worldbuilding", label: "Worldbuilding", description: "An era, legend, cosmological structure, or abstract setting concept." },
   { kind: "rules_element", label: "Rules element", description: "A reusable spell, feat, or ability." },
 ];
@@ -3740,6 +4233,11 @@ function App({ campaignClient, jobPlatform, storage, pollIntervalMs = 700 }: App
   const [entityLookupBusy, setEntityLookupBusy] = useState(false);
   const [observedAt, setObservedAt] = useState("");
   const [observedCampaignDate, setObservedCampaignDate] = useState("");
+  // TKT-0148: the subject decision for session-statement commits (ADR-0021 —
+  // sessions assign ownership AT COMMIT). Preselected from deterministic
+  // suggestions; the DM confirms, searches another record, or chooses the
+  // explicit no-owner disposition. Nothing commits subjectless by omission.
+  const [subjectChoice, setSubjectChoice] = useState<{ entityId: string | null; entityName: string; ambient: boolean; suggestions: OwnerSuggestion[]; searchQuery: string; searchResults: EntityIdentity[] }>({ entityId: null, entityName: "", ambient: false, suggestions: [], searchQuery: "", searchResults: [] });
   const [conditionText, setConditionText] = useState("");
   const [conditionEnabled, setConditionEnabled] = useState(false);
   const [provenanceAssertion, setProvenanceAssertion] = useState("");
@@ -4063,6 +4561,16 @@ function App({ campaignClient, jobPlatform, storage, pollIntervalMs = 700 }: App
       setDispositionReason("");
       setExtractionDrafts([]);
       setExtractionNotice("");
+      // TKT-0148: preload the deterministic owner suggestions for this
+      // statement and preselect the lead — the DM touches only what is wrong.
+      if (detail.extractor_version?.startsWith("direct-input/session-note")) {
+        setSubjectChoice({ entityId: null, entityName: "", ambient: false, suggestions: [], searchQuery: "", searchResults: [] });
+        void campaignClient.getOwnerSuggestions(detail.assertion_text).then((result) => {
+          const lead = result.suggestions[0];
+          setSubjectChoice((current) => ({ ...current, suggestions: result.suggestions,
+            entityId: lead?.entity_id ?? null, entityName: lead?.entity_name ?? "" }));
+        }).catch(() => { /* suggestions are a convenience; manual search still works */ });
+      }
       if (detail.extractions?.length) beginExtractionReview(detail.extractions, detail);
       else setMigrationStep(2);
     } catch (error) {
@@ -4347,6 +4855,12 @@ function App({ campaignClient, jobPlatform, storage, pollIntervalMs = 700 }: App
   async function commitDirectInputClaim() {
     const assertions = (splitClaims ?? [provenanceAssertion]).map((value) => value.trim()).filter(Boolean);
     if (!selected || !selected.evidence[0] || assertions.length === 0 || (provenanceState === "observed" && !observedCampaignDate)) return;
+    // TKT-0148 guardrail (client half; Core refuses the proposal otherwise):
+    // every statement commits with an owner or the explicit no-owner choice.
+    if (!subjectChoice.entityId && !subjectChoice.ambient) {
+      setReviewError("This statement needs its owning record — pick a subject or choose 'No single record'.");
+      return;
+    }
     setReviewBusy(true); setReviewError("");
     try {
       const commonItem = {
@@ -4361,6 +4875,8 @@ function App({ campaignClient, jobPlatform, storage, pollIntervalMs = 700 }: App
         ...(provenanceState !== "possible" && conditionEnabled ? { condition_text: conditionText.trim() } : {}),
         predicts_subject_action: selected.predicts_subject_action,
         recorded_at: new Date().toISOString(),
+        ...(subjectChoice.entityId ? { subject_entity_id: subjectChoice.entityId } : {}),
+        ...(subjectChoice.ambient ? { owner_disposition: "No single record — ambient lore" } : {}),
         ...(provenanceState === "observed" && observedCampaignDate ? (() => { const [year, month, day] = observedCampaignDate.split("-").map(Number); return { observed_at: { calendar_id: "gregorian-ce", year, month, day }, effective_from: { calendar_id: "gregorian-ce", year, month, day } }; })() : {}),
       };
       const mentions = selected.evidence.flatMap((evidence) => evidence.mentions ?? []);
@@ -4900,6 +5416,15 @@ function App({ campaignClient, jobPlatform, storage, pollIntervalMs = 700 }: App
     }
   }, [activePage, identityGaps === null, identityBusy, loadIdentityGaps]);
   const [sessionCaptureOpen, setSessionCaptureOpen] = useState(false);
+  // The encounter creator (ADR-0021): authors an encounter document from the
+  // Library + menu — session-independent by ruling (2026-09-28: "the + in the
+  // library should give access to the encounter creator, regardless of
+  // whether or not there's an open session").
+  const [encounterCreatorOpen, setEncounterCreatorOpen] = useState(false);
+  const [encounterTitle, setEncounterTitle] = useState("");
+  const [encounterBody, setEncounterBody] = useState("");
+  const [encounterBusy, setEncounterBusy] = useState(false);
+  const [encounterError, setEncounterError] = useState("");
   const [sessionReviewComplete, setSessionReviewComplete] = useState<{ sourceDocumentId: string; sourcePath: string; receiptId?: string } | null>(null);
   const [sessionCaptureDate, setSessionCaptureDate] = useState(() => localCalendarDate());
   const [sessionCaptureTitle, setSessionCaptureTitle] = useState("");
@@ -5079,6 +5604,26 @@ function App({ campaignClient, jobPlatform, storage, pollIntervalMs = 700 }: App
       void loadDocumentContent(document.document_id, document.path);
     });
   }, [leaveEditorGuard]);
+
+  // ADR-0022: the Library reflects every canonical change in the same
+  // interaction — the user never refreshes to see their own work. Mutating
+  // surfaces call this on success, beside their surface-local refreshes.
+  // TKT-0144 display ruling (2026-10-02): the Library's Brainstorms family
+  // groups thought docs under their session titles.
+  const [brainstormSessions, setBrainstormSessions] = useState<Array<{ session_id: string; title: string; open: boolean; thought_count: number }>>([]);
+  useEffect(() => {
+    void campaignClient.listBrainstormSessions()
+      .then((result) => setBrainstormSessions(result.sessions))
+      .catch(() => { /* the family falls back to path labels */ });
+    void campaignClient.listLibraryEntries()
+      .then(setLibraryEntries)
+      .catch(() => { /* partyPick and the Library tree fall back gracefully */ });
+  }, [campaignClient]);
+
+  const refreshLibrary = useCallback(() => {
+    campaignClient.listLibraryEntries().then(setLibraryEntries).catch(() => {});
+    campaignClient.listBrainstormSessions().then((result) => setBrainstormSessions(result.sessions)).catch(() => {});
+  }, [campaignClient]);
 
   // TKT-0127: drafting is fire-and-forget. The job runs on a Windmill worker;
   // the result parks in the Drafts tray until claimed or discarded.
@@ -5349,6 +5894,26 @@ function App({ campaignClient, jobPlatform, storage, pollIntervalMs = 700 }: App
     })();
     try { return await sessionRunOpening.current; }
     finally { sessionRunOpening.current = null; }
+  }
+
+  async function saveEncounterDocument() {
+    if (!encounterTitle.trim() || !encounterBody.trim() || encounterBusy) return;
+    setEncounterBusy(true); setEncounterError("");
+    try {
+      const receipt = await campaignClient.captureEncounterDocument({
+        title: encounterTitle.trim(),
+        body: encounterBody.trim(),
+        idempotency_key: `encounter:${crypto.randomUUID()}`,
+      });
+      setEncounterCreatorOpen(false);
+      setEncounterTitle(""); setEncounterBody("");
+      toast.push("success", `Encounter authored — ${receipt.path}`);
+      campaignClient.listSourceDocuments().then((page) => setSourceDocuments(page.items)).catch(() => {});
+      openSourceDocument({ document_id: receipt.document_id, path: receipt.path } as SourceDocument);
+    } catch (cause) {
+      setEncounterError(cause instanceof Error ? cause.message : "The encounter could not be authored");
+      toast.push("error", cause instanceof Error ? cause.message : "The encounter could not be authored");
+    } finally { setEncounterBusy(false); }
   }
 
   async function beginLiveSession(): Promise<SessionRun> {
@@ -5892,7 +6457,7 @@ async function loadCanonicalEntry(entryId: string, freshSourceDocuments?: Source
         <div className={`doc-layout ${libraryPanelCollapsed ? "library-collapsed" : ""}`}>
           <button aria-label={libraryPanelCollapsed ? "Expand Library" : "Collapse Library"} className="library-panel-handle" onClick={() => setLibraryPanelCollapsed((value) => !value)} title={libraryPanelCollapsed ? "Expand Library" : "Collapse Library"} type="button">{libraryPanelCollapsed ? "›" : "‹"}</button>
           <aside className={`doc-tree-panel ${libraryPanelCollapsed ? "collapsed" : ""}`} aria-label="Entry library">
-            <div className="tree-header library-tree-header"><div><span>{libraryMode === "entries" ? "Campaign library" : "Source files"}</span></div><div className="library-header-actions"><div className="new-session-menu"><button aria-expanded={newSessionMenuOpen} aria-label="New session" className="new-session-note" onClick={() => { if (sessionRunRef.current) setTableNotesOpen(true); else setNewSessionMenuOpen((open) => !open); }} title={sessionRun ? "Open session" : "New session"} type="button">+</button>{newSessionMenuOpen && !sessionRun && <div role="menu"><button onClick={() => void beginLiveSession()} role="menuitem" type="button"><b>Start live session</b><span>Capture events as they happen</span></button><button onClick={() => { setNewSessionMenuOpen(false); void openSessionCapture(); }} role="menuitem" type="button"><b>Write session log directly</b><span>Enter a finished account for review</span></button><button onClick={() => { setNewSessionMenuOpen(false); setActivePage("lore"); }} role="menuitem" type="button"><b>Queue for Lore</b><span>A name that needs a campaign entry</span></button></div>}</div><label className="source-mode-toggle"><span>Source</span><button aria-checked={libraryMode === "sources"} aria-label="Source view" onClick={() => setLibraryMode((mode) => mode === "sources" ? "entries" : "sources")} role="switch" type="button"><i /></button></label></div></div>
+            <div className="tree-header library-tree-header"><div><span>{libraryMode === "entries" ? "Campaign library" : "Source files"}</span></div><div className="library-header-actions"><div className="new-session-menu"><button aria-expanded={newSessionMenuOpen} aria-label="New" className="new-session-note" onClick={() => setNewSessionMenuOpen((open) => !open)} title="New" type="button">+</button>{newSessionMenuOpen && <div role="menu">{sessionRun && <button onClick={() => { setNewSessionMenuOpen(false); setTableNotesOpen(true); }} role="menuitem" type="button"><b>Open session — table notes</b><span>Session {sessionRun.session_date} is live</span></button>}{!sessionRun && <button onClick={() => void beginLiveSession()} role="menuitem" type="button"><b>Start live session</b><span>Capture events as they happen</span></button>}<button onClick={() => { setNewSessionMenuOpen(false); void openSessionCapture(); }} role="menuitem" type="button"><b>Write session log directly</b><span>Enter a finished account for review</span></button><button onClick={() => { setNewSessionMenuOpen(false); setEncounterCreatorOpen(true); }} role="menuitem" type="button"><b>New encounter</b><span>Author an encounter — the table event's own record</span></button><button onClick={() => { setNewSessionMenuOpen(false); setActivePage("lore"); }} role="menuitem" type="button"><b>Queue for Lore</b><span>A name that needs a campaign entry</span></button></div>}</div><label className="source-mode-toggle"><span>Source</span><button aria-checked={libraryMode === "sources"} aria-label="Source view" onClick={() => setLibraryMode((mode) => mode === "sources" ? "entries" : "sources")} role="switch" type="button"><i /></button></label></div></div>
             <div className="tree-body">
               {sourceDocuments.length === 0 && reviewLoading && <p className="queue-empty">Loading…</p>}
               {libraryMode === "entries" && libraryEntries.length > 0 && Array.from(new Set(libraryEntries.map((entry) => entry.entity_kind))).map((kind) => {
@@ -5906,7 +6471,19 @@ async function loadCanonicalEntry(entryId: string, freshSourceDocuments?: Source
                 return <details className="canonical-entry-group" key={kind}><summary>{entryKindLabel(kind)}</summary><div>{[...entryRows, ...documentRows].sort((left, right) => left.label.toLocaleLowerCase().localeCompare(right.label.toLocaleLowerCase())).map((row) => row.node)}</div></details>;
               })}
               {libraryMode === "entries" && libraryPlans.length > 0 && <details className="canonical-entry-group"><summary>Plans</summary><div>{libraryPlans.map((plan) => <button className={`tree-doc canonical-entry-link ${selectedPlan?.id === plan.id ? "selected" : ""}`} key={plan.id} onClick={() => leaveEditorGuard(`the ${plan.canonical_name} plan`, () => { setSelectedEntryId(null); setSelectedEntry(null); setSelectedPlan(plan); setDocContent(""); })} type="button"><span className="tree-doc-name">{plan.canonical_name}</span></button>)}</div></details>}
-              {libraryMode === "entries" && sourceBackedLibraryDocuments.length > 0 && Array.from(new Set(sourceBackedLibraryDocuments.map((document) => pathEntryType(document.path)))).filter((family) => family !== "Worldbuilding").map((family) => <SourceBackedFamily documents={sourceBackedLibraryDocuments.filter((document) => pathEntryType(document.path) === family)} family={family} key={family} onEditSession={(document) => void editSourceSessionDocument(document)} onSelect={openSourceDocument} selectedDocumentId={selectedDocumentId} />)}
+              {libraryMode === "entries" && sourceBackedLibraryDocuments.length > 0 && Array.from(new Set(sourceBackedLibraryDocuments.map((document) => pathEntryType(document.path)))).filter((family) => family !== "Worldbuilding").map((family) => {
+                // ADR-0022-era unification (2026-10-02): encounter documents
+                // claimed by encounter ENTITIES render through their entity —
+                // one Encounters block, the entities'. Only unclaimed
+                // encounter documents keep the document family (until 0149
+                // mints entities at authoring).
+                const familyDocuments = sourceBackedLibraryDocuments.filter((document) => pathEntryType(document.path) === family);
+                const documents = family === "Encounter"
+                  ? familyDocuments.filter((document) => !encounterDocumentClaimed(document.path, libraryEntries))
+                  : familyDocuments;
+                if (documents.length === 0) return null;
+                return <SourceBackedFamily documents={documents} family={family} key={family} onEditSession={(document) => void editSourceSessionDocument(document)} onSelect={openSourceDocument} selectedDocumentId={selectedDocumentId} brainstormSessions={brainstormSessions} />;
+              })}
               {(libraryMode === "sources" || libraryEntries.length === 0) && <>{libraryMode === "sources" && <p className="tree-explainer">Immutable imported evidence, organized by source path.</p>}{Object.entries(buildDocTree(sourceDocuments)).map(([dir, children]) => (
                 <TreeDir key={dir} name={dir} depth={0} children_={children} expanded={expandedDirs} setExpanded={setExpandedDirs} selectedDocumentId={selectedDocumentId} sourceMode={libraryMode === "sources"} onSelect={(docId) => { const doc = sourceDocuments.find((d) => d.document_id === docId); if (doc) { leaveEditorGuard(`the ${doc.title ?? doc.path} document`, () => { setSelectedEntryId(null); setSelectedEntry(null); setSelectedPlan(null); setSelectedDocumentId(docId); void loadDocumentContent(docId, doc.path); }); } }} />
               ))}</>}
@@ -5936,6 +6513,7 @@ async function loadCanonicalEntry(entryId: string, freshSourceDocuments?: Source
               </div></div>;
             })()}
             {sessionCaptureOpen && closeoutNotes.length > 0 && <section aria-label="Session closeout context" className="session-closeout-context"><header><div><span>Session context</span><b>{closeoutNotes.length} timeline note{closeoutNotes.length === 1 ? "" : "s"}</b></div><button className="text-button" onClick={() => setTableNotesOpen(true)} type="button">Review timeline</button></header>{closeoutEncounters.length > 0 ? <div>{closeoutEncounters.map((note) => { const progress = encounterProgress.find((item) => item.source_document_id === note.sourceDocumentId); return <article key={note.sourceDocumentId || note.sourcePath}><b>{note.encounterName}</b><span>{progress?.resume_section_title ? `Resume at ${progress.resume_section_title}` : progress?.status === "completed" ? "Completed" : progress?.status === "abandoned" ? "Abandoned" : "No resume point saved"}</span></article>; })}</div> : <p>These notes occurred outside a prepared encounter.</p>}<small>Encounter and resume labels stay with the session run. Only the editable note text becomes source evidence.</small></section>}
+            {encounterCreatorOpen && <article className="document-view session-note-capture" aria-label="Encounter creator"><header><b>New encounter</b><span>Authored document · ADR-0021</span></header><section className="character-content"><p>An encounter is a table event — its own record. The document files as authored evidence; claims from it promote through reviewed surfaces later, owned by the encounter. Works with or without a live session.</p><div className="form-grid"><label>Title<input aria-label="Encounter title" placeholder="The Descent, Part Two" value={encounterTitle} onChange={(event) => setEncounterTitle(event.target.value)} /></label></div><label className="pc-background-field session-notes-field">Encounter<textarea aria-label="Encounter body" placeholder="## Stage one — the approach. Use ## sections for stages; the page renders them in order." rows={16} value={encounterBody} onChange={(event) => setEncounterBody(event.target.value)} /></label>{encounterError && <div className="notice error" role="alert">{encounterError}</div>}<div className="step-actions"><button className="text-button" disabled={encounterBusy} onClick={() => { setEncounterCreatorOpen(false); setEncounterError(""); }} type="button">Cancel</button><button disabled={encounterBusy || !encounterTitle.trim() || !encounterBody.trim()} onClick={() => void saveEncounterDocument()} type="button">{encounterBusy ? "Saving…" : "Author encounter"}</button></div></section></article>}
             {sessionCaptureOpen ? <article className="document-view session-note-capture"><header><b>{sessionCaptureId ? "Edit session note" : "New session note"}</b><span>{sessionCaptureId ? "Corrected revision" : "Direct input"}</span></header><section className="character-content"><p>Capture manicured notes from actual play. The submitted text is preserved as immutable evidence before review.</p><div className="form-grid"><label>Session date<input aria-label="Session date" type="date" value={sessionCaptureDate} onChange={(event) => setSessionCaptureDate(event.target.value)} /></label><label>Title<input aria-label="Session note title" placeholder="Return to the Monastery" value={sessionCaptureTitle} onChange={(event) => setSessionCaptureTitle(event.target.value)} /></label></div><fieldset className="campaign-date-fields"><legend>In-game date</legend><p>This becomes the default campaign date for the next session note.</p><label>Campaign date (CE)<input aria-label="In-game date" type="date" value={inGameDate} onChange={(event) => setInGameDate(event.target.value)} /></label></fieldset><label className="pc-background-field session-notes-field">Notes<textarea ref={sessionNotesRef} aria-label="Session notes" placeholder="Enter one reviewable event or statement per line. Type @ to link a character or location." rows={18} value={sessionCaptureText} onChange={(event) => updateSessionCaptureText(event.target.value, event.currentTarget)} onKeyDown={handleSessionNotesKeyDown} />{mentionMatches.length > 0 && <div className="mention-suggestions" style={mentionMenuPosition} role="listbox" aria-label="Entity mentions">{mentionMatches.map((entity, index) => <button className={index === mentionHighlight ? "active" : ""} aria-selected={index === mentionHighlight} key={entity.entity_id} onMouseDown={(event) => event.preventDefault()} onClick={() => selectSessionMention(entity)} role="option" type="button"><b>{entity.canonical_name}</b><span>{display(entity.entity_kind)}</span></button>)}</div>}</label>{sessionMentions.length > 0 && <div className="mention-chips" aria-label="Linked records">{sessionMentions.map((entity) => <span key={entity.entity_id}>@{entity.canonical_name}<small>{display(entity.entity_kind)}</small></span>)}</div>}{sessionCaptureError && <div className="notice error" role="alert">{sessionCaptureError}</div>}<div className="step-actions"><button className="text-button" disabled={sessionCaptureBusy} onClick={() => { setSessionCaptureOpen(false); setSessionCaptureTableNoteIds([]); }} type="button">Cancel</button><button disabled={sessionCaptureBusy || !sessionCaptureDate || !inGameDate || !sessionCaptureTitle.trim() || !sessionCaptureText.trim()} onClick={() => void captureSessionNote()} type="button">{sessionCaptureBusy ? "Saving…" : sessionCaptureId ? "Save revision and review" : "Capture and review"}</button></div></section></article>
               : selectedPlan ? <PlanEntryView plan={selectedPlan} /> : docLoading ? <p className="queue-empty">Loading document…</p>
               : docContent ? (docMetadata?.document_type === "session_note" ? <><SessionNoteEntryView note={docMetadata} claims={docCanonicalClaims} history={docClaimHistory} onEditClaim={(claimId) => void beginClaimEdit(claimId)} onEdit={() => editSessionNote(docMetadata)} />{claimEdit && <ClaimReplacementEditor drafts={claimEditDrafts} busy={claimEditBusy} reason={claimEditReason} onChange={setClaimEditDrafts} onReasonChange={setClaimEditReason} onCancel={() => setClaimEdit(null)} onSave={() => void saveClaimCorrection()} />}{claimEditMessage && <div className="notice" role="status">{claimEditMessage}</div>}</> : <>{parseEntry(docContent).type === "encounter" ? <EncounterEntryView entry={parseEntry(docContent)} path={docContentPath} sourceDocumentId={docMetadata?.document_id ?? selectedDocumentId ?? ""} claims={docCanonicalClaims} history={docClaimHistory} sources={selectedEntry?.sources ?? []} npcEntries={libraryEntries.filter((entry) => entry.entity_kind === "npc")} noteCounts={new Map(Array.from(encounterNotes.filter((note) => note.sourceDocumentId === (docMetadata?.document_id ?? selectedDocumentId)).reduce((counts, note) => counts.set(note.sectionKey, (counts.get(note.sectionKey) ?? 0) + 1), new Map<string, number>()).entries()))} onOpenNpc={(npc) => void openEncounterNpcDossier(npc)} onAddNote={openTableNoteComposer} onOpenNotes={() => setTableNotesOpen(true)} onEditClaim={(claimId) => void beginClaimEdit(claimId)} />
@@ -6046,7 +6624,7 @@ async function loadCanonicalEntry(entryId: string, freshSourceDocuments?: Source
       )}
 
       {activePage === "roles" && <FactionRolesPage campaignClient={campaignClient} factions={libraryEntries.filter((entry) => entry.entity_kind === "faction")} onRefreshLibrary={() => campaignClient.listLibraryEntries().then(setLibraryEntries).catch(() => {})} onOpenFaction={(entryId) => { setActivePage("documents"); leaveEditorGuard(libraryEntries.find((entry) => entry.entry_id === entryId)?.canonical_name ?? "the faction", () => { setSelectedEntryId(entryId); void loadCanonicalEntry(entryId); }); }} />}
-      {activePage === "migration" && <Phase2MigrationsPage campaignClient={campaignClient} onOpenEntry={(entityId, entityName) => { leaveEditorGuard(entityName, () => { setActivePage("documents"); setSelectedEntryId(entityId); void loadCanonicalEntry(entityId).then((entry) => { // Open after the load: the entry switch inside loadCanonicalEntry resets the composer surfaces (ADR-0016).
+      {activePage === "migration" && <Phase2MigrationsPage campaignClient={campaignClient} onCanonicalChange={refreshLibrary} onOpenEntry={(entityId, entityName) => { leaveEditorGuard(entityName, () => { setActivePage("documents"); setSelectedEntryId(entityId); void loadCanonicalEntry(entityId).then((entry) => { // Open after the load: the entry switch inside loadCanonicalEntry resets the composer surfaces (ADR-0016).
       setRevisionDraft(null); setClaimSelection(null); if (entry) void prefillSheetBackground(entry); setDescriptionComposerOpen(true); }); }); }} onOpenProfile={(entityId, entityName) => { leaveEditorGuard(entityName, () => { setActivePage("documents"); setSelectedEntryId(entityId); void loadCanonicalEntry(entityId).then(() => openEntityProfileEditor()); }); }} onOpenDocument={(documentId, documentPath) => { leaveEditorGuard("the capture", async () => { const nextFilters: CandidateFilters = { status: "active", review_status: "pending", ...(documentPath ? { source: documentPath } : {}) }; setFilters(nextFilters); setActivePage("migration-legacy"); try { const page = await campaignClient.listCandidates(nextFilters); await loadReviewWorkspace(nextFilters, false); if (page.items.length > 0) await chooseCandidate(page.items[0].candidate_id); } catch { /* the workspace still renders; selection can be manual */ } }); }} onOpenBrainstorm={() => { leaveEditorGuard("Brainstorm", () => setActivePage("brainstorm")); }} />}
 
       {activePage === "migration-legacy" && (
@@ -6087,7 +6665,7 @@ async function loadCanonicalEntry(entryId: string, freshSourceDocuments?: Source
                 {reviewError && <div className="notice error persistent-review-error" role="alert"><b>Claim was not committed.</b><span>{reviewError}</span><button className="text-button" onClick={() => setReviewError("")} type="button">Dismiss</button></div>}
                 <header className="candidate-title"><div><span className={`status-pill status-${selected.review_status}`}>{display(selected.review_status)}</span><h3>{selected.assertion_text}</h3></div>{!directSessionReview && <dl><div><dt>State</dt><dd>{display(selected.state)}</dd></div><div><dt>Authority</dt><dd>{display(selected.authority)}</dd></div><div><dt>Visibility</dt><dd>{display(selected.visibility)}</dd></div></dl>}</header>
                 {selected.evidence.map((evidence) => directSessionReview ? <details className="source-evidence compact-evidence" key={evidence.source_revision_id}><summary>Evidence details</summary><blockquote>{evidence.excerpt}</blockquote><dl><div><dt>Source</dt><dd>{evidence.source_path}</dd></div><div><dt>Section</dt><dd>{evidence.section}</dd></div><div><dt>Offsets</dt><dd>{evidence.start_offset}–{evidence.end_offset}</dd></div><div><dt>Revision</dt><dd title={evidence.content_hash}>{evidence.content_hash.slice(0, 12)}</dd></div></dl></details> : <article className="source-evidence" key={evidence.source_revision_id}><div><span>Exact source evidence</span><b>{evidence.source_path}</b></div><blockquote>{evidence.excerpt}</blockquote><dl><div><dt>Section</dt><dd>{evidence.section}</dd></div><div><dt>Classification</dt><dd>{display(evidence.classification)}</dd></div><div><dt>Offsets</dt><dd>{evidence.start_offset}–{evidence.end_offset}</dd></div><div><dt>Revision</dt><dd title={evidence.content_hash}>{evidence.content_hash.slice(0, 12)}</dd></div></dl></article>)}
-                {[2, 3].includes(migrationStep) && selected.review_status === "pending" && !proposalBelongsToSelected && <section className={`resolution-form ${directSessionReview ? "session-claim-review" : ""}`} aria-label="Provenance-first proposal"><header><span>{directSessionReview ? "Review statement" : "Promote this claim"}</span><p>{directSessionReview ? "Correct the claim if needed, then commit it and continue to the next statement." : "Edit the canonical wording and truth dimensions. The exact imported text remains unchanged below as provenance."}</p></header>{splitClaims ? <section className="split-claim-editor" aria-label="Split claims"><header><span>Split claims</span><p>Each entry will become its own claim with the same source evidence and campaign date.</p></header>{splitClaims.map((claim, index) => <div className="split-claim-row" key={index}><label>Claim {index + 1}<textarea aria-label={`Split claim ${index + 1}`} value={claim} onChange={(event) => setSplitClaims((prior) => prior?.map((value, itemIndex) => itemIndex === index ? event.target.value : value) ?? null)} /></label><button className="text-button" disabled={splitClaims.length <= 1} onClick={() => setSplitClaims((prior) => prior?.filter((_value, itemIndex) => itemIndex !== index) ?? null)} type="button">Remove</button></div>)}<div className="step-actions"><button className="text-button" onClick={() => setSplitClaims((prior) => [...(prior ?? []), ""])} type="button">Add claim</button><button className="text-button" onClick={() => setSplitClaims(null)} type="button">Cancel split</button></div></section> : <label>Canonical assertion<textarea aria-label="Canonical claim" value={provenanceAssertion} onChange={(event) => setProvenanceAssertion(event.target.value)} /></label>}{directSessionReview && !splitClaims && <button className="text-button" onClick={beginClaimSplit} type="button">Split into claims</button>}{directMentions.length > 0 && <div className="candidate-mentions"><span>Related records</span>{directMentions.map((mention) => <b key={mention.entity_id}>@{mention.display_name}</b>)}<small>These records will be linked to every claim; no subject role is inferred.</small></div>}{directSessionReview ? <label>Observed campaign date<input aria-label="Observed campaign date" required type="date" value={observedCampaignDate} onChange={(event) => setObservedCampaignDate(event.target.value)} /></label> : <><div className="form-grid"><label>State<select aria-label="Canonical claim state" value={provenanceState} onChange={(event) => { setProvenanceState(event.target.value); if (event.target.value === "possible") { setConditionEnabled(false); setConditionText(""); } }}><option value="observed">Observed</option><option value="established">Established</option><option value="intended">Intended</option><option value="prepared">Prepared</option><option value="possible">Possible</option><option value="considered">Considered</option></select></label><label>Authority<select aria-label="Canonical claim authority" value={provenanceAuthority} onChange={(event) => setProvenanceAuthority(event.target.value)}><option value="real_play">Real play</option><option value="explicit_lore">Explicit lore</option><option value="npc_intention">NPC intention</option><option value="preparation">Preparation</option><option value="brainstorm">Brainstorm</option><option value="unclassified">Unclassified</option></select></label><label>Visibility<select aria-label="Canonical claim visibility" value={provenanceVisibility} onChange={(event) => setProvenanceVisibility(event.target.value)}><option value="dm_only">DM only</option><option value="party">Party</option><option value="character">Character</option></select></label></div>{provenanceState === "observed" && <label>Observed campaign year<input aria-label="Observed campaign year" required type="number" value={observedAt} onChange={(event) => setObservedAt(event.target.value)} /></label>}{provenanceState !== "possible" && <fieldset><label><input checked={conditionEnabled} onChange={(event) => { setConditionEnabled(event.target.checked); if (!event.target.checked) setConditionText(""); }} type="checkbox" />Has a concrete prerequisite</label></fieldset>}{conditionEnabled && provenanceState !== "possible" && <label>Condition trigger<input aria-label="Condition trigger" placeholder="The concrete event that activates this consequence" value={conditionText} onChange={(event) => setConditionText(event.target.value)} /></label>}</>}<div className="step-actions">{directSessionReview && <button className="text-button" disabled={reviewBusy || !dispositionReason.trim()} onClick={() => void disposition("deferred")} type="button">Skip with reason</button>}<button disabled={reviewBusy || (splitClaims ? !splitClaims.some((claim) => claim.trim()) : !provenanceAssertion.trim()) || (directSessionReview ? !observedCampaignDate : (provenanceState === "observed" && !observedAt)) || (conditionEnabled && provenanceState !== "possible" && !conditionText.trim())} onClick={() => void (directSessionReview ? commitDirectInputClaim() : createProvenanceFirstProposal())} type="button">{directSessionReview ? `Commit ${splitClaims ? splitClaims.filter((claim) => claim.trim()).length : 1} claim${splitClaims && splitClaims.filter((claim) => claim.trim()).length !== 1 ? "s" : ""} and continue` : "Create source-backed proposal"}</button></div>{directSessionReview && <input aria-label="Skip reason" value={dispositionReason} onChange={(event) => setDispositionReason(event.target.value)} placeholder="Reason required only when skipping" />}</section>}
+                {[2, 3].includes(migrationStep) && selected.review_status === "pending" && !proposalBelongsToSelected && <section className={`resolution-form ${directSessionReview ? "session-claim-review" : ""}`} aria-label="Provenance-first proposal"><header><span>{directSessionReview ? "Review statement" : "Promote this claim"}</span><p>{directSessionReview ? "Correct the claim if needed, then commit it and continue to the next statement." : "Edit the canonical wording and truth dimensions. The exact imported text remains unchanged below as provenance."}</p></header>{splitClaims ? <section className="split-claim-editor" aria-label="Split claims"><header><span>Split claims</span><p>Each entry will become its own claim with the same source evidence and campaign date.</p></header>{splitClaims.map((claim, index) => <div className="split-claim-row" key={index}><label>Claim {index + 1}<textarea aria-label={`Split claim ${index + 1}`} value={claim} onChange={(event) => setSplitClaims((prior) => prior?.map((value, itemIndex) => itemIndex === index ? event.target.value : value) ?? null)} /></label><button className="text-button" disabled={splitClaims.length <= 1} onClick={() => setSplitClaims((prior) => prior?.filter((_value, itemIndex) => itemIndex !== index) ?? null)} type="button">Remove</button></div>)}<div className="step-actions"><button className="text-button" onClick={() => setSplitClaims((prior) => [...(prior ?? []), ""])} type="button">Add claim</button><button className="text-button" onClick={() => setSplitClaims(null)} type="button">Cancel split</button></div></section> : <label>Canonical assertion<textarea aria-label="Canonical claim" value={provenanceAssertion} onChange={(event) => setProvenanceAssertion(event.target.value)} /></label>}{directSessionReview && !splitClaims && <button className="text-button" onClick={beginClaimSplit} type="button">Split into claims</button>}{directMentions.length > 0 && <div className="candidate-mentions"><span>Related records</span>{directMentions.map((mention) => <b key={mention.entity_id}>@{mention.display_name}</b>)}<small>These records will be linked to every claim; no subject role is inferred.</small></div>}{directSessionReview ? <><SubjectChoiceField choice={subjectChoice} onChange={setSubjectChoice} campaignClient={campaignClient} /><label>Observed campaign date<input aria-label="Observed campaign date" required type="date" value={observedCampaignDate} onChange={(event) => setObservedCampaignDate(event.target.value)} /></label></> : <><div className="form-grid"><label>State<select aria-label="Canonical claim state" value={provenanceState} onChange={(event) => { setProvenanceState(event.target.value); if (event.target.value === "possible") { setConditionEnabled(false); setConditionText(""); } }}><option value="observed">Observed</option><option value="established">Established</option><option value="intended">Intended</option><option value="prepared">Prepared</option><option value="possible">Possible</option><option value="considered">Considered</option></select></label><label>Authority<select aria-label="Canonical claim authority" value={provenanceAuthority} onChange={(event) => setProvenanceAuthority(event.target.value)}><option value="real_play">Real play</option><option value="explicit_lore">Explicit lore</option><option value="npc_intention">NPC intention</option><option value="preparation">Preparation</option><option value="brainstorm">Brainstorm</option><option value="unclassified">Unclassified</option></select></label><label>Visibility<select aria-label="Canonical claim visibility" value={provenanceVisibility} onChange={(event) => setProvenanceVisibility(event.target.value)}><option value="dm_only">DM only</option><option value="party">Party</option><option value="character">Character</option></select></label></div>{provenanceState === "observed" && <label>Observed campaign year<input aria-label="Observed campaign year" required type="number" value={observedAt} onChange={(event) => setObservedAt(event.target.value)} /></label>}{provenanceState !== "possible" && <fieldset><label><input checked={conditionEnabled} onChange={(event) => { setConditionEnabled(event.target.checked); if (!event.target.checked) setConditionText(""); }} type="checkbox" />Has a concrete prerequisite</label></fieldset>}{conditionEnabled && provenanceState !== "possible" && <label>Condition trigger<input aria-label="Condition trigger" placeholder="The concrete event that activates this consequence" value={conditionText} onChange={(event) => setConditionText(event.target.value)} /></label>}</>}<div className="step-actions">{directSessionReview && <button className="text-button" disabled={reviewBusy || !dispositionReason.trim()} onClick={() => void disposition("deferred")} type="button">Skip with reason</button>}<button disabled={reviewBusy || (splitClaims ? !splitClaims.some((claim) => claim.trim()) : !provenanceAssertion.trim()) || (directSessionReview ? !observedCampaignDate || (!subjectChoice.entityId && !subjectChoice.ambient) : (provenanceState === "observed" && !observedAt)) || (conditionEnabled && provenanceState !== "possible" && !conditionText.trim())} onClick={() => void (directSessionReview ? commitDirectInputClaim() : createProvenanceFirstProposal())} type="button">{directSessionReview ? `Commit ${splitClaims ? splitClaims.filter((claim) => claim.trim()).length : 1} claim${splitClaims && splitClaims.filter((claim) => claim.trim()).length !== 1 ? "s" : ""} and continue` : "Create source-backed proposal"}</button></div>{directSessionReview && <input aria-label="Skip reason" value={dispositionReason} onChange={(event) => setDispositionReason(event.target.value)} placeholder="Reason required only when skipping" />}</section>}
                 {migrationStep === 2 && selected.review_status === "pending" && <div className="extraction-actions"><button className="text-button" disabled={extractionPending || proposalBlocksSelection} onClick={() => void runExtraction(selected.candidate_id)} type="button"><WandIcon />{extractionPending ? "Extraction job running" : (selected.extractions && selected.extractions.length > 0 ? "Re-extract this candidate" : "Extract this candidate")}</button>{candidates.filter((candidate) => candidate.review_status === "pending").length > 1 && <button className="text-button" disabled={batchBusy || extractionPending || proposalBlocksSelection} onClick={() => void extractPendingSequence()} type="button"><WandIcon />{`Extract all ${Math.min(50, candidates.filter((candidate) => candidate.review_status === "pending").length)} pending candidates`}</button>}</div>}
                 {migrationStep === 3 && selected.extraction_segments && selected.extraction_segments.length > 0 && <section className="extraction-coverage" aria-label="Extraction coverage"><header><span>Source coverage</span><b>{selected.extraction_segments.filter((segment) => segment.disposition !== "unaccounted").length} / {selected.extraction_segments.length} accounted for</b></header>{selected.extraction_segments.some((segment) => segment.disposition !== "extracted") ? <div>{selected.extraction_segments.filter((segment) => segment.disposition !== "extracted").map((segment) => <article key={segment.segment_id}><div><b>{segment.segment_id}</b><span>{display(segment.disposition)}</span></div><p>{segment.text}</p></article>)}</div> : <p>Every source segment is represented by extracted claims.</p>}</section>}
                 {!directSessionReview && migrationStep === 3 && extractionDrafts.length > 0 && <AssertionFirstReview drafts={extractionDrafts} setDrafts={setExtractionDrafts} onBack={() => setMigrationStep(2)} onAbandon={abandonExtraction} onContinue={(subject) => void prepareSubjectGroups(subject)} />}

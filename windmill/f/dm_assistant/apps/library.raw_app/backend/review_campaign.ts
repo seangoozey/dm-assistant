@@ -79,6 +79,12 @@ interface ReviewBackendRequest {
     | "get_template_vocabulary"
     | "get_link_audit"
     | "get_unpromoted_material"
+    | "get_orphaned_claims"
+    | "list_brainstorm_sessions"
+    | "capture_encounter_document"
+    | "get_owner_suggestions"
+    | "dispose_claim_owner"
+    | "mint_encounter_entity"
     | "get_qualified_entities"
     | "get_exclusive_claims"
     | "reattribute_claim"
@@ -110,6 +116,8 @@ interface ReviewBackendRequest {
   session_id?: string;
     entity_id?: string;
   purpose?: string;
+  text?: string;
+  limit?: number;
   vocabulary?: string;
   record_id?: string;
   note_id?: string;
@@ -155,6 +163,18 @@ function route(input: ReviewBackendRequest): { method: "GET" | "POST" | "PUT" | 
       return { method: "GET", path: "campaign/link-audit" };
     case "get_unpromoted_material":
       return { method: "GET", path: "campaign/unpromoted-material" };
+    case "get_orphaned_claims":
+      return { method: "GET", path: "campaign/orphaned-claims" };
+    case "list_brainstorm_sessions":
+      return { method: "GET", path: "campaign/brainstorm-sessions" };
+    case "capture_encounter_document":
+      return { method: "POST", path: "capture/encounters" };
+    case "get_owner_suggestions":
+      return { method: "GET", path: `campaign/owner-suggestions?limit=${input.limit ?? 3}&text=${encodeURIComponent(required(input.text, "text"))}` };
+    case "dispose_claim_owner":
+      return { method: "POST", path: `claims/${required(input.claim_id, "claim_id")}/owner-disposition` };
+    case "mint_encounter_entity":
+      return { method: "POST", path: "campaign/encounter-entities" };
     case "get_qualified_entities":
       return { method: "GET", path: "campaign/qualified-entities" };
     case "get_exclusive_claims":

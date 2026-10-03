@@ -37,6 +37,7 @@ def settings() -> Settings:
 def test_entity_kinds_are_small_and_tags_normalize_case_insensitively() -> None:
     assert {kind.value for kind in EntityKind} == {
         "npc",
+        "encounter",
         "pc",
         "location",
         "faction",

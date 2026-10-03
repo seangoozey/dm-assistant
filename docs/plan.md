@@ -42,6 +42,6 @@ Sean's ruling (2026-09-28): **data that exists but is unassigned and thus invisi
 - Foundry VTT export proof of concept; Google Recorder or an intermediary connector after access verification.
 - Deeper knowledge-graph integration if the parked evaluation track ever shows value.
 
-## Cutover principle
+## Cutover principle (superseded by ADR-0020)
 
-The legacy system remains active until the replacement reaches feature and reliability parity. Development imports are one-way and incremental. Final cutover requires a brief legacy-write freeze, final delta import, parity checks, backup, and rollback plan. Separately, in-app legacy behavior stays available behind Settings until its replacement proves out in real use, then retires (the phase-1 Migration wizard is shelved behind its flag pending TKT-0145's re-home); nothing canonical is deleted in a cutover — superseded material stays queryable in revision history.
+Per ADR-0020 (accepted 2026-09-28): backward compatibility with the original source is abandoned — **the current campaign database is the only working database**, and its recovery story is database backups, not re-import. The legacy collections remain read-only historical reference. The unfinished migration state resolves forward inside the database through reviewed surfaces (TKT-0138 is finite cleanup; audit Q3 becomes the permanent ownership guard). In-app legacy behavior still stays available behind Settings until its replacement proves out in real use, then retires (the phase-1 Migration wizard is shelved behind its flag pending TKT-0145's re-home); nothing canonical is deleted — superseded material stays queryable in revision history.

@@ -1183,6 +1183,53 @@ main.page-settings { width: calc(100% - 24px); max-width: 860px; display: grid; 
 /* Phase 2 migrations page. */
 .page-migration2 { display: grid; gap: 18px; }
 
+/* Editable encounter-group names (the derived name is a proposal). */
+.encounter-group-main { display: grid; gap: 2px; min-width: 0; }
+.encounter-group-name { border: 1px solid #d6d0c3; border-radius: 4px; background: #fdfbf4; color: #2e2a24; font: 600 13px "Libre Caslon Display", serif; padding: 3px 8px; max-width: 360px; }
+.encounter-group-name:focus { border-color: #82533a; outline: none; }
+
+/* Global computed criteria (Q3/Q5) on the qualified panel. */
+.qualified-global-fail { color: #81442c; font-weight: 600; }
+
+/* TKT-0138 encounter slice: the mint-and-assign groups (lore-queue-item idiom). */
+.qualified-encounter-groups { border: 1px solid #cbc5b7; border-radius: 8px; background: #fffefa; padding: 14px 16px; display: grid; gap: 10px; margin-top: 12px; }
+.qualified-encounter-groups header span { font: 700 9px "DM Mono", monospace; text-transform: uppercase; letter-spacing: .12em; color: #84513b; }
+.qualified-encounter-groups header h4 { margin: 0; font-family: "Libre Caslon Text", serif; font-size: 15px; }
+.qualified-encounter-groups .lore-queue-item { display: flex; justify-content: space-between; align-items: center; gap: 10px; border-top: 1px solid #efe9dc; padding-top: 8px; }
+
+/* TKT-0138 slice 2: the orphan drain actions. */
+.qualified-orphan-actions { position: relative; display: flex; gap: 10px; align-items: center; margin-top: 12px; }
+.qualified-orphan-actions input { flex: 1; }
+.orphan-dispose-row { display: flex; gap: 8px; margin-top: 6px; }
+.orphan-dispose-row input { flex: 1; }
+
+/* The Party quick-pick: always visible, one click, distinct from suggestions. */
+.subject-party-pick { cursor: pointer; background: #edf5ee; border: 1px solid #c3dcc9; color: #2e5a3c; font-weight: 600; }
+.subject-party-pick b { font-weight: 700; }
+
+/* 0138 session backlog review — the pre-0148 residue walked sequentially. */
+.session-backlog-review { border: 1px solid #cbc5b7; border-radius: 8px; background: #fffefa; padding: 14px 16px; display: grid; gap: 10px; margin-top: 12px; }
+.session-backlog-review > header { display: flex; justify-content: space-between; align-items: baseline; }
+.session-backlog-review > header span { font: 700 9px "DM Mono", monospace; text-transform: uppercase; letter-spacing: .12em; color: #84513b; }
+
+/* TKT-0148: the owning-record decision on session statement commits. */
+.subject-choice { border: 1px solid #e3ded3; border-radius: 6px; background: #fbf8ef; padding: 10px 12px; display: grid; gap: 8px; margin: 0; }
+.subject-choice legend { font: 600 9px "DM Mono", monospace; text-transform: uppercase; letter-spacing: .1em; color: #84513b; padding: 0 4px; }
+.subject-choice legend small { text-transform: none; letter-spacing: 0; color: #8a7d70; }
+.subject-choice-resolved { display: flex; align-items: center; gap: 8px; }
+.subject-choice-suggested { display: flex; flex-wrap: wrap; gap: 6px; }
+.subject-choice-suggested .role-chip { cursor: pointer; }
+.subject-choice-search { position: relative; }
+.subject-choice-search input { width: 100%; }
+.subject-choice-open { display: grid; gap: 8px; }
+.subject-choice-results { position: absolute; z-index: 30; top: 100%; left: 0; right: 0; }
+.subject-choice-ambient { display: grid; gap: 2px; font-size: 12px; color: #4a443c; }
+.subject-choice-ambient small { color: #8a7d70; }
+
+/* TKT-0138: the orphan list — a capped scroll container so 186 rows stay
+ * inside the page rhythm (always-visible controls above the scroll area). */
+.qualified-orphan-scroll { max-height: 560px; overflow-y: auto; border: 1px solid #e3ded3; border-radius: 6px; background: #fbf8ef; padding: 10px 12px; display: grid; gap: 10px; margin-top: 12px; }
+
 /* Step 1 — Assign Ownership (document-exclusive claims). */
 .qualified-step1 { border: 1px solid #cbc5b7; border-radius: 8px; background: #fffefa; padding: 16px 18px; display: grid; gap: 10px; }
 .qualified-step1 > header { display: flex; align-items: center; justify-content: space-between; }

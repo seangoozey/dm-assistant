@@ -94,10 +94,24 @@ class BrainstormSession(BaseModel):
     evidence_pins: tuple[BrainstormEvidencePin, ...] = ()
 
 
+class BrainstormSessionSummary(BaseModel):
+    """The Library grouping read: one row per brainstorm session."""
+
+    model_config = ConfigDict(frozen=True)
+    session_id: UUID
+    title: str
+    open: bool
+    thought_count: int
+
+
 class BrainstormRepository(Protocol):
     def start(self, command: StartBrainstormCommand) -> BrainstormSession: ...
     def get(self, session_id: UUID) -> BrainstormSession | None: ...
     def get_open(self) -> BrainstormSession | None: ...
+
+    def list_sessions(self) -> list[tuple[Any, ...]]:
+        """(workflow_session_id, title, closed_at, thought_count) — the
+        Library's Brainstorms grouping read (TKT-0144 display ruling)."""
     def add_thought(
         self,
         *,
@@ -144,6 +158,15 @@ class BrainstormService:
 
     def get_open(self) -> BrainstormSession | None:
         return self._repository.get_open()
+
+    def list_sessions(self) -> tuple[BrainstormSessionSummary, ...]:
+        return tuple(
+            BrainstormSessionSummary(
+                session_id=row[0], title=str(row[1]),
+                open=row[2] is None, thought_count=int(row[3]),
+            )
+            for row in self._repository.list_sessions()
+        )
 
     def capture(
         self, session_id: UUID, command: CaptureBrainstormThoughtCommand

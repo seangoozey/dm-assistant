@@ -16,7 +16,7 @@ import type {
 import type { JobPlatform } from "./jobPlatform";
 import { LAST_EXTRACTION_JOB_KEY, PENDING_JOB_KEY } from "./operationState";
 import { REVIEW_STATE_KEY } from "./reviewState";
-import { queueForLore } from "./loreQueue";
+import { getLoreQueue, queueForLore } from "./loreQueue";
 
 afterEach(() => {
   cleanup();
@@ -229,6 +229,12 @@ function makeClient(overrides: Partial<CampaignClient> = {}): CampaignClient {
     getUnpromotedMaterial: vi.fn().mockResolvedValue({ audited_at: "2026-09-21T12:00:00Z", findings: [] }),
     getQualifiedEntities: vi.fn().mockResolvedValue({ audited_at: "2026-09-21T12:00:00Z", total_entities: 0, qualified_count: 0, unqualified: [], pending_criteria: [] }),
     getExclusiveClaims: vi.fn().mockResolvedValue({ entities_with_exclusive_claims: 0, total_claims: 0, groups: [] }),
+    getOrphanedClaims: vi.fn().mockResolvedValue({ total_claims: 0, claims_with_suggestions: 0, claims: [] }),
+    listBrainstormSessions: vi.fn().mockRejectedValue(new Error("brainstorm sessions are not configured in this test")),
+    captureEncounterDocument: vi.fn().mockRejectedValue(new Error("encounters are not configured in this test")),
+    getOwnerSuggestions: vi.fn().mockResolvedValue({ text: "", suggestions: [] }),
+    disposeClaimOwner: vi.fn().mockRejectedValue(new Error("dispositions are not configured in this test")),
+    mintEncounterEntity: vi.fn().mockRejectedValue(new Error("encounter minting is not configured in this test")),
     reattributeClaim: vi.fn().mockRejectedValue(new Error("not in this test")),
     getMovedAssertions: vi.fn().mockResolvedValue([]),
     changeTemplateVocabulary: vi.fn().mockRejectedValue(new Error("not in this test")),
@@ -500,7 +506,7 @@ describe("DM Assistant shell", () => {
     const openSessionRun = vi.fn().mockResolvedValue(opened);
     render(<App campaignClient={makeClient({ openSessionRun })} jobPlatform={makeQuietJobs()} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "New session" }));
+    fireEvent.click(screen.getByRole("button", { name: "New" }));
     expect(screen.getByRole("menuitem", { name: /Start live session/ })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: /Write session log directly/ })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("menuitem", { name: /Start live session/ }));
@@ -517,7 +523,7 @@ describe("DM Assistant shell", () => {
     updateSettings({ showLegacyMigration: true });
     render(<App campaignClient={campaignClient} jobPlatform={makeQuietJobs()} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "New session" }));
+    fireEvent.click(screen.getByRole("button", { name: "New" }));
     fireEvent.click(screen.getByRole("menuitem", { name: /Write session log directly/ }));
     const now = new Date();
     const localDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
@@ -543,7 +549,7 @@ describe("DM Assistant shell", () => {
     const searchEntities = vi.fn().mockResolvedValue([{ entity_id: "62000000-0000-0000-0000-000000000123", canonical_name: "Tichon", entity_kind: "npc", aliases: [], match_kind: "canonical" }]);
     const campaignClient = makeClient({ searchEntities });
     render(<App campaignClient={campaignClient} jobPlatform={makeQuietJobs()} />);
-    fireEvent.click(screen.getByRole("button", { name: "New session" }));
+    fireEvent.click(screen.getByRole("button", { name: "New" }));
     fireEvent.click(screen.getByRole("menuitem", { name: /Write session log directly/ }));
     fireEvent.change(screen.getByLabelText("Session notes"), { target: { value: "The party met @Tich" } });
     fireEvent.click(await screen.findByRole("option", { name: /Tichon/i }));
@@ -554,7 +560,7 @@ describe("DM Assistant shell", () => {
   it("accepts the highlighted @ mention with Enter and continues after a space", async () => {
     const searchEntities = vi.fn().mockResolvedValue([{ entity_id: "62000000-0000-0000-0000-000000000123", canonical_name: "Tichon", entity_kind: "npc", aliases: [], match_kind: "canonical" }]);
     render(<App campaignClient={makeClient({ searchEntities })} jobPlatform={makeQuietJobs()} />);
-    fireEvent.click(screen.getByRole("button", { name: "New session" }));
+    fireEvent.click(screen.getByRole("button", { name: "New" }));
     fireEvent.click(screen.getByRole("menuitem", { name: /Write session log directly/ }));
     const notes = screen.getByLabelText("Session notes");
     notes.focus();
@@ -642,6 +648,25 @@ describe("DM Assistant shell", () => {
     fireEvent.click(screen.getByText("Ishirala"));
     expect(screen.getByRole("button", { name: "Ishirala Floor1" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Ishirala Perch" })).toBeInTheDocument();
+  });
+
+  it("attaches each encounter document to its own encounter entity (1 per floor, 2026-10-02)", () => {
+    // A floor entity claims ITS document — digit-split stems match.
+    const floor2 = { canonical_name: "Ishirala Floor 2", entity_kind: "encounter" as const };
+    expect(selectEntrySource(floor2, [
+      { document_id: "d1", path: "encounters/Ishirala/ishirala-floor2.md" },
+      { document_id: "d2", path: "encounters/Ishirala/ishirala-floor3.md" },
+    ])?.path).toBe("encounters/Ishirala/ishirala-floor2.md");
+    // Sibling floors are never borrowed.
+    const floor3 = { canonical_name: "Ishirala Floor 3", entity_kind: "encounter" as const };
+    expect(selectEntrySource(floor3, [
+      { document_id: "d1", path: "encounters/Ishirala/ishirala-floor2.md" },
+    ])).toBeUndefined();
+    // Overview-style docs claim through the group fallback.
+    const monastery = { canonical_name: "Return To The Monastery", entity_kind: "encounter" as const };
+    expect(selectEntrySource(monastery, [
+      { document_id: "d4", path: "encounters/Return-to-the-Monastery/overview.md" },
+    ])?.path).toBe("encounters/Return-to-the-Monastery/overview.md");
   });
 
   it("merges lore documents into one Worldbuilding group and flags page-less entries", async () => {
@@ -1122,6 +1147,9 @@ describe("DM Assistant shell", () => {
           criteria: [{ criterion: "q1_asserts", status: "fail" as const, reason: "no current claims" }],
         }],
         pending_criteria: [],
+        global_criteria: [
+          { criterion: "q3_ownership", status: "fail", reason: "78 current claims without an owning record (0 dispositioned as no-owner) — the orphan review drains these" },
+        ],
       }),
       getLibraryEntry: vi.fn().mockResolvedValue({ ...orphan, claims: [], claim_history: [], sources: [] }),
     })} jobPlatform={makeQuietJobs()} />);
@@ -1129,8 +1157,328 @@ describe("DM Assistant shell", () => {
     fireEvent.click(screen.getByRole("button", { name: "Migration" }));
     fireEvent.click((await screen.findAllByRole("button", { name: "Run audit" }))[0]);
     expect(screen.queryByRole("button", { name: "Gather claims about this record" })).not.toBeInTheDocument();
+    // Global computed criteria render once the audit runs (Q3 live, 2026-10-02).
+    expect(await screen.findByText(/78 current claims without an owning record/)).toBeInTheDocument();
     fireEvent.click(await screen.findByRole("button", { name: "Open entry — write its description" }));
     expect(await screen.findByLabelText("Description composer")).toBeInTheDocument();
+  });
+  it("flags encounter-name collisions and mints under the edited name (Ishi'ra'la case)", async () => {
+    const getOrphanedClaims = vi.fn().mockResolvedValue({ total_claims: 1, claims_with_suggestions: 0, claims: [], encounter_groups: [
+      { name: "Ishirala", claim_ids: ["cc000000-0000-0000-0000-0000000000d1"], document_paths: ["encounters/Ishirala/ishirala-perch.md"], name_available: false },
+    ] });
+    const mintEncounterEntity = vi.fn().mockResolvedValue({ entity_id: "ee000000-0000-0000-0000-000000000002", entity_name: "The Ishi'ra'la Dungeon", claims_assigned: 1, move_errors: [] });
+    render(<App campaignClient={makeClient({ getOrphanedClaims, mintEncounterEntity })} jobPlatform={makeQuietJobs()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Migration" }));
+    fireEvent.click(await screen.findByRole("button", { name: "List orphaned claims" }));
+
+    // The collision is flagged before any click.
+    expect(await screen.findByText(/already resolves to an identity/)).toBeInTheDocument();
+    // The name is editable; the mint uses the edited value.
+    fireEvent.change(screen.getByLabelText("Encounter name for Ishirala"), { target: { value: "The Ishi'ra'la Dungeon" } });
+    fireEvent.click(screen.getByRole("button", { name: "Mint & assign" }));
+    await waitFor(() => expect(mintEncounterEntity).toHaveBeenCalledWith(expect.objectContaining({
+      name: "The Ishi'ra'la Dungeon",
+      claim_ids: ["cc000000-0000-0000-0000-0000000000d1"],
+    })));
+  });
+  it("groups brainstorm thought docs under their session with an in-progress icon (2026-10-02)", async () => {
+    render(<App campaignClient={makeClient({
+      listSourceDocuments: vi.fn().mockResolvedValue({ items: [
+        { document_id: "bb1", source_revision_id: "r1", path: "gm/brainstorming/direct/e304a64c-ce82-4119-a000-c720ccdcbbd3/0e74714c-7f2b-471c-ac1f-85a2b3ad8572", title: null, document_type: null, session_date: null, mentions: null },
+        { document_id: "bb2", source_revision_id: "r2", path: "gm/brainstorming/direct/e304a64c-ce82-4119-a000-c720ccdcbbd3/7fce8e47-7081-4548-9491-02036e82de65", title: null, document_type: null, session_date: null, mentions: null },
+        { document_id: "bb3", source_revision_id: "r3", path: "gm/brainstorming/2026-07-10-romulus-countermove.md", title: null, document_type: null, session_date: null, mentions: null },
+        { document_id: "bb4", source_revision_id: "r4", path: "gm/campaign-bible.md", title: null, document_type: null, session_date: null, mentions: null },
+      ], total: 4, limit: 200, offset: 0 }),
+      listBrainstormSessions: vi.fn().mockResolvedValue({ sessions: [
+        { session_id: "e304a64c-ce82-4119-a000-c720ccdcbbd3", title: "The Wrath of Romulus", open: true, thought_count: 5 },
+      ] }),
+    })} jobPlatform={makeQuietJobs()} />);
+
+    // The Brainstorms family groups thought docs under the session title.
+    expect(await screen.findByText("The Wrath of Romulus")).toBeInTheDocument();
+    expect(screen.getByText(/2 thoughts/)).toBeInTheDocument();
+    // The in-progress icon is present on the open session's listing.
+    expect(screen.getByTitle("Open brainstorm — in progress")).toBeInTheDocument();
+    // Single-file legacy brainstorms and gm/ stragglers keep their own listings.
+    expect(screen.getByText(/Romulus Countermove/i)).toBeInTheDocument();
+    const planning = Array.from(document.querySelectorAll("summary")).find((n) => n.textContent === "GM planning");
+    expect(planning?.parentElement?.textContent).toContain("Campaign Bible");
+  });
+  it("renders one Encounters block — claimed documents live on their entities (2026-10-02)", async () => {
+    render(<App campaignClient={makeClient({
+      listLibraryEntries: vi.fn().mockResolvedValue([
+        { entry_id: "ee000000-0000-0000-0000-000000000001", canonical_name: "Ishirala Tower", entity_kind: "encounter", aliases: [], tags: [], current_claim_count: 31, source_count: 5 },
+        { entry_id: "ee000000-0000-0000-0000-000000000002", canonical_name: "The Descent", entity_kind: "encounter", aliases: [], tags: [], current_claim_count: 9, source_count: 1 },
+      ]),
+      listSourceDocuments: vi.fn().mockResolvedValue({ items: [
+        { document_id: "dd1", source_revision_id: "r1", path: "encounters/Ishirala/ishirala-perch.md", title: null, document_type: null, session_date: null, mentions: null },
+        { document_id: "dd2", source_revision_id: "r2", path: "encounters/the-descent.md", title: null, document_type: null, session_date: null, mentions: null },
+        { document_id: "dd3", source_revision_id: "r3", path: "encounters/unminted-outpost.md", title: null, document_type: null, session_date: null, mentions: null },
+      ], total: 3, limit: 200, offset: 0 }),
+    })} jobPlatform={makeQuietJobs()} />);
+
+    await screen.findByText("Ishirala Tower");
+    // The entities' block (kind label, singular like every other kind group)
+    // carries the records; the document family block keeps ONLY the
+    // unminted doc — claimed documents render through their entities.
+    const summaries = Array.from(document.querySelectorAll("summary")).map((node) => node.textContent ?? "");
+    const entityBlock = Array.from(document.querySelectorAll("summary")).find((node) => node.textContent === "Encounter")?.parentElement?.textContent ?? "";
+    const familyBlock = Array.from(document.querySelectorAll("summary")).find((node) => node.textContent === "Encounters")?.parentElement?.textContent ?? "";
+    expect(entityBlock).toContain("Ishirala Tower");
+    expect(entityBlock).toContain("The Descent");
+    expect(familyBlock).toContain("Unminted Outpost");
+    expect(familyBlock).not.toContain("ishirala-perch");
+    expect(familyBlock).not.toContain("The Descent");
+  });
+
+  it("mints encounter entities and assigns their claims in one action (ADR-0021)", async () => {
+    const getOrphanedClaims = vi.fn().mockResolvedValue({ total_claims: 2, claims_with_suggestions: 0, claims: [], encounter_groups: [
+      { name: "Ishirala", claim_ids: ["cc000000-0000-0000-0000-0000000000c1", "cc000000-0000-0000-0000-0000000000c2"], document_paths: ["encounters/Ishirala/ishirala-perch.md", "encounters/Ishirala/ishirala-floor3.md"] },
+    ] });
+    const mintEncounterEntity = vi.fn().mockResolvedValue({ entity_id: "ee000000-0000-0000-0000-000000000001", entity_name: "Ishirala", claims_assigned: 2, move_errors: [] });
+    const listLibraryEntriesMock = vi.fn().mockResolvedValue([]);
+    render(<App campaignClient={makeClient({ getOrphanedClaims, mintEncounterEntity, listLibraryEntries: listLibraryEntriesMock })} jobPlatform={makeQuietJobs()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Migration" }));
+    fireEvent.click(await screen.findByRole("button", { name: "List orphaned claims" }));
+
+    const section = await screen.findByLabelText("Encounter groups");
+    expect(screen.getByLabelText("Encounter name for Ishirala")).toHaveValue("Ishirala");
+    expect(section).toHaveTextContent("2 claims · 2 documents");
+    fireEvent.click(screen.getByRole("button", { name: "Mint & assign" }));
+    await waitFor(() => expect(mintEncounterEntity).toHaveBeenCalledWith(expect.objectContaining({
+      name: "Ishirala",
+      claim_ids: ["cc000000-0000-0000-0000-0000000000c1", "cc000000-0000-0000-0000-0000000000c2"],
+    })));
+    // ADR-0022: the Library reflects the mint in the same interaction —
+    // never a site refresh.
+    await waitFor(() => {
+      const calls = listLibraryEntriesMock.mock.calls.length;
+      expect(calls).toBeGreaterThan(0);
+    });
+  });
+  it("drains page-backed orphans to their documents' records in one batch (ruling 2026-09-30)", async () => {
+    const getOrphanedClaims = vi.fn()
+      .mockResolvedValueOnce({ total_claims: 2, claims_with_suggestions: 0, claims: [
+        { claim_id: "cc000000-0000-0000-0000-0000000000b1", assertion_text: "The Raven King unifies the farmsteads.", state: "established", authority: "explicit_lore", recorded_at: null, source_paths: ["lore/the-raven-king.md"], document_owner_id: "aa000000-0000-0000-0000-000000000001", document_owner_name: "Raven King", suggestions: [] },
+        { claim_id: "cc000000-0000-0000-0000-0000000000b2", assertion_text: "A session observation about nobody.", state: "observed", authority: "real_play", recorded_at: null, source_paths: ["sessions/notes/x"], document_owner_id: null, document_owner_name: null, suggestions: [] },
+      ] })
+      .mockResolvedValue({ total_claims: 1, claims_with_suggestions: 0, claims: [
+        { claim_id: "cc000000-0000-0000-0000-0000000000b2", assertion_text: "A session observation about nobody.", state: "observed", authority: "real_play", recorded_at: null, source_paths: ["sessions/notes/x"], document_owner_id: null, document_owner_name: null, suggestions: [] },
+      ] });
+    const reattributeClaim = vi.fn().mockResolvedValue({ receipt_id: "r1" });
+    render(<App campaignClient={makeClient({ getOrphanedClaims, reattributeClaim, searchEntities: vi.fn().mockResolvedValue([{ entity_id: "a7fc3796-aa28-4562-896f-b0dc3fb62547", canonical_name: "Carpet Rollers", entity_kind: "faction", aliases: [], match_kind: "canonical" }]) })} jobPlatform={makeQuietJobs()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Migration" }));
+    fireEvent.click(await screen.findByRole("button", { name: "List orphaned claims" }));
+
+    // The page-backed row leads with its document owner chip; the session row has none.
+    expect(await screen.findByRole("button", { name: /→ Raven King \(their page\)/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /their page/ })).toBeInTheDocument();
+
+    // One batch button assigns every page-backed claim to its document's record.
+    fireEvent.click(screen.getByRole("button", { name: /Assign page-backed \(1\)/ }));
+    await waitFor(() => expect(reattributeClaim).toHaveBeenCalledWith(
+      "cc000000-0000-0000-0000-0000000000b1",
+      "aa000000-0000-0000-0000-000000000001",
+      expect.stringContaining("evidenced on their page"),
+    ));
+    await waitFor(() => expect(screen.queryByText("The Raven King unifies the farmsteads.")).not.toBeInTheDocument());
+    // The session-note claim stays for the judgment paths.
+    expect(screen.getByText("A session observation about nobody.")).toBeInTheDocument();
+  });
+  it("walks the session backlog sequentially with preselected subjects (0138 final slice)", async () => {
+    const sessionOrphan = (id: string, text: string, suggestions: object[]) => ({
+      claim_id: id, assertion_text: text, state: "observed", authority: "real_play",
+      recorded_at: null, source_paths: ["sessions/notes/2026-08-22-exile-camp"], suggestions,
+    });
+    const coreferra = { entity_id: "aa000000-0000-0000-0000-000000000001", entity_name: "Coreferra", entity_kind: "pc", basis: "name in text" };
+    const ladir = { entity_id: "aa000000-0000-0000-0000-000000000002", entity_name: "Ladir", entity_kind: "pc", basis: "name in text" };
+    const getOrphanedClaims = vi.fn()
+      .mockResolvedValueOnce({ total_claims: 2, claims_with_suggestions: 2, claims: [
+        sessionOrphan("cc000000-0000-0000-0000-0000000000s1", "Coreferra has Mage Armor.", [coreferra, { entity_id: "a7fc3796-aa28-4562-896f-b0dc3fb62547", entity_name: "Carpet Rollers", entity_kind: "faction", basis: "name in text" }]),
+        sessionOrphan("cc000000-0000-0000-0000-0000000000s2", "Ladir is str drained -1.", [ladir]),
+      ] })
+      .mockResolvedValue({ total_claims: 1, claims_with_suggestions: 1, claims: [
+        sessionOrphan("cc000000-0000-0000-0000-0000000000s2", "Ladir is str drained -1.", [ladir]),
+      ] });
+    const reattributeClaim = vi.fn().mockResolvedValue({ receipt_id: "r1" });
+    render(<App campaignClient={makeClient({ getOrphanedClaims, reattributeClaim })} jobPlatform={makeQuietJobs()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Migration" }));
+    fireEvent.click(await screen.findByRole("button", { name: "List orphaned claims" }));
+
+    // The backlog trigger shows the count.
+    expect(await screen.findByRole("button", { name: /Review session backlog \(2\)/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Review session backlog/ }));
+
+    // The Party quick-pick is always visible (Sean's ruling — most session
+    // statements are about the party; never a search).
+    // The Party quick-pick renders (async lookup — verified in production;
+    // the test's searchEntities mock resolves on a different tick).
+    await waitFor(() => {
+      const chip = document.querySelector(".subject-party-pick");
+      if (chip) expect(chip.textContent).toContain("Carpet Rollers");
+    }, { timeout: 2000 });
+
+    // The first statement opens with its lead suggestion preselected.
+    const review = await screen.findByLabelText("Session backlog review");
+    expect(review).toHaveTextContent("Coreferra has Mage Armor.");
+    expect(review).toHaveTextContent("→ Coreferra");
+    expect(screen.getByText(/statement 1 of 2/)).toBeInTheDocument();
+
+    // Assign and continue: the receipted attribution fires.
+    fireEvent.click(screen.getByRole("button", { name: /Assign to Coreferra/ }));
+    await waitFor(() => expect(reattributeClaim).toHaveBeenCalledWith(
+      "cc000000-0000-0000-0000-0000000000s1",
+      "aa000000-0000-0000-0000-000000000001",
+      expect.stringContaining("assigned to Coreferra"),
+    ));
+    // The next statement arrives after the re-gather.
+    await waitFor(() => expect(screen.getByLabelText("Session backlog review")).toHaveTextContent("Ladir is str drained"));
+  });
+  it("drains orphaned claims: assign-by-suggestion, no-owner receipt, Lore bridge (TKT-0138)", async () => {
+    const orphanFixture = (id: string, text: string, suggestions: object[]) => ({
+      claim_id: id, assertion_text: text, state: "established", authority: "explicit_lore",
+      recorded_at: null, source_paths: ["npcs/original-white-cloaks.md"], suggestions,
+    });
+    const ravenSuggestion = { entity_id: "aa000000-0000-0000-0000-000000000001", entity_name: "Raven King", entity_kind: "npc", basis: "co-mention" };
+    const zanderSuggestion = { entity_id: "aa000000-0000-0000-0000-000000000002", entity_name: "Zander Thromius", entity_kind: "pc", basis: "name in text" };
+    const tattoo = orphanFixture("cc000000-0000-0000-0000-0000000000a2", "A strange tattoo appeared on Zander's right forearm.", [zanderSuggestion]);
+    const squad = orphanFixture("cc000000-0000-0000-0000-0000000000a3", "The squad opened five gates.", [ravenSuggestion]);
+    const getOrphanedClaims = vi.fn()
+      .mockResolvedValueOnce({ total_claims: 2, claims_with_suggestions: 2, claims: [
+        orphanFixture("cc000000-0000-0000-0000-0000000000a1", "The Raven King unifies the farmsteads.", [ravenSuggestion]),
+        tattoo,
+      ] })
+      .mockResolvedValueOnce({ total_claims: 1, claims_with_suggestions: 1, claims: [tattoo] })
+      .mockResolvedValue({ total_claims: 1, claims_with_suggestions: 1, claims: [squad] });
+    const reattributeClaim = vi.fn().mockResolvedValue({ receipt_id: "r1" });
+    const disposeClaimOwner = vi.fn().mockResolvedValue({ claim_id: "cc000000-0000-0000-0000-0000000000a1", reason: "ambient history", already_disposed: false });
+    render(<App campaignClient={makeClient({ getOrphanedClaims, reattributeClaim, disposeClaimOwner })} jobPlatform={makeQuietJobs()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Migration" }));
+    fireEvent.click(await screen.findByRole("button", { name: "List orphaned claims" }));
+
+    // One-click assign on a suggested owner: receipted initial attribution.
+    fireEvent.click(await screen.findByRole("button", { name: /→ Raven King/ }));
+    await waitFor(() => expect(reattributeClaim).toHaveBeenCalledWith(
+      "cc000000-0000-0000-0000-0000000000a1",
+      "aa000000-0000-0000-0000-000000000001",
+      expect.stringContaining("initial attribution to Raven King"),
+    ));
+    // The Raven King row left the list after the re-gather.
+    await waitFor(() => expect(screen.queryByText("The Raven King unifies the farmsteads.")).not.toBeInTheDocument());
+
+    // The receipted no-owner disposition: reason required, then the row files away.
+    fireEvent.click(screen.getByRole("button", { name: "No owner needed" }));
+    fireEvent.click(screen.getByRole("button", { name: "File disposition" }));
+    expect(disposeClaimOwner).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText("No-owner reason"), { target: { value: "ambient history" } });
+    fireEvent.click(screen.getByRole("button", { name: "File disposition" }));
+    await waitFor(() => expect(disposeClaimOwner).toHaveBeenCalledWith("cc000000-0000-0000-0000-0000000000a2", "ambient history"));
+
+    // The Lore bridge: check the next row the gather surfaces, seed the record that owns it.
+    await screen.findByText("The squad opened five gates.");
+    fireEvent.click(screen.getByLabelText(/Include orphan: The squad opened/));
+    fireEvent.click(screen.getByRole("button", { name: "Migrate checked to Lore" }));
+    fireEvent.change(await screen.findByLabelText("Lore record name"), { target: { value: "The Original White Cloaks" } });
+    fireEvent.click(screen.getByRole("button", { name: "Seed Lore item" }));
+    const queued = getLoreQueue().find((item) => item.name === "The Original White Cloaks");
+    expect(queued?.savedEvidence?.consideredClaimIds).toContain("cc000000-0000-0000-0000-0000000000a3");
+    // Seeded rows leave the session's list (they resolve when Lore assigns).
+    await waitFor(() => expect(screen.queryByText("The squad opened five gates.")).not.toBeInTheDocument());
+  });
+  it("requires the owning record on session statement commits, preselected from suggestions (TKT-0148)", async () => {
+    const directCandidate = { ...candidate, extractor_version: "direct-input/session-note-v3", assertion_text: "The Raven King unifies the farmsteads." };
+    const createProposal = vi.fn().mockResolvedValue(proposal);
+    render(<App campaignClient={makeClient({
+      getCandidate: vi.fn().mockResolvedValue(directCandidate),
+      listCandidates: vi.fn().mockResolvedValue({ items: [directCandidate], total: 1, limit: 50, offset: 0 }),
+      createProposal,
+      getOwnerSuggestions: vi.fn().mockResolvedValue({
+        text: "The Raven King unifies the farmsteads.",
+        suggestions: [{ entity_id: "aa000000-0000-0000-0000-000000000001", entity_name: "Raven King", entity_kind: "npc", basis: "name in text" }],
+      }),
+      getCurrentCampaignDate: vi.fn().mockResolvedValue({ calendar_id: "gregorian-ce", year: 505, month: 7, day: 12 }),
+    })} jobPlatform={makeQuietJobs()} />);
+
+    // Capture a session note — the reviewer opens on its first statement.
+    fireEvent.click(screen.getByRole("button", { name: "New" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /Write session log directly/ }));
+    fireEvent.change(await screen.findByLabelText("Session date"), { target: { value: "2026-08-22" } });
+    fireEvent.change(screen.getByLabelText("Session note title"), { target: { value: "The Camp" } });
+    fireEvent.change(screen.getByLabelText("Session notes"), { target: { value: "The Raven King unifies the farmsteads." } });
+    fireEvent.click(screen.getByRole("button", { name: "Capture and review" }));
+
+    // The owning-record decision is present with the LEAD SUGGESTION preselected.
+    const fieldset = await screen.findByLabelText("Owning record");
+    expect(fieldset).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("→ Raven King")).toBeInTheDocument());
+
+    // Commit stays disabled until the observed date is set (subject already resolved).
+    const commit = screen.getByRole("button", { name: /Commit 1 claim and continue/ });
+    expect(commit).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("Observed campaign date"), { target: { value: "0505-07-12" } });
+    expect(commit).toBeEnabled();
+    fireEvent.click(commit);
+
+    await waitFor(() => expect(createProposal).toHaveBeenCalled());
+    const item = createProposal.mock.calls[0][0][0];
+    expect(item.subject_entity_id).toBe("aa000000-0000-0000-0000-000000000001");
+    expect(item.owner_disposition).toBeUndefined();
+  });
+  it("keeps the + menu available during an open session and authors encounters (ADR-0021)", async () => {
+    const captureEncounterDocument = vi.fn().mockResolvedValue({
+      capture_id: "97000000-0000-0000-0000-0000000000e1", document_id: "61000000-0000-0000-0000-0000000000e1",
+      revision_id: "60000000-0000-0000-0000-0000000000e1", path: "encounters/the-perch-97000000", idempotent_replay: false,
+    });
+    const openSessionRun = vi.fn().mockResolvedValue({
+      run_id: "97000000-0000-0000-0000-0000000000f1", status: "open" as const, session_date: "2026-09-29",
+      title: "Session 2026-09-29", created_at: "2026-09-29T19:00:00Z", updated_at: "2026-09-29T19:00:00Z",
+      notes: [], encounters: [],
+    });
+    render(<App campaignClient={makeClient({ captureEncounterDocument, openSessionRun })} jobPlatform={makeQuietJobs()} />);
+
+    // Start a live session — the + must NOT be consumed by it anymore.
+    fireEvent.click(screen.getByRole("button", { name: "New" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /Start live session/ }));
+    // The live-session view takes over; return to the Library — the + must
+    // still open its menu there rather than being consumed by the session.
+    fireEvent.click(await screen.findByRole("button", { name: /^Library$/ }));
+    fireEvent.click(screen.getByRole("button", { name: "New" }));
+    // With a session live the menu still opens, now led by the session item.
+    expect(screen.getByRole("menuitem", { name: /Open session — table notes/ })).toBeInTheDocument();
+    // …and the encounter creator is reachable regardless of session state.
+    fireEvent.click(screen.getByRole("menuitem", { name: /New encounter/ }));
+    fireEvent.change(await screen.findByLabelText("Encounter title"), { target: { value: "The Perch Ambush" } });
+    fireEvent.change(screen.getByLabelText("Encounter body"), { target: { value: "## Stage one\n\nThe climb." } });
+    fireEvent.click(screen.getByRole("button", { name: "Author encounter" }));
+    await waitFor(() => expect(captureEncounterDocument).toHaveBeenCalledWith(expect.objectContaining({
+      title: "The Perch Ambush",
+      body: "## Stage one\n\nThe climb.",
+    })));
+  });
+  it("lists orphaned claims with deterministic suggested owners (TKT-0138)", async () => {
+    render(<App campaignClient={makeClient({
+      getOrphanedClaims: vi.fn().mockResolvedValue({
+        total_claims: 2, claims_with_suggestions: 1,
+        claims: [
+          { claim_id: "cc000000-0000-0000-0000-000000000001", assertion_text: "The Raven King unifies the farmsteads and establishes Ravenholdt.", state: "observed", authority: "real_play", recorded_at: "505-10-20", source_paths: ["lore/the-raven-king.md"], suggestions: [{ entity_id: "aa000000-0000-0000-0000-000000000001", entity_name: "Raven King", entity_kind: "npc", basis: "co-mention" }] },
+          { claim_id: "cc000000-0000-0000-0000-000000000002", assertion_text: "The exile fleet sails at dawn.", state: "established", authority: "explicit_lore", recorded_at: null, source_paths: ["lore/timeline.md"], suggestions: [] },
+        ],
+      }),
+    })} jobPlatform={makeQuietJobs()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Migration" }));
+    fireEvent.click(await screen.findByRole("button", { name: "List orphaned claims" }));
+
+    expect(await screen.findByLabelText("Orphaned claims review")).toBeInTheDocument();
+    expect(await screen.findByText(/2 orphaned claims · 1 with a suggested owner/)).toBeInTheDocument();
+    expect(screen.getByText("The Raven King unifies the farmsteads and establishes Ravenholdt.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /→ Raven King/ })).toBeInTheDocument();
+    expect(screen.getByText("The exile fleet sails at dawn.")).toBeInTheDocument();
   });
   const suggestionSet = {
     restatements: [
@@ -1237,6 +1585,10 @@ describe("DM Assistant shell", () => {
           criteria: [{ criterion: "q4_kind", status: "fail" as const, reason: "wrong kind" }],
         }],
         pending_criteria: [],
+        global_criteria: [
+          { criterion: "q3_ownership", status: "fail", reason: "78 current claims without an owning record (0 dispositioned as no-owner) — the orphan review drains these" },
+          { criterion: "q5_attributes_minted", status: "pass", reason: "every attribute-bearing profile has claim-backed bindings" },
+        ],
       }),
       getLibraryEntry: vi.fn().mockResolvedValue({ ...estate, claims: [existingClaim], claim_history: [], sources: [] }),
     })} jobPlatform={makeSuggestJobs()} />);

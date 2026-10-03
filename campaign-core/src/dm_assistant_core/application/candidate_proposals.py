@@ -81,6 +81,9 @@ class CreateClaimDecision(BaseModel):
     evidence_revision_id: UUID
     target_id: UUID
     subject_entity_id: UUID | None = None
+    # TKT-0148 guardrail: the explicit no-owner choice. A subjectless claim
+    # only commits WITH this disposition (receipted via claim_owner_dispositions).
+    owner_disposition: NonEmptyText | None = None
     object_entity_id: UUID | None = None
     related_entity_ids: tuple[UUID, ...] = ()
     assertion_text: NonEmptyText | None = None

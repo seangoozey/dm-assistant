@@ -62,3 +62,32 @@ class PostgresQualifiedAuditRepository:
                 value for value, retired in overrides.items() if not retired
             }
         return values
+
+    def ownership_counts(self) -> tuple[int, int]:
+        with self._database.connection() as connection:
+            orphaned = connection.execute(
+                """
+                SELECT count(*) FROM claims c
+                WHERE c.subject_entity_id IS NULL
+                  AND NOT EXISTS (SELECT 1 FROM claim_supersessions cs
+                                  WHERE cs.superseded_claim_id = c.id)
+                  AND NOT EXISTS (SELECT 1 FROM claim_owner_dispositions cod
+                                  WHERE cod.claim_id = c.id)
+                """
+            ).fetchone()[0]
+            disposed = connection.execute(
+                "SELECT count(*) FROM claim_owner_dispositions"
+            ).fetchone()[0]
+            return int(orphaned), int(disposed)
+
+    def unminted_attribute_profiles(self) -> int:
+        with self._database.connection() as connection:
+            return int(connection.execute(
+                """
+                SELECT count(*) FROM entity_profiles ep
+                WHERE ep.profile_json ?| array['race','sex','status','location_type',
+                                               'parent_location','base_location','life_status']
+                  AND NOT EXISTS (SELECT 1 FROM attribute_claim_bindings b
+                                  WHERE b.entity_id = ep.entity_id)
+                """
+            ).fetchone()[0])

@@ -218,6 +218,11 @@ export const TERMS: Record<string, GlossaryEntry> = {
     short: "A controlled model configuration for one purpose, activated by receipt.",
     definition: "Each AI purpose — claim extraction, prose writing — has its own set of model profiles and its own active choice. A profile fixes the provider, model, limits, and timeout; activating one files a receipt, exactly like every other audited decision. The extraction model and the prose model are chosen separately on purpose: the model that reads documents well is not presumed to be the model that writes them.",
   },
+  "encounter-entity": {
+    term: "Encounter (Entity)", category: "Records and truth",
+    short: "A table event — an Entity of its own kind that owns its claims.",
+    definition: "Per ADR-0021, an encounter is an Entity of kind encounter: an authored document declaring it, participants recorded as mentions, and outcomes as claims the encounter OWNS — the DM authors freely without per-claim subject sorting, because auto-mentions carry every cross-referenced record the benefit. Sessions are different by ruling: they are Lore-in-progress interfaces that assign ownership at commit, never owning claims themselves. Lore events (the Fall of Ravenholdt, the Timeline) use the event kind.",
+  },
   "ai-action-wand": {
     term: "AI action (✨ wand)", category: "Workflow and audit",
     short: "The magic-wand icon marks every button that triggers a model call.",

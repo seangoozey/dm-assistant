@@ -133,6 +133,18 @@ class SurfaceDecision(BaseModel):
     idempotency_key: str = Field(min_length=1)
 
 
+class CorrectCanonicalNameDecision(BaseModel):
+    """Rename an identity's canonical name (audited; the old name survives
+    as an alias so existing surface references keep resolving). The third
+    blocked case (Ishirala Tower, Mads) made the gap concrete: canonical
+    names ARE correctable identity facts, not immutable ones."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    entity_id: UUID
+    new_name: str = Field(min_length=1, max_length=200)
+    idempotency_key: str = Field(min_length=1)
+
+
 class MarkMisspellingDecision(BaseModel):
     """Record a surface as a misspelling of an existing identity.
 

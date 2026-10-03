@@ -64,6 +64,20 @@ class PostgresBrainstormRepository:
         with self._database.connection() as connection:
             return self._get(connection, session_id)
 
+    def list_sessions(self) -> list[tuple[object, ...]]:
+        with self._database.connection() as connection:
+            return [
+                tuple(row)
+                for row in connection.execute(
+                    "SELECT bs.workflow_session_id, bs.title, ws.closed_at, "
+                    "(SELECT count(*) FROM brainstorm_thoughts bt "
+                    " WHERE bt.workflow_session_id = bs.workflow_session_id) "
+                    "FROM brainstorm_sessions bs "
+                    "JOIN workflow_sessions ws ON ws.id = bs.workflow_session_id "
+                    "ORDER BY ws.closed_at IS NULL DESC, ws.started_at DESC"
+                ).fetchall()
+            ]
+
     def get_open(self) -> BrainstormSession | None:
         with self._database.connection() as connection:
             row = connection.execute(

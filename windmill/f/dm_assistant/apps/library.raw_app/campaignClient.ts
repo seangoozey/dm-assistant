@@ -25,7 +25,8 @@ export type EntityKind =
   | "item"
   | "event"
   | "worldbuilding"
-  | "rules_element";
+  | "rules_element"
+  | "encounter";
 
 export interface EntityKindGuidance {
   kind: EntityKind;
@@ -311,10 +312,20 @@ export interface ApprovePromotionInput {
 }
 export interface QualifiedCriterion { criterion: string; status: "pass" | "fail" | "pending"; reason: string; vocabulary?: string | null; value?: string | null; }
 export interface QualifiedEntityFinding { entity_id: string; canonical_name: string; entity_kind: string; qualified: boolean; current_claim_count: number; criteria: QualifiedCriterion[]; }
-export interface QualifiedAuditResult { audited_at: string; total_entities: number; qualified_count: number; unqualified: QualifiedEntityFinding[]; pending_criteria: string[]; }
+export interface QualifiedAuditResult { audited_at: string; total_entities: number; qualified_count: number; unqualified: QualifiedEntityFinding[]; pending_criteria: string[]; global_criteria?: Array<{ criterion: string; status: "pass" | "fail" | "pending"; reason: string; vocabulary?: string | null; value?: string | null }>; }
 export interface ExclusiveClaim { claim_id: string; assertion_text: string; state: string; owner_entity_id?: string | null; owner_name?: string | null; }
 export interface EntityDocumentClaims { entity_id: string; canonical_name: string; entity_kind: string; document_id?: string | null; document_path?: string | null; claims: ExclusiveClaim[]; }
 export interface ExclusiveClaimsResult { entities_with_exclusive_claims: number; total_claims: number; groups: EntityDocumentClaims[]; }
+export interface BrainstormSessionSummary { session_id: string; title: string; open: boolean; thought_count: number; }
+export interface EncounterGroup { name: string; claim_ids: string[]; document_paths: string[]; name_available?: boolean; }
+export interface MintEncounterReceipt { entity_id: string; entity_name: string; claims_assigned: number; move_errors: string[]; }
+export interface OwnerDispositionReceipt { claim_id: string; reason: string; already_disposed: boolean; }
+export interface OwnerSuggestion { entity_id: string; entity_name: string; entity_kind: string; basis: string; }
+export interface OwnerSuggestionResult { text: string; suggestions: OwnerSuggestion[]; }
+export interface EncounterDocumentReceipt { capture_id: string; document_id: string; revision_id: string; path: string; idempotent_replay: boolean; }
+export interface OrphanOwnerSuggestion { entity_id: string; entity_name: string; entity_kind: string; basis: "co-mention" | "name in text"; }
+export interface OrphanedClaim { claim_id: string; assertion_text: string; state: string; authority: string; recorded_at?: string | null; source_paths: string[]; document_owner_id?: string | null; document_owner_name?: string | null; suggestions: OrphanOwnerSuggestion[]; }
+export interface OrphanedClaimsResult { total_claims: number; claims_with_suggestions: number; claims: OrphanedClaim[]; encounter_groups?: EncounterGroup[]; }
 export interface UnpromotedFinding { kind: "empty_shell" | "pending_capture" | "unpromoted_thoughts"; entity_id?: string | null; entity_name: string; entity_kind?: string | null; document_id?: string | null; document_path?: string | null; session_id?: string | null; count: number; detail: string; }
 export interface UnpromotedAuditResult { audited_at: string; findings: UnpromotedFinding[]; }
 export interface PromotionSubjectInput {
@@ -531,6 +542,12 @@ export interface CampaignClient {
   getTemplateVocabulary(vocabulary: string): Promise<VocabularyValue[]>;
   getLinkAudit(): Promise<LinkAuditResult>;
   getUnpromotedMaterial(): Promise<UnpromotedAuditResult>;
+  getOrphanedClaims(): Promise<OrphanedClaimsResult>;
+  listBrainstormSessions(): Promise<{ sessions: BrainstormSessionSummary[] }>;
+  captureEncounterDocument(command: { title: string; body: string; idempotency_key: string }): Promise<EncounterDocumentReceipt>;
+  getOwnerSuggestions(text: string, limit?: number): Promise<OwnerSuggestionResult>;
+  disposeClaimOwner(claimId: string, reason: string): Promise<{ claim_id: string; reason: string; already_disposed: boolean }>;
+  mintEncounterEntity(command: { name: string; claim_ids: string[]; idempotency_key: string; kind?: "encounter" | "event" }): Promise<MintEncounterReceipt>;
   getQualifiedEntities(): Promise<QualifiedAuditResult>;
   getExclusiveClaims(): Promise<ExclusiveClaimsResult>;
   reattributeClaim(claimId: string, newEntityId: string, reason: string): Promise<ReattributionReceipt>;
@@ -725,6 +742,12 @@ export interface ReviewBackendRequest {
     | "get_template_vocabulary"
     | "get_link_audit"
     | "get_unpromoted_material"
+    | "get_orphaned_claims"
+    | "list_brainstorm_sessions"
+    | "capture_encounter_document"
+    | "get_owner_suggestions"
+    | "dispose_claim_owner"
+    | "mint_encounter_entity"
     | "get_qualified_entities"
     | "get_exclusive_claims"
     | "reattribute_claim"
@@ -753,6 +776,8 @@ export interface ReviewBackendRequest {
   session_id?: string;
   entity_id?: string;
   purpose?: string;
+  text?: string;
+  limit?: number;
   vocabulary?: string;
   record_id?: string;
   note_id?: string;
@@ -836,6 +861,12 @@ export class HttpCampaignClient implements CampaignClient {
   getTemplateVocabulary(vocabulary: string): Promise<VocabularyValue[]> { return this.core(`/template-vocabularies/${vocabulary}?requester_role=dm`); }
   getLinkAudit(): Promise<LinkAuditResult> { return this.core("/campaign/link-audit?requester_role=dm"); }
   getUnpromotedMaterial(): Promise<UnpromotedAuditResult> { return this.core("/campaign/unpromoted-material?requester_role=dm"); }
+  getOrphanedClaims(): Promise<OrphanedClaimsResult> { return this.core("/campaign/orphaned-claims?requester_role=dm"); }
+  listBrainstormSessions(): Promise<{ sessions: BrainstormSessionSummary[] }> { return this.core("/campaign/brainstorm-sessions?requester_role=dm"); }
+  captureEncounterDocument(command: { title: string; body: string; idempotency_key: string }): Promise<EncounterDocumentReceipt> { return this.core("/capture/encounters?requester_role=dm", "POST", command); }
+  getOwnerSuggestions(text: string, limit = 3): Promise<OwnerSuggestionResult> { return this.core(`/campaign/owner-suggestions?requester_role=dm&limit=${limit}&text=${encodeURIComponent(text)}`); }
+  disposeClaimOwner(claimId: string, reason: string): Promise<OwnerDispositionReceipt> { return this.core(`/claims/${claimId}/owner-disposition?requester_role=dm`, "POST", { claim_id: claimId, reason }); }
+  mintEncounterEntity(command: { name: string; claim_ids: string[]; idempotency_key: string; kind?: "encounter" | "event" }): Promise<MintEncounterReceipt> { return this.core("/campaign/encounter-entities?requester_role=dm", "POST", command); }
   getQualifiedEntities(): Promise<QualifiedAuditResult> { return this.core("/campaign/qualified-entities?requester_role=dm"); }
   getExclusiveClaims(): Promise<ExclusiveClaimsResult> { return this.core("/campaign/unqualified-exclusive-claims?requester_role=dm"); }
   reattributeClaim(claimId: string, newEntityId: string, reason: string): Promise<ReattributionReceipt> { return this.core(`/claims/${claimId}/reattribute?requester_role=dm`, "POST", { claim_id: claimId, new_entity_id: newEntityId, reason }); }
@@ -1073,6 +1104,12 @@ export class WindmillCampaignClient implements CampaignClient {
   getTemplateVocabulary(vocabulary: string): Promise<VocabularyValue[]> { return this.review({ operation: "get_template_vocabulary", vocabulary }); }
   getLinkAudit(): Promise<LinkAuditResult> { return this.review({ operation: "get_link_audit" }); }
   getUnpromotedMaterial(): Promise<UnpromotedAuditResult> { return this.review({ operation: "get_unpromoted_material" }); }
+  getOrphanedClaims(): Promise<OrphanedClaimsResult> { return this.review({ operation: "get_orphaned_claims" }); }
+  listBrainstormSessions(): Promise<{ sessions: BrainstormSessionSummary[] }> { return this.review({ operation: "list_brainstorm_sessions" }); }
+  captureEncounterDocument(command: { title: string; body: string; idempotency_key: string }): Promise<EncounterDocumentReceipt> { return this.review({ operation: "capture_encounter_document", body: command }); }
+  getOwnerSuggestions(text: string, limit = 3): Promise<OwnerSuggestionResult> { return this.review({ operation: "get_owner_suggestions", text, limit }); }
+  disposeClaimOwner(claimId: string, reason: string): Promise<OwnerDispositionReceipt> { return this.review({ operation: "dispose_claim_owner", claim_id: claimId, body: { claim_id: claimId, reason } }); }
+  mintEncounterEntity(command: { name: string; claim_ids: string[]; idempotency_key: string; kind?: "encounter" | "event" }): Promise<MintEncounterReceipt> { return this.review({ operation: "mint_encounter_entity", body: command }); }
   getQualifiedEntities(): Promise<QualifiedAuditResult> { return this.review({ operation: "get_qualified_entities" }); }
   getExclusiveClaims(): Promise<ExclusiveClaimsResult> { return this.review({ operation: "get_exclusive_claims" }); }
   reattributeClaim(claimId: string, newEntityId: string, reason: string): Promise<ReattributionReceipt> { return this.review({ operation: "reattribute_claim", claim_id: claimId, body: { claim_id: claimId, new_entity_id: newEntityId, reason } }); }
